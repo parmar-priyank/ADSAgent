@@ -232,5 +232,52 @@ def reorder_items(template_id: int, ordered_ids: list):
             )
 
 
+def backfill_references():
+    """
+    One-time migration: for templates where every item has an empty reference,
+    re-parse the stored blob and fill in the reference column from the Remarks
+    column (stripping the leading 'Refer to ' prefix).
+    """
+    import checklist_xlsx as cx
+
+    with get_db() as conn:
+        templates = conn.execute(
+            "SELECT id, blob FROM templates WHERE blob IS NOT NULL"
+        ).fetchall()
+        for t in templates:
+            tid, blob = t["id"], t["blob"]
+            # Check if any item already has a reference value.
+            has_refs = conn.execute(
+                "SELECT 1 FROM checklist_items WHERE template_id = ? AND reference <> '' LIMIT 1",
+                (tid,),
+            ).fetchone()
+            if has_refs:
+                continue  # already populated, skip
+
+            try:
+                parsed_items, _, _ = cx.parse_xlsx(bytes(blob))
+            except Exception:
+                continue  # corrupt blob — skip silently
+
+            # Build a lookup by (sno, text) → reference.
+            ref_map = {
+                (it.get("sno", ""), it.get("text", "")): it.get("reference", "")
+                for it in parsed_items
+            }
+
+            db_items = conn.execute(
+                "SELECT id, sno, text FROM checklist_items WHERE template_id = ?",
+                (tid,),
+            ).fetchall()
+            for row in db_items:
+                ref = ref_map.get((row["sno"], row["text"]), "")
+                if ref:
+                    conn.execute(
+                        "UPDATE checklist_items SET reference = ? WHERE id = ?",
+                        (ref, row["id"]),
+                    )
+
+
 # Create tables on import.
 init_templates_db()
+backfill_references()

@@ -88,35 +88,46 @@
         </thead>
         <tbody>
           {% for it in items %}
-          <tr {% if it["is_section"] %}style="background:var(--brand-light);"{% endif %}>
-            <form action="/templates/{{ selected['id'] }}/items/{{ it['id'] }}/update" method="post">
+          {# Form must live outside the table — browsers eject <form> from inside <tr> #}
+          <form id="row-form-{{ it['id'] }}"
+                action="/templates/{{ selected['id'] }}/items/{{ it['id'] }}/update"
+                method="post" style="display:none;"></form>
+          <tr data-item-id="{{ it['id'] }}" {% if it["is_section"] %}style="background:var(--brand-light);"{% endif %}>
               <td>
                 <input type="text" name="sno" value="{{ it['sno'] }}"
+                       form="row-form-{{ it['id'] }}"
                        style="width:55px;padding:6px;border:1px solid var(--line);border-radius:6px;text-align:center;">
               </td>
               <td>
                 <input type="text" name="text" value="{{ it['text'] }}"
+                       form="row-form-{{ it['id'] }}"
                        style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;
                        {% if it['is_section'] %}font-weight:700;{% endif %}">
               </td>
               <td style="text-align:center;">
-                <button type="submit" formaction="/templates/{{ selected['id'] }}/items/{{ it['id'] }}/move"
+                <button type="submit"
+                        form="row-form-{{ it['id'] }}"
+                        formaction="/templates/{{ selected['id'] }}/items/{{ it['id'] }}/move"
                         name="direction" value="up" class="link-btn">&uarr;</button>
-                <button type="submit" formaction="/templates/{{ selected['id'] }}/items/{{ it['id'] }}/move"
+                <button type="submit"
+                        form="row-form-{{ it['id'] }}"
+                        formaction="/templates/{{ selected['id'] }}/items/{{ it['id'] }}/move"
                         name="direction" value="down" class="link-btn">&darr;</button>
               </td>
               <td>
                 <input type="text" name="reference" value="{{ it['reference'] or '' }}"
+                       form="row-form-{{ it['id'] }}"
                        placeholder="filename.pdf"
                        style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;">
               </td>
               <td style="text-align:right;white-space:nowrap;">
-                <button type="submit" class="link-btn">Save</button>
-                <button type="submit" formaction="/templates/{{ selected['id'] }}/items/{{ it['id'] }}/delete"
+                <button type="submit" form="row-form-{{ it['id'] }}" class="link-btn">Save</button>
+                <button type="submit"
+                        form="row-form-{{ it['id'] }}"
+                        formaction="/templates/{{ selected['id'] }}/items/{{ it['id'] }}/delete"
                         class="link-btn danger"
                         onclick="return confirm('Delete this item?');">Del</button>
               </td>
-            </form>
           </tr>
           {% endfor %}
         </tbody>
@@ -125,9 +136,29 @@
       <div class="empty-state">No items in this template — add one above.</div>
       {% endif %}
 
-      <div class="actions" style="justify-content:flex-start;margin-top:18px;">
+      <div class="actions" style="justify-content:space-between;margin-top:18px;">
         <a href="/templates/{{ selected['id'] }}/download" class="btn-link-primary">Download Excel</a>
+        <form action="/templates/{{ selected['id'] }}/save-all" method="post" id="save-all-form">
+          <button type="submit" class="btn-link-primary">Save All</button>
+        </form>
       </div>
+
+      <script>
+        document.getElementById('save-all-form').addEventListener('submit', function(e) {
+          var form = this;
+          document.querySelectorAll('tr[data-item-id]').forEach(function(row) {
+            var id   = row.dataset.itemId;
+            var sno  = row.querySelector('input[name="sno"]').value;
+            var text = row.querySelector('input[name="text"]').value;
+            var ref  = row.querySelector('input[name="reference"]').value;
+            [['item_id', id], ['sno', sno], ['text', text], ['reference', ref]].forEach(function(pair) {
+              var inp = document.createElement('input');
+              inp.type = 'hidden'; inp.name = pair[0]; inp.value = pair[1];
+              form.appendChild(inp);
+            });
+          });
+        });
+      </script>
     </div>
     {% endif %}
 

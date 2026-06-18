@@ -280,6 +280,18 @@ def item_update(template_id: int, item_id: int,
     return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
 
 
+@app.post("/templates/{template_id}/save-all")
+async def items_save_all(template_id: int, request: Request):
+    form = await request.form()
+    item_ids = form.getlist("item_id")
+    snos = form.getlist("sno")
+    texts = form.getlist("text")
+    refs = form.getlist("reference")
+    for item_id, sno, text, ref in zip(item_ids, snos, texts, refs):
+        tdb.update_item(int(item_id), text=text, sno=sno, reference=ref)
+    return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
+
+
 @app.post("/templates/{template_id}/items/{item_id}/delete")
 def item_delete(template_id: int, item_id: int):
     tdb.delete_item(item_id)
