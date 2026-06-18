@@ -15,22 +15,64 @@
         <h1>Solar Agreement Extractor</h1>
         <p>Upload a signed PDF &middot; extract details with Groq &middot; save to database</p>
       </div>
-      <div><a href="/templates" class="link-btn">Manage Checklist Templates</a></div>
     </header>
 
-    <div class="card upload-card">
-      <form action="/upload" method="post" enctype="multipart/form-data">
-        <label class="dropzone" id="dropzone">
-          <div class="icon">&#8682;</div>
-          <div class="prompt">Drop a PDF here, or <strong>browse</strong></div>
-          <div class="hint">Page 1 is ignored automatically</div>
-          <div class="filename" id="filename"></div>
-          <input type="file" name="file" id="fileInput" accept="application/pdf" required>
-        </label>
-        <div class="actions">
-          <button type="submit">Upload &amp; Extract</button>
-        </div>
-      </form>
+    <div class="upload-row">
+
+      <div class="card upload-card">
+        <div class="upload-card-title">Reference PDF</div>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+          <label class="dropzone" id="dropzone">
+            <div class="icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <polyline points="9 15 12 12 15 15"/>
+              </svg>
+            </div>
+            <div class="prompt">Drop a PDF here, or <strong>browse</strong></div>
+            <div class="hint">Page 1 is ignored automatically</div>
+            <div class="filename" id="filename"></div>
+            <input type="file" name="file" id="fileInput" accept="application/pdf" required>
+          </label>
+          <div class="actions">
+            <button type="submit">Upload &amp; Extract</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card upload-card">
+        <div class="upload-card-title">QC Checklist Template</div>
+        <form id="xlsxForm" action="/templates/upload" method="post" enctype="multipart/form-data">
+          <label class="dropzone" id="xlsxDropzone">
+            <div class="icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="8" y1="13" x2="16" y2="13"/>
+                <line x1="8" y1="17" x2="16" y2="17"/>
+                <line x1="10" y1="9" x2="14" y2="9"/>
+              </svg>
+            </div>
+            <div class="prompt">Drop an .xlsx here, or <strong>browse</strong></div>
+            <div class="hint">Parsed items open in the editor</div>
+            <div class="filename" id="xlsxFilename"></div>
+            <input type="file" name="file" id="xlsxFileInput" accept=".xlsx" required>
+          </label>
+          <input type="text" name="name" placeholder="Template name (e.g. ADS Standard QC)"
+                 class="tpl-inline-name" required>
+          <div class="actions">
+            <button type="submit">Upload</button>
+            {% if latest_template %}
+            <a href="/editor/{{ latest_template['id'] }}" class="btn-link-primary">Open editor &rarr;</a>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+
     </div>
 
     {% if error %}
@@ -138,23 +180,31 @@
   </div>
 
   <script>
-    const dz = document.getElementById('dropzone');
-    const input = document.getElementById('fileInput');
-    const label = document.getElementById('filename');
-
-    input.addEventListener('change', () => {
-      label.textContent = input.files.length ? input.files[0].name : '';
-    });
-    ['dragenter','dragover'].forEach(e =>
-      dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('drag'); }));
-    ['dragleave','drop'].forEach(e =>
-      dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('drag'); }));
-    dz.addEventListener('drop', ev => {
-      if (ev.dataTransfer.files.length) {
-        input.files = ev.dataTransfer.files;
-        label.textContent = input.files[0].name;
-      }
-    });
+    function wireDropzone(zoneId, inputId, filenameId, formId) {
+      const dz = document.getElementById(zoneId);
+      const input = document.getElementById(inputId);
+      const label = document.getElementById(filenameId);
+      const form = formId ? document.getElementById(formId) : null;
+      if (!dz || !input) return;
+      const sync = () => {
+        const has = input.files.length > 0;
+        label.textContent = has ? input.files[0].name : '';
+        if (form) form.classList.toggle('has-file', has);
+      };
+      input.addEventListener('change', sync);
+      ['dragenter', 'dragover'].forEach(e =>
+        dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('drag'); }));
+      ['dragleave', 'drop'].forEach(e =>
+        dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('drag'); }));
+      dz.addEventListener('drop', ev => {
+        if (ev.dataTransfer.files.length) {
+          input.files = ev.dataTransfer.files;
+          sync();
+        }
+      });
+    }
+    wireDropzone('dropzone', 'fileInput', 'filename');
+    wireDropzone('xlsxDropzone', 'xlsxFileInput', 'xlsxFilename', 'xlsxForm');
   </script>
 </body>
 </html>

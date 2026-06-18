@@ -29,7 +29,14 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
     items: list of {position, sno, parent_position, is_section, text, active}
     """
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
-    ws = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb.active
+    if sheet_name and sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+    else:
+        # Pick the sheet with the most filled-in column-D (remarks) cells —
+        # so a completed example sheet wins over a blank template.
+        def score(s):
+            return sum(1 for r in range(1, s.max_row + 1) if s.cell(r, 4).value)
+        ws = max(wb.worksheets, key=score)
 
     note_text = ""
     items = []
@@ -62,6 +69,14 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
         if not text:
             continue
 
+        # Reference text comes from column D (the Remarks column). Strip the
+        # leading "Refer to " so the editor shows just the filename.
+        remark = ws.cell(r, 4).value
+        reference = ""
+        if remark is not None:
+            reference = re.sub(r"^\s*Refer to\s+", "", str(remark).strip(),
+                               flags=re.IGNORECASE).strip()
+
         pos += 1
         is_section = bool(text.isupper() and SECTION_HINT.search(text)) or \
             (text.isupper() and len(text) > 4 and not sno_str.isdigit())
@@ -75,6 +90,7 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
             "parent_position": parent,
             "is_section": is_section,
             "text": text,
+            "reference": reference,
             "active": 1,
         })
 

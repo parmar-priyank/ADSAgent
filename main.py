@@ -186,12 +186,23 @@ def extract_with_groq(text: str) -> dict:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+def _index_context(**extra):
+    """Common context for any render of index.html (home + upload result + errors)."""
+    saved = tdb.list_templates()
+    base = {
+        "records": db.get_recent(),
+        "result": None,
+        "error": None,
+        "latest_template": saved[0] if saved else None,
+        "saved_templates": saved,
+    }
+    base.update(extra)
+    return base
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    records = db.get_recent()
-    return templates.TemplateResponse(
-        request, "index.html", {"records": records, "result": None, "error": None}
-    )
+    return templates.TemplateResponse(request, "index.html", _index_context())
 
 
 @app.post("/upload", response_class=HTMLResponse)
@@ -205,48 +216,37 @@ async def upload(request: Request, file: UploadFile = File(...)):
     try:
         data = extract_with_groq(text)
     except AuthenticationError:
-        records = db.get_recent()
         return templates.TemplateResponse(
-            request,
-            "index.html",
-            {
-                "records": records,
-                "result": None,
-                "error": "Invalid Groq API key. Check the GROQ_API_KEY value in your .env file "
-                         "(it should start with 'gsk_') and restart the server.",
-            },
+            request, "index.html",
+            _index_context(error="Invalid Groq API key. Check the GROQ_API_KEY value in your .env file "
+                                 "(it should start with 'gsk_') and restart the server."),
         )
     except GroqError as e:
-        records = db.get_recent()
         return templates.TemplateResponse(
-            request,
-            "index.html",
-            {"records": records, "result": None, "error": f"Groq error: {e}"},
+            request, "index.html",
+            _index_context(error=f"Groq error: {e}"),
         )
 
     db.save_extraction(file.filename, data)
-    records = db.get_recent()
-
     return templates.TemplateResponse(
-        request, "index.html", {"records": records, "result": data}
+        request, "index.html", _index_context(result=data),
     )
 
 
 # ===========================================================================
 # Checklist template management + editor
 # ===========================================================================
-@app.get("/templates", response_class=HTMLResponse)
-def templates_list(request: Request, id: int = None):
-    """
-    Templates page. If ?id=N is given, also load that template's items so the
-    editor section renders inline below the list.
-    """
-    rows = tdb.list_templates()
-    selected = tdb.get_template(id) if id else None
-    items = tdb.get_items(id) if selected else []
+@app.get("/editor/{template_id}", response_class=HTMLResponse)
+def template_editor(request: Request, template_id: int):
+    """The checklist editor: items table + saved-templates list for switching."""
+    tpl = tdb.get_template(template_id)
+    if not tpl:
+        raise HTTPException(404, "Template not found.")
+    items = tdb.get_items(template_id)
+    all_templates = tdb.list_templates()
     return templates.TemplateResponse(
         request, "templates.html",
-        {"templates": rows, "selected": selected, "items": items},
+        {"templates": all_templates, "selected": tpl, "items": items},
     )
 
 
@@ -261,27 +261,29 @@ async def templates_upload(
     blob = await file.read()
     items, headers, note = cx.parse_xlsx(blob)
     tid = tdb.create_template(name, blob, items, note)
-    return RedirectResponse(url=f"/templates?id={tid}", status_code=303)
+    return RedirectResponse(url=f"/editor/{tid}", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/add")
 def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
-             is_section: str = Form("")):
-    tdb.add_item(template_id, text=text, sno=sno, is_section=bool(is_section))
-    return RedirectResponse(url=f"/templates?id={template_id}", status_code=303)
+             is_section: str = Form(""), reference: str = Form("")):
+    tdb.add_item(template_id, text=text, sno=sno,
+                 is_section=bool(is_section), reference=reference)
+    return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/update")
 def item_update(template_id: int, item_id: int,
-                text: str = Form(...), sno: str = Form("")):
-    tdb.update_item(item_id, text=text, sno=sno)
-    return RedirectResponse(url=f"/templates?id={template_id}", status_code=303)
+                text: str = Form(...), sno: str = Form(""),
+                reference: str = Form("")):
+    tdb.update_item(item_id, text=text, sno=sno, reference=reference)
+    return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/delete")
 def item_delete(template_id: int, item_id: int):
     tdb.delete_item(item_id)
-    return RedirectResponse(url=f"/templates?id={template_id}", status_code=303)
+    return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/move")
@@ -294,13 +296,27 @@ def item_move(template_id: int, item_id: int, direction: str = Form(...)):
         if 0 <= j < len(ids):
             ids[i], ids[j] = ids[j], ids[i]
             tdb.reorder_items(template_id, ids)
-    return RedirectResponse(url=f"/templates?id={template_id}", status_code=303)
+    return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
 
 
 @app.post("/templates/{template_id}/delete")
-def template_delete(template_id: int):
+def template_delete(template_id: int, return_to: str = Form("")):
+    """
+    Delete a template. If the deleted template is the one we were editing,
+    fall back to the most recent remaining template's editor (or home if none).
+    Otherwise stay on the current editor.
+    """
     tdb.delete_template(template_id)
-    return RedirectResponse(url="/templates", status_code=303)
+
+    # If caller told us which editor they were on and it still exists, go there.
+    if return_to.isdigit() and int(return_to) != template_id:
+        return RedirectResponse(url=f"/editor/{return_to}", status_code=303)
+
+    # Otherwise pick the most recent surviving template, or home.
+    remaining = tdb.list_templates()
+    if remaining:
+        return RedirectResponse(url=f"/editor/{remaining[0]['id']}", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/templates/{template_id}/download")

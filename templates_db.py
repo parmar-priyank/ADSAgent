@@ -62,11 +62,16 @@ def init_templates_db():
                 parent_position  INTEGER,
                 is_section       INTEGER DEFAULT 0,
                 text             TEXT DEFAULT '',
+                reference        TEXT DEFAULT '',
                 active           INTEGER DEFAULT 1,
                 FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
             )
             """
         )
+        # Migration: add reference column to older databases that don't have it.
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(checklist_items)")]
+        if "reference" not in cols:
+            conn.execute("ALTER TABLE checklist_items ADD COLUMN reference TEXT DEFAULT ''")
 
 
 # ---------------------------------------------------------------------------
@@ -94,8 +99,9 @@ def _insert_items(conn, template_id: int, items: list):
         conn.execute(
             """
             INSERT INTO checklist_items
-                (template_id, position, sno, parent_position, is_section, text, active)
-            VALUES (?,?,?,?,?,?,?)
+                (template_id, position, sno, parent_position, is_section,
+                 text, reference, active)
+            VALUES (?,?,?,?,?,?,?,?)
             """,
             (
                 template_id,
@@ -104,6 +110,7 @@ def _insert_items(conn, template_id: int, items: list):
                 it.get("parent_position"),
                 1 if it.get("is_section") else 0,
                 it.get("text", ""),
+                it.get("reference", ""),
                 1 if it.get("active", 1) else 0,
             ),
         )
@@ -167,7 +174,8 @@ def replace_items(template_id: int, items: list):
 
 
 def add_item(template_id: int, text: str, sno: str = "",
-             is_section: bool = False, position: int = None):
+             is_section: bool = False, position: int = None,
+             reference: str = ""):
     items = get_items(template_id)
     if position is None:
         position = (max([i["position"] for i in items], default=0)) + 1
@@ -180,17 +188,21 @@ def add_item(template_id: int, text: str, sno: str = "",
         )
         _insert_items(conn, template_id, [{
             "position": position, "sno": sno, "parent_position": None,
-            "is_section": is_section, "text": text, "active": 1,
+            "is_section": is_section, "text": text, "reference": reference,
+            "active": 1,
         }])
 
 
 def update_item(item_id: int, text: str = None, sno: str = None,
-                active: int = None, is_section: int = None):
+                active: int = None, is_section: int = None,
+                reference: str = None):
     sets, vals = [], []
     if text is not None:
         sets.append("text = ?"); vals.append(text)
     if sno is not None:
         sets.append("sno = ?"); vals.append(sno)
+    if reference is not None:
+        sets.append("reference = ?"); vals.append(reference)
     if active is not None:
         sets.append("active = ?"); vals.append(1 if active else 0)
     if is_section is not None:

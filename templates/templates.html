@@ -12,45 +12,11 @@
     <header class="masthead">
       <div class="logo-mark">&#9728;</div>
       <div style="flex:1;">
-        <h1>QC Checklist Templates</h1>
-        <p>Upload a checklist &middot; parsed items appear below &middot; edit anytime</p>
+        <h1>Edit Checklist</h1>
+        <p>{{ selected["name"] }} &middot; {{ items|length }} items</p>
       </div>
-      <div><a href="/" class="link-btn">&larr; Back to extractor</a></div>
+      <div><a href="/" class="link-btn">&larr; Home</a></div>
     </header>
-
-    <div class="card tpl-upload-card">
-      <form action="/templates/upload" method="post" enctype="multipart/form-data" class="tpl-upload">
-        <div class="tpl-upload-grid">
-          <div class="tpl-name">
-            <label class="tpl-label">Template name</label>
-            <input type="text" name="name" class="tpl-input"
-                   placeholder="e.g. ADS Standard QC" required>
-            <p class="tpl-help">Give this checklist a name you'll recognize later.</p>
-          </div>
-
-          <label class="tpl-dropzone" id="tplDropzone">
-            <div class="tpl-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="12" y1="18" x2="12" y2="12"/>
-                <polyline points="9 15 12 12 15 15"/>
-              </svg>
-            </div>
-            <div class="tpl-drop-text">
-              <strong>Drop your .xlsx</strong> here, or <u>browse</u>
-            </div>
-            <div class="tpl-filename" id="tplFilename">No file chosen</div>
-            <input type="file" name="file" id="tplFileInput" accept=".xlsx" required hidden>
-          </label>
-        </div>
-
-        <div class="actions">
-          <button type="submit" class="btn-primary">Upload &amp; Parse</button>
-        </div>
-      </form>
-    </div>
 
     <div class="card">
       <h2>Saved Templates</h2>
@@ -66,10 +32,11 @@
             <td><strong>{{ t["name"] }}</strong></td>
             <td class="muted">{{ t["created_at"] }}</td>
             <td style="text-align:right;white-space:nowrap;">
-              <a href="/templates?id={{ t['id'] }}" class="link-btn">Edit</a>
+              <a href="/editor/{{ t['id'] }}" class="link-btn">Edit</a>
               <a href="/templates/{{ t['id'] }}/download" class="link-btn">Download</a>
               <form action="/templates/{{ t['id'] }}/delete" method="post" style="display:inline;"
                     onsubmit="return confirm('Delete this template?');">
+                <input type="hidden" name="return_to" value="{{ selected['id'] }}">
                 <button type="submit" class="link-btn danger">Delete</button>
               </form>
             </td>
@@ -115,6 +82,7 @@
             <th style="width:70px;">Sno.</th>
             <th>Checklist Item</th>
             <th style="width:110px;text-align:center;">Reorder</th>
+            <th style="width:220px;">Reference</th>
             <th style="width:120px;text-align:right;">Actions</th>
           </tr>
         </thead>
@@ -136,6 +104,11 @@
                         name="direction" value="up" class="link-btn">&uarr;</button>
                 <button type="submit" formaction="/templates/{{ selected['id'] }}/items/{{ it['id'] }}/move"
                         name="direction" value="down" class="link-btn">&darr;</button>
+              </td>
+              <td>
+                <input type="text" name="reference" value="{{ it['reference'] or '' }}"
+                       placeholder="filename.pdf"
+                       style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;">
               </td>
               <td style="text-align:right;white-space:nowrap;">
                 <button type="submit" class="link-btn">Save</button>
@@ -159,28 +132,5 @@
     {% endif %}
 
   </div>
-
-  <script>
-    (function() {
-      const dz = document.getElementById('tplDropzone');
-      const input = document.getElementById('tplFileInput');
-      const label = document.getElementById('tplFilename');
-      if (!dz) return;
-
-      input.addEventListener('change', () => {
-        label.textContent = input.files.length ? input.files[0].name : 'No file chosen';
-      });
-      ['dragenter', 'dragover'].forEach(e =>
-        dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('drag'); }));
-      ['dragleave', 'drop'].forEach(e =>
-        dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('drag'); }));
-      dz.addEventListener('drop', ev => {
-        if (ev.dataTransfer.files.length) {
-          input.files = ev.dataTransfer.files;
-          label.textContent = input.files[0].name;
-        }
-      });
-    })();
-  </script>
 </body>
 </html>
