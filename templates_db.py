@@ -68,10 +68,12 @@ def init_templates_db():
             )
             """
         )
-        # Migration: add reference column to older databases that don't have it.
+        # Migrations: add columns to older databases that don't have them.
         cols = [r[1] for r in conn.execute("PRAGMA table_info(checklist_items)")]
         if "reference" not in cols:
             conn.execute("ALTER TABLE checklist_items ADD COLUMN reference TEXT DEFAULT ''")
+        if "prompt" not in cols:
+            conn.execute("ALTER TABLE checklist_items ADD COLUMN prompt TEXT DEFAULT ''")
 
 
 # ---------------------------------------------------------------------------
@@ -100,8 +102,8 @@ def _insert_items(conn, template_id: int, items: list):
             """
             INSERT INTO checklist_items
                 (template_id, position, sno, parent_position, is_section,
-                 text, reference, active)
-            VALUES (?,?,?,?,?,?,?,?)
+                 text, reference, prompt, active)
+            VALUES (?,?,?,?,?,?,?,?,?)
             """,
             (
                 template_id,
@@ -111,6 +113,7 @@ def _insert_items(conn, template_id: int, items: list):
                 1 if it.get("is_section") else 0,
                 it.get("text", ""),
                 it.get("reference", ""),
+                it.get("prompt", ""),
                 1 if it.get("active", 1) else 0,
             ),
         )
@@ -195,7 +198,7 @@ def add_item(template_id: int, text: str, sno: str = "",
 
 def update_item(item_id: int, text: str = None, sno: str = None,
                 active: int = None, is_section: int = None,
-                reference: str = None):
+                reference: str = None, prompt: str = None):
     sets, vals = [], []
     if text is not None:
         sets.append("text = ?"); vals.append(text)
@@ -203,6 +206,8 @@ def update_item(item_id: int, text: str = None, sno: str = None,
         sets.append("sno = ?"); vals.append(sno)
     if reference is not None:
         sets.append("reference = ?"); vals.append(reference)
+    if prompt is not None:
+        sets.append("prompt = ?"); vals.append(prompt)
     if active is not None:
         sets.append("active = ?"); vals.append(1 if active else 0)
     if is_section is not None:

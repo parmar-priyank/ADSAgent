@@ -291,8 +291,8 @@ def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
 @app.post("/templates/{template_id}/items/{item_id}/update")
 def item_update(template_id: int, item_id: int,
                 text: str = Form(...), sno: str = Form(""),
-                reference: str = Form("")):
-    tdb.update_item(item_id, text=text, sno=sno, reference=reference)
+                reference: str = Form(""), prompt: str = Form("")):
+    tdb.update_item(item_id, text=text, sno=sno, reference=reference, prompt=prompt)
     return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
 
 
@@ -303,8 +303,9 @@ async def items_save_all(template_id: int, request: Request):
     snos = form.getlist("sno")
     texts = form.getlist("text")
     refs = form.getlist("reference")
-    for item_id, sno, text, ref in zip(item_ids, snos, texts, refs):
-        tdb.update_item(int(item_id), text=text, sno=sno, reference=ref)
+    prompts = form.getlist("prompt")
+    for item_id, sno, text, ref, prompt in zip(item_ids, snos, texts, refs, prompts):
+        tdb.update_item(int(item_id), text=text, sno=sno, reference=ref, prompt=prompt)
     return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
 
 
