@@ -1,0 +1,36 @@
+# ---- Secrets / environment ----
+.env
+.env.*
+!.env.example
+
+# ---- Database ----
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+build/
+dist/
+
+# ---- Virtual environments ----
+venv/
+.venv/
+env/
+ENV/
+
+# ---- Dev / scratch files ----
+check_db.py
+
+# ---- IDE / editor ----
+.vscode/
+.idea/
+*.swp
+
+# ---- OS ----
+.DS_Store
+Thumbs.db

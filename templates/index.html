@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar Agreement Extractor</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="wrap">
+
+    <header class="masthead">
+      <div class="logo-mark">&#9728;</div>
+      <div>
+        <h1>Solar Agreement Extractor</h1>
+        <p>Upload a signed PDF &middot; extract details with Groq &middot; save to database</p>
+      </div>
+    </header>
+
+    <div class="card upload-card">
+      <form action="/upload" method="post" enctype="multipart/form-data">
+        <label class="dropzone" id="dropzone">
+          <div class="icon">&#8682;</div>
+          <div class="prompt">Drop a PDF here, or <strong>browse</strong></div>
+          <div class="hint">Page 1 is ignored automatically</div>
+          <div class="filename" id="filename"></div>
+          <input type="file" name="file" id="fileInput" accept="application/pdf" required>
+        </label>
+        <div class="actions">
+          <button type="submit">Upload &amp; Extract</button>
+        </div>
+      </form>
+    </div>
+
+    {% if error %}
+    <div class="card" style="border-color:#fca5a5;background:#fef2f2;">
+      <strong style="color:#b91c1c;">⚠ {{ error }}</strong>
+    </div>
+    {% endif %}
+
+    {% if result %}
+    <div class="card">
+      <h2>Customer &amp; Quote Details</h2>
+      <span class="banner">&#10003; Extraction complete</span>
+      <div class="kv">
+        {% for key in ['quote_number','quote_valid_until','customer_name','contact_person',
+                       'billing_address','delivery_address','email','phone','roof_type'] %}
+        {% set value = result.get(key, '') %}
+        <div class="kv-row">
+          <div class="k">{{ key.replace('_', ' ').title() }}</div>
+          <div class="v {{ 'empty' if not value }}">{{ value if value else '—' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Retailer Details</h2>
+      <div class="kv">
+        {% for key in ['retailer_name','retailer_contact_person','retailer_postal_address',
+                       'retailer_street_address','retailer_phone','retailer_email'] %}
+        {% set value = result.get(key, '') %}
+        <div class="kv-row">
+          <div class="k">{{ key.replace('retailer_', '').replace('_', ' ').title() }}</div>
+          <div class="v {{ 'empty' if not value }}">{{ value if value else '—' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if result.get('line_items') %}
+    <div class="card">
+      <h2>System &amp; Pricing</h2>
+      <table>
+        <thead>
+          <tr><th>Item</th><th style="text-align:center;">Qty</th><th>Specification</th><th style="text-align:right;">Price (inc. GST)</th></tr>
+        </thead>
+        <tbody>
+          {% for li in result['line_items'] %}
+          <tr>
+            <td><strong>{{ li.get('item', '') }}</strong></td>
+            <td style="text-align:center;white-space:nowrap;">
+              {{ li.get('quantity', '') if li.get('quantity', '') else '—' }}
+            </td>
+            <td>{{ li.get('specification', '') }}</td>
+            <td style="text-align:right;white-space:nowrap;">
+              {{ li.get('price', '') if li.get('price', '') else '—' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2>Payment Details</h2>
+      <div class="kv">
+        {% for key in ['system_price','stc_incentive','vic_rebate','battery_rebate',
+                       'total_price','deposit','balance','payment_terms',
+                       'install_date','balance_due_date','notes'] %}
+        {% set value = result.get(key, '') %}
+        <div class="kv-row">
+          <div class="k">{{ key.replace('_', ' ').title() }}</div>
+          <div class="v {{ 'empty' if not value }}">{{ value if value else '—' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2>Saved Records</h2>
+      {% if records %}
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Quote</th><th>Customer</th><th>Email</th><th>Total</th><th>Install</th></tr>
+        </thead>
+        <tbody>
+          {% for r in records %}
+          <tr>
+            <td><span class="id-pill">#{{ r["id"] }}</span></td>
+            <td>{{ r["quote_number"] }}</td>
+            <td>{{ r["customer_name"] }}</td>
+            <td>{{ r["email"] }}</td>
+            <td>{{ r["total_price"] }}</td>
+            <td>{{ r["install_date"] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">No records yet — upload your first agreement above.</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <script>
+    const dz = document.getElementById('dropzone');
+    const input = document.getElementById('fileInput');
+    const label = document.getElementById('filename');
+
+    input.addEventListener('change', () => {
+      label.textContent = input.files.length ? input.files[0].name : '';
+    });
+    ['dragenter','dragover'].forEach(e =>
+      dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(e =>
+      dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('drag'); }));
+    dz.addEventListener('drop', ev => {
+      if (ev.dataTransfer.files.length) {
+        input.files = ev.dataTransfer.files;
+        label.textContent = input.files[0].name;
+      }
+    });
+  </script>
+</body>
+</html>
