@@ -3,8 +3,10 @@ import io
 import json
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Request, HTTPException
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI, UploadFile, File, Request, HTTPException, Form
+from fastapi.responses import (
+    HTMLResponse, Response, StreamingResponse, RedirectResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import pdfplumber
@@ -12,6 +14,8 @@ from groq import Groq
 from groq import AuthenticationError, GroqError
 
 import db  # database layer (auto-creates extractions.db on import)
+import templates_db as tdb       # template + checklist-item storage
+import checklist_xlsx as cx      # parse / regenerate checklist xlsx
 
 # ---------------------------------------------------------------------------
 # Config — loaded from .env
@@ -69,11 +73,12 @@ def extract_pdf_text(file_bytes: bytes) -> str:
             full_parts.append(page.extract_text() or "")
 
     return (
-        "===== LEFT COLUMN (CUSTOMER SIDE) =====\n"
+        "===== LEFT COLUMN — CUSTOMER SIDE (use for the customer_* fields) =====\n"
         + "\n".join(left_parts)
-        + "\n\n===== RIGHT COLUMN (RETAILER SIDE — do NOT use for customer fields) =====\n"
+        + "\n\n===== RIGHT COLUMN — RETAILER SIDE (use for the retailer_* fields; "
+          "do NOT use for customer fields) =====\n"
         + "\n".join(right_parts)
-        + "\n\n===== FULL TEXT (use ONLY for pricing/dates, NOT for customer vs retailer) =====\n"
+        + "\n\n===== FULL TEXT (use ONLY for pricing/dates) =====\n"
         + "\n".join(full_parts)
     )
 
@@ -144,9 +149,14 @@ def extract_with_groq(text: str) -> dict:
         "its contact person is 'Nik', its postal address contains 'PO Box 6208 / Norwest', "
         "its street address is 'Solent Circuit, Baulkham Hills', its email is "
         "'sales@adssolar.com.au', and its phone is a 1300 number — none of these belong "
-        "in customer fields. The CUSTOMER section is under the 'LEFT COLUMN' heading; "
-        "the RETAILER section is under the 'RIGHT COLUMN' heading and must not be used "
-        "for any customer field. For the line_items pricing table, take the PRICE for "
+        "in customer fields. The CUSTOMER section is under the 'LEFT COLUMN' heading "
+        "and is the source for the customer_* fields. The RETAILER section is under the "
+        "'RIGHT COLUMN' heading and IS the source for the retailer_* fields: fill "
+        "retailer_name, retailer_contact_person, retailer_postal_address, "
+        "retailer_street_address, retailer_phone, and retailer_email from that RIGHT "
+        "section (e.g. retailer_contact_person='Nik', retailer_email='sales@adssolar.com.au'). "
+        "Do NOT use the RIGHT section for any customer field, and do NOT use the LEFT "
+        "section for any retailer field. For the line_items pricing table, take the PRICE for "
         "each row from the 'FULL TEXT' section (the column-split text clips the price "
         "column, so prices may be missing there) — every row that shows a dollar amount "
         "in the FULL TEXT must carry that amount in its 'price'. "
@@ -219,6 +229,97 @@ async def upload(request: Request, file: UploadFile = File(...)):
 
     return templates.TemplateResponse(
         request, "index.html", {"records": records, "result": data}
+    )
+
+
+# ===========================================================================
+# Checklist template management + editor
+# ===========================================================================
+@app.get("/templates", response_class=HTMLResponse)
+def templates_list(request: Request, id: int = None):
+    """
+    Templates page. If ?id=N is given, also load that template's items so the
+    editor section renders inline below the list.
+    """
+    rows = tdb.list_templates()
+    selected = tdb.get_template(id) if id else None
+    items = tdb.get_items(id) if selected else []
+    return templates.TemplateResponse(
+        request, "templates.html",
+        {"templates": rows, "selected": selected, "items": items},
+    )
+
+
+@app.post("/templates/upload")
+async def templates_upload(
+    request: Request,
+    name: str = Form(...),
+    file: UploadFile = File(...),
+):
+    if not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(400, "Please upload an .xlsx checklist template.")
+    blob = await file.read()
+    items, headers, note = cx.parse_xlsx(blob)
+    tid = tdb.create_template(name, blob, items, note)
+    return RedirectResponse(url=f"/templates?id={tid}", status_code=303)
+
+
+@app.post("/templates/{template_id}/items/add")
+def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
+             is_section: str = Form("")):
+    tdb.add_item(template_id, text=text, sno=sno, is_section=bool(is_section))
+    return RedirectResponse(url=f"/templates?id={template_id}", status_code=303)
+
+
+@app.post("/templates/{template_id}/items/{item_id}/update")
+def item_update(template_id: int, item_id: int,
+                text: str = Form(...), sno: str = Form("")):
+    tdb.update_item(item_id, text=text, sno=sno)
+    return RedirectResponse(url=f"/templates?id={template_id}", status_code=303)
+
+
+@app.post("/templates/{template_id}/items/{item_id}/delete")
+def item_delete(template_id: int, item_id: int):
+    tdb.delete_item(item_id)
+    return RedirectResponse(url=f"/templates?id={template_id}", status_code=303)
+
+
+@app.post("/templates/{template_id}/items/{item_id}/move")
+def item_move(template_id: int, item_id: int, direction: str = Form(...)):
+    items = tdb.get_items(template_id)
+    ids = [it["id"] for it in items]
+    if item_id in ids:
+        i = ids.index(item_id)
+        j = i - 1 if direction == "up" else i + 1
+        if 0 <= j < len(ids):
+            ids[i], ids[j] = ids[j], ids[i]
+            tdb.reorder_items(template_id, ids)
+    return RedirectResponse(url=f"/templates?id={template_id}", status_code=303)
+
+
+@app.post("/templates/{template_id}/delete")
+def template_delete(template_id: int):
+    tdb.delete_template(template_id)
+    return RedirectResponse(url="/templates", status_code=303)
+
+
+@app.get("/templates/{template_id}/download")
+def template_download(template_id: int):
+    tpl = tdb.get_template(template_id)
+    if not tpl:
+        raise HTTPException(404, "Template not found.")
+    items = tdb.get_items(template_id)
+    headers = {
+        "customer_label": tpl.get("customer_label"),
+        "address_label": tpl.get("address_label"),
+        "job_label": tpl.get("job_label"),
+    }
+    blob = cx.build_xlsx(items, headers, tpl.get("note_text", ""))
+    safe = (tpl["name"] or "checklist").replace(" ", "_")
+    return StreamingResponse(
+        io.BytesIO(blob),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{safe}.xlsx"'},
     )
 
 

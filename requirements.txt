@@ -5,3 +5,5 @@ jinja2
 pdfplumber
 groq
 python-dotenv
+pyyaml
+openpyxl

@@ -1,0 +1,72 @@
+# =====================================================================
+# QC Cross-Check Rules
+# ---------------------------------------------------------------------
+# Each rule tells the app how to verify ONE checklist row.
+#
+# Keys:
+#   row        : the row number in Sheet1 of the QC template to write into
+#   label      : human description (for logs only; does not need to match)
+#   type       : "compare"  -> extract a value from `source` and compare to
+#                              the reference agreement field
+#                "presence" -> just check that the named source file was
+#                              uploaded (no content comparison)
+#   source     : the uploaded supporting file this rule reads
+#                (filename the user uploads, e.g. "packing_slip.pdf").
+#                For "presence" rules this is the file whose existence is checked.
+#   source_field   : (compare only) what to pull FROM the source document,
+#                    described in plain language for the extractor/vision model
+#   reference_field: (compare only) which field FROM the main reference
+#                    agreement to compare against. Must be one of the keys the
+#                    PDF extractor already produces, e.g.:
+#                    panel_model, panel_qty, inverter_model, battery_model,
+#                    customer_name, billing_address
+#   match      : (compare only) how to compare:
+#                "exact"    -> normalised strings must be equal
+#                "contains" -> reference value appears within source value
+#                "numeric"  -> compare as numbers (e.g. quantity)
+#   is_image   : true if `source` is an image (png/jpg) -> use Groq vision.
+#                Defaults to false (PDF/text).
+# =====================================================================
+
+rules:
+  - row: 39
+    label: "Panel model number matches signed agreement"
+    type: compare
+    source: packing_slip.pdf
+    source_field: "the solar panel model number (e.g. 'JKM510N-51QL6-DV')"
+    reference_field: panel_model
+    match: contains
+    is_image: false
+
+  - row: 42
+    label: "Total number of panels ordered matches"
+    type: compare
+    source: packing_slip.pdf
+    source_field: "the total quantity of solar panels ordered (a number)"
+    reference_field: panel_qty
+    match: numeric
+    is_image: false
+
+  - row: 43
+    label: "Inverter model number matches signed agreement"
+    type: compare
+    source: packing_slip.pdf
+    source_field: "the inverter model number (e.g. 'FOXESS KH10')"
+    reference_field: inverter_model
+    match: contains
+    is_image: false
+
+  - row: 46
+    label: "Battery model number matches signed agreement"
+    type: compare
+    source: packing_slip.pdf
+    source_field: "the battery model number (e.g. 'FOXESS EQ4800-L7')"
+    reference_field: battery_model
+    match: contains
+    is_image: false
+
+  - row: 10
+    label: "Deposit document provided"
+    type: presence
+    source: deposit.jpg
+    is_image: true

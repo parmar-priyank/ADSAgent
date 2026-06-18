@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit: {{ tpl["name"] }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="wrap">
+
+    <header class="masthead">
+      <div class="logo-mark">&#9728;</div>
+      <div>
+        <h1>Edit Checklist</h1>
+        <p>{{ tpl["name"] }} &middot; {{ items|length }} items</p>
+      </div>
+    </header>
+
+    <div class="card">
+      <h2>Add Item</h2>
+      <form action="/templates/{{ tpl['id'] }}/items/add" method="post">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+          <div class="qc-field" style="flex:0 0 90px;margin-bottom:0;">
+            <label>Sno.</label>
+            <input type="text" name="sno" placeholder="e.g. 35 or i"
+                   style="width:100%;padding:8px;border:1px solid var(--line);border-radius:7px;">
+          </div>
+          <div class="qc-field" style="flex:1;min-width:220px;margin-bottom:0;">
+            <label>Checklist text</label>
+            <input type="text" name="text" required placeholder="New checklist item"
+                   style="width:100%;padding:8px;border:1px solid var(--line);border-radius:7px;">
+          </div>
+          <div class="qc-field" style="flex:0 0 auto;margin-bottom:0;">
+            <label>&nbsp;</label>
+            <label style="font-weight:400;font-size:13px;color:var(--ink);">
+              <input type="checkbox" name="is_section" value="1"> Section header
+            </label>
+          </div>
+          <button type="submit">Add</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Checklist Items</h2>
+      {% if items %}
+      <table>
+        <thead>
+          <tr>
+            <th style="width:70px;">Sno.</th>
+            <th>Checklist Item</th>
+            <th style="width:130px;text-align:center;">Reorder</th>
+            <th style="width:120px;text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+          <tr {% if it["is_section"] %}style="background:var(--brand-light);"{% endif %}>
+            <form action="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/update" method="post">
+              <td>
+                <input type="text" name="sno" value="{{ it['sno'] }}"
+                       style="width:55px;padding:6px;border:1px solid var(--line);border-radius:6px;text-align:center;">
+              </td>
+              <td>
+                <input type="text" name="text" value="{{ it['text'] }}"
+                       style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;
+                       {% if it['is_section'] %}font-weight:700;{% endif %}">
+              </td>
+              <td style="text-align:center;">
+                <button type="submit" formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/move"
+                        name="direction" value="up" class="link-btn">&uarr;</button>
+                <button type="submit" formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/move"
+                        name="direction" value="down" class="link-btn">&darr;</button>
+              </td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button type="submit" class="link-btn">Save</button>
+                <button type="submit" formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/delete"
+                        class="link-btn danger"
+                        onclick="return confirm('Delete this item?');">Del</button>
+              </td>
+            </form>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">No items — add one above.</div>
+      {% endif %}
+    </div>
+
+    <div class="actions" style="justify-content:flex-start;">
+      <a href="/templates/{{ tpl['id'] }}/download" class="btn-link-primary">Download Excel</a>
+      <a href="/templates" class="link-btn">&larr; All templates</a>
+    </div>
+  </div>
+</body>
+</html>
