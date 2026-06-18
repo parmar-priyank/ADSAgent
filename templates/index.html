@@ -155,14 +155,14 @@
     <div class="card">
       <h2>Saved Records</h2>
       {% if records %}
-      <table>
+      <table class="clickable-rows">
         <thead>
           <tr><th>ID</th><th>Quote</th><th>Customer</th><th>Email</th><th>Total</th><th>Install</th></tr>
         </thead>
         <tbody>
           {% for r in records %}
-          <tr>
-            <td><span class="id-pill">#{{ r["id"] }}</span></td>
+          <tr class="row-link" data-href="/quotes/{{ r['id'] }}" style="cursor:pointer;">
+            <td><span class="id-pill">#{{ r["display_num"] }}</span></td>
             <td>{{ r["quote_number"] }}</td>
             <td>{{ r["customer_name"] }}</td>
             <td>{{ r["email"] }}</td>
@@ -205,6 +205,12 @@
     }
     wireDropzone('dropzone', 'fileInput', 'filename');
     wireDropzone('xlsxDropzone', 'xlsxFileInput', 'xlsxFilename', 'xlsxForm');
+
+    document.querySelectorAll('tr.row-link').forEach(function(row) {
+      row.addEventListener('click', function() {
+        window.location.href = row.dataset.href;
+      });
+    });
   </script>
 </body>
 </html>

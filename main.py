@@ -205,6 +205,22 @@ def index(request: Request):
     return templates.TemplateResponse(request, "index.html", _index_context())
 
 
+@app.get("/quotes/{quote_id}", response_class=HTMLResponse)
+def quote_detail(request: Request, quote_id: int):
+    record = db.get_quote(quote_id)
+    if not record:
+        raise HTTPException(404, "Quote not found.")
+    # Compute display number by position in the full list (newest = #1).
+    all_records = db.get_recent()
+    display_num = next(
+        (r["display_num"] for r in all_records if r["id"] == quote_id), quote_id
+    )
+    return templates.TemplateResponse(
+        request, "quote_detail.html",
+        {"record": record, "display_num": display_num},
+    )
+
+
 @app.post("/upload", response_class=HTMLResponse)
 async def upload(request: Request, file: UploadFile = File(...)):
     if not file.filename.lower().endswith(".pdf"):

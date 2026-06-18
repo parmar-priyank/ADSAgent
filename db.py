@@ -154,6 +154,20 @@ def get_line_items(quote_number: str):
     return [dict(r) for r in rows]
 
 
+def get_quote(quote_id: int):
+    """Return a single quote by its database id, including line_items."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM quotes WHERE id = ?", (quote_id,)
+        ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["line_items"] = get_line_items(row["quote_number"])
+    d["data"] = {**{f: d.get(f, "") for f in QUOTE_FIELDS}, "line_items": d["line_items"]}
+    return d
+
+
 def get_recent(limit: int = 20):
     """
     Return the most recent quotes, each as a dict with all quote fields plus a
@@ -165,9 +179,10 @@ def get_recent(limit: int = 20):
         ).fetchall()
 
     result = []
-    for row in rows:
+    for display_num, row in enumerate(rows, start=1):
         d = dict(row)
         d["line_items"] = get_line_items(row["quote_number"])
+        d["display_num"] = display_num
         # Keep a 'data' dict mirroring the old shape for template convenience.
         d["data"] = {**{f: d.get(f, "") for f in QUOTE_FIELDS},
                      "line_items": d["line_items"]}

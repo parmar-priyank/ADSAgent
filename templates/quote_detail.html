@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quote #{{ display_num }} &mdash; {{ record["customer_name"] }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="wrap">
+
+    <header class="masthead">
+      <div class="logo-mark">&#9728;</div>
+      <div style="flex:1;">
+        <h1>Quote #{{ display_num }}</h1>
+        <p>{{ record["customer_name"] }} &middot; {{ record["quote_number"] }}</p>
+      </div>
+      <div><a href="/" class="link-btn">&larr; Home</a></div>
+    </header>
+
+    <div class="card">
+      <h2>Customer &amp; Quote Details</h2>
+      <div class="kv">
+        {% for key in ['quote_number','quote_valid_until','customer_name','contact_person',
+                       'billing_address','delivery_address','email','phone','roof_type'] %}
+        {% set value = record.get(key, '') %}
+        <div class="kv-row">
+          <div class="k">{{ key.replace('_', ' ').title() }}</div>
+          <div class="v {{ 'empty' if not value }}">{{ value if value else '&mdash;' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Retailer Details</h2>
+      <div class="kv">
+        {% for key in ['retailer_name','retailer_contact_person','retailer_postal_address',
+                       'retailer_street_address','retailer_phone','retailer_email'] %}
+        {% set value = record.get(key, '') %}
+        <div class="kv-row">
+          <div class="k">{{ key.replace('retailer_', '').replace('_', ' ').title() }}</div>
+          <div class="v {{ 'empty' if not value }}">{{ value if value else '&mdash;' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if record["line_items"] %}
+    <div class="card">
+      <h2>System &amp; Pricing</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th style="text-align:center;">Qty</th>
+            <th>Specification</th>
+            <th style="text-align:right;">Price (inc. GST)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for li in record["line_items"] %}
+          <tr>
+            <td><strong>{{ li.get('item', '') }}</strong></td>
+            <td style="text-align:center;white-space:nowrap;">
+              {{ li.get('quantity', '') if li.get('quantity', '') else '&mdash;' }}
+            </td>
+            <td>{{ li.get('specification', '') }}</td>
+            <td style="text-align:right;white-space:nowrap;">
+              {{ li.get('price', '') if li.get('price', '') else '&mdash;' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2>Payment Details</h2>
+      <div class="kv">
+        {% for key in ['system_price','stc_incentive','vic_rebate','battery_rebate',
+                       'total_price','deposit','balance','payment_terms',
+                       'install_date','balance_due_date','notes'] %}
+        {% set value = record.get(key, '') %}
+        <div class="kv-row">
+          <div class="k">{{ key.replace('_', ' ').title() }}</div>
+          <div class="v {{ 'empty' if not value }}">{{ value if value else '&mdash;' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
