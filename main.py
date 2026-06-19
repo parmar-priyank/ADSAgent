@@ -341,19 +341,187 @@ def home(request: Request, user=Depends(require_login)):
 
 
 @app.post("/upload-zip", response_class=HTMLResponse)
-async def upload_zip(request: Request, zip_file: UploadFile = File(...),
-                     quote_id: str = Form(""), user=Depends(require_login)):  # noqa: ARG001
-    import zipfile, io
+async def upload_zip(
+    request: Request,
+    zip_file: UploadFile = File(...),
+    quote_id: str = Form(""),
+    template_id: int = Form(...),
+    user=Depends(require_login),
+):
+    import zipfile as zipmod
+    import base64
+    import mimetypes
+
+    # Load checklist items for the chosen template
+    tpl = tdb.get_template(template_id)
+    if not tpl:
+        raise HTTPException(404, "Template not found.")
+    items = tdb.get_items(template_id)
+
+    # Extract ZIP into a flat dict: lowercase filename → bytes
     data = await zip_file.read()
+    zip_files: dict[str, bytes] = {}
     try:
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            names = zf.namelist()
-    except zipfile.BadZipFile:
-        names = []
-    return templates.TemplateResponse(request, "home.html", {
-        **_index_context(user=user),
-        "zip_result": {"filename": zip_file.filename, "files": names},
+        with zipmod.ZipFile(io.BytesIO(data)) as zf:
+            for name in zf.namelist():
+                # strip directory prefix, keep only the filename
+                basename = name.split("/")[-1].strip()
+                if basename:
+                    zip_files[basename.lower()] = zf.read(name)
+    except zipmod.BadZipFile:
+        return templates.TemplateResponse(request, "home.html",
+            _index_context(user=user, error="Uploaded file is not a valid ZIP archive."))
+
+    client = Groq(api_key=GROQ_API_KEY)
+
+    def _analyse_item(item: dict) -> dict:
+        """Run Groq on one checklist item and return {status, remark}."""
+        ref = (item.get("reference") or "").strip()
+        prompt_text = (item.get("prompt") or "").strip()
+
+        if not ref:
+            return {"status": "N/A", "remark": "No reference file specified."}
+
+        file_bytes = zip_files.get(ref.lower())
+        if file_bytes is None:
+            return {"status": "N/A", "remark": f"File not found in ZIP: {ref}"}
+
+        if not prompt_text:
+            return {"status": "N/A", "remark": "No prompt defined for this item."}
+
+        mime, _ = mimetypes.guess_type(ref)
+        mime = mime or "application/octet-stream"
+
+        try:
+            if mime == "application/pdf":
+                # Extract text from PDF and send as text
+                pdf_text = ""
+                try:
+                    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                        pdf_text = "\n".join(
+                            p.extract_text() or "" for p in pdf.pages
+                        )
+                except Exception:
+                    pdf_text = ""
+                if not pdf_text.strip():
+                    return {"status": "N/A", "remark": "Could not extract text from PDF."}
+
+                sys_msg = (
+                    "You are a QC document checker. "
+                    "Given the document content and a checklist prompt, "
+                    "determine if the requirement is met. "
+                    "Reply with JSON: {\"status\": \"Yes\" or \"No\", \"remark\": \"one sentence explanation\"}"
+                )
+                user_msg = (
+                    f"Checklist item: {item['text']}\n"
+                    f"Requirement: {prompt_text}\n\n"
+                    f"Document content:\n{pdf_text[:6000]}"
+                )
+                resp = client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": sys_msg},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    temperature=0,
+                    response_format={"type": "json_object"},
+                )
+                result = json.loads(resp.choices[0].message.content)
+                return {
+                    "status": result.get("status", "N/A"),
+                    "remark": result.get("remark", ""),
+                }
+
+            elif mime and mime.startswith("image/"):
+                # Send image via vision
+                b64 = base64.standard_b64encode(file_bytes).decode()
+                sys_msg = (
+                    "You are a QC document checker. "
+                    "Given an image and a checklist prompt, determine if the requirement is met. "
+                    "Reply with JSON: {\"status\": \"Yes\" or \"No\", \"remark\": \"one sentence explanation\"}"
+                )
+                user_content = [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Checklist item: {item['text']}\n"
+                            f"Requirement: {prompt_text}\n"
+                            "Does the image satisfy this requirement?"
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"},
+                    },
+                ]
+                resp = client.chat.completions.create(
+                    model="meta-llama/llama-4-scout-17b-16e-instruct",
+                    messages=[
+                        {"role": "system", "content": sys_msg},
+                        {"role": "user", "content": user_content},
+                    ],
+                    temperature=0,
+                    response_format={"type": "json_object"},
+                )
+                result = json.loads(resp.choices[0].message.content)
+                return {
+                    "status": result.get("status", "N/A"),
+                    "remark": result.get("remark", ""),
+                }
+
+            else:
+                return {"status": "N/A", "remark": f"Unsupported file type: {mime}"}
+
+        except Exception as exc:
+            return {"status": "N/A", "remark": f"Error analysing file: {exc}"}
+
+    # Run analysis for every non-section item that has a reference
+    qc_rows = []
+    filled: dict[int, dict] = {}
+    for item in items:
+        if item.get("is_section"):
+            qc_rows.append({**item, "status": "", "remark": ""})
+            continue
+        result = _analyse_item(item)
+        filled[item["position"]] = result
+        qc_rows.append({**item, "status": result["status"], "remark": result["remark"]})
+
+    # Build a downloadable Excel blob with the results filled in
+    headers = {
+        "customer_label": tpl.get("customer_label"),
+        "address_label": tpl.get("address_label"),
+        "job_label": tpl.get("job_label"),
+    }
+    xlsx_blob = cx.build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled)
+
+    # Store blob temporarily in session via a signed token so download works
+    import base64 as _b64
+    xlsx_b64 = _b64.b64encode(xlsx_blob).decode()
+    dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]})
+
+    return templates.TemplateResponse(request, "qc_result.html", {
+        "current_user": user,
+        "tpl": tpl,
+        "qc_rows": qc_rows,
+        "dl_token": dl_token,
+        "quote_id": quote_id,
     })
+
+
+@app.get("/qc-download", response_class=Response)
+def qc_download(token: str, _auth=Depends(require_login)):
+    import base64 as _b64
+    try:
+        payload = _signer.loads(token, max_age=3600)
+    except BadSignature:
+        raise HTTPException(400, "Invalid or expired download token.")
+    xlsx_blob = _b64.b64decode(payload["xlsx"])
+    safe_name = (payload.get("name") or "qc_checklist").replace(" ", "_")
+    return Response(
+        content=xlsx_blob,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}_QC.xlsx"'},
+    )
 
 
 @app.get("/pdf", response_class=HTMLResponse)

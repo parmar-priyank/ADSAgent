@@ -214,7 +214,8 @@
 
     <!-- Proceed / ZIP upload -->
     <div style="text-align:center;margin:8px 0 24px;">
-      <button type="button" onclick="document.getElementById('zip-upload-box').style.display='block';this.style.display='none';"
+      <button type="button" id="proceed-btn"
+              onclick="document.getElementById('zip-upload-box').style.display='block';this.style.display='none';wireDropzone('zip-dropzone','zipInput','zip-filename');"
               style="padding:13px 48px;font-size:1rem;">
         Proceed &rarr;
       </button>
@@ -222,11 +223,33 @@
 
     <div id="zip-upload-box" style="display:none;">
       <div class="card" style="border-color:var(--brand);box-shadow:0 0 0 3px rgba(222,93,24,.08);">
-        <h2>Upload Supporting Documents</h2>
-        <p style="font-size:14px;color:var(--muted);margin:0 0 20px;">Upload a ZIP file containing all related images and PDFs for this agreement.</p>
-        <form action="/upload-zip" method="post" enctype="multipart/form-data">
+        <h2>QC Cross-Check</h2>
+        <p style="font-size:14px;color:var(--muted);margin:0 0 20px;">
+          Select a checklist template, then upload the ZIP containing the supporting documents (images &amp; PDFs) referenced in that template.
+        </p>
+        <form action="/upload-zip" method="post" enctype="multipart/form-data" id="qc-form">
           <input type="hidden" name="quote_id" value="{{ result.get('id','') }}">
-          <label class="dropzone" id="zip-dropzone" style="min-height:160px;">
+
+          <!-- Template picker -->
+          {% if saved_templates %}
+          <div style="margin-bottom:18px;">
+            <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;">Checklist Template</label>
+            <select name="template_id" required
+                    style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff;color:var(--ink);">
+              {% for t in saved_templates %}
+              <option value="{{ t['id'] }}">{{ t['name'] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% else %}
+          <div style="padding:12px;background:#fcf2f0;border:1px solid #f0d4ce;border-radius:8px;font-size:13px;color:#b4321f;margin-bottom:18px;">
+            No checklist templates found. <a href="/Excel" style="color:var(--brand);">Upload one first &rarr;</a>
+          </div>
+          {% endif %}
+
+          <!-- ZIP dropzone -->
+          <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;">Supporting Documents (.zip)</label>
+          <label class="dropzone" id="zip-dropzone" style="min-height:140px;">
             <div class="icon">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -236,19 +259,33 @@
               </svg>
             </div>
             <div class="prompt">Drop a <strong>.zip</strong> file here, or <strong>browse</strong></div>
-            <div class="hint">Contains images (JPG, PNG) and PDFs</div>
+            <div class="hint">Must contain the files listed in the Reference column of the template</div>
             <div class="filename" id="zip-filename"></div>
             <input type="file" name="zip_file" id="zipInput" accept=".zip" required>
           </label>
+
           <div class="actions" style="margin-top:18px;justify-content:space-between;">
-            <button type="button" class="link-btn"
+            <button type="button" class="link-btn" id="qc-cancel-btn"
                     onclick="document.getElementById('zip-upload-box').style.display='none';
-                             document.querySelector('[onclick*=zip-upload-box]').style.display='';">
+                             document.getElementById('proceed-btn').style.display='';">
               Cancel
             </button>
-            <button type="submit">Upload ZIP</button>
+            <button type="submit" id="qc-submit-btn">Run QC Check &rarr;</button>
+          </div>
+          <div id="qc-loading" style="display:none;text-align:center;padding:16px 0;color:var(--muted);font-size:14px;">
+            Analysing documents with AI &mdash; this may take up to a minute&hellip;
+            <div style="margin-top:10px;height:4px;background:var(--line);border-radius:4px;overflow:hidden;">
+              <div style="height:100%;background:var(--brand);border-radius:4px;animation:qc-bar 2s ease-in-out infinite;"></div>
+            </div>
           </div>
         </form>
+        <style>
+          @keyframes qc-bar {
+            0%   { width:0%;   margin-left:0; }
+            50%  { width:60%;  margin-left:20%; }
+            100% { width:0%;   margin-left:100%; }
+          }
+        </style>
       </div>
     </div>
     {% endif %}
@@ -308,13 +345,31 @@
     }
     wireDropzone('dropzone', 'fileInput', 'filename');
     wireDropzone('xlsxDropzone', 'xlsxFileInput', 'xlsxFilename', 'xlsxForm');
-    wireDropzone('zip-dropzone', 'zipInput', 'zip-filename');
 
     document.querySelectorAll('tr.row-link').forEach(function(row) {
       row.addEventListener('click', function() {
         window.location.href = row.dataset.href;
       });
     });
+
+    // QC form: validate + show loading state on submit
+    var qcForm = document.getElementById('qc-form');
+    if (qcForm) {
+      qcForm.addEventListener('submit', function(e) {
+        var zipInput = document.getElementById('zipInput');
+        if (!zipInput || !zipInput.files.length) {
+          e.preventDefault();
+          alert('Please select a ZIP file before submitting.');
+          return;
+        }
+        var btn = document.getElementById('qc-submit-btn');
+        var cancelBtn = document.getElementById('qc-cancel-btn');
+        var loading = document.getElementById('qc-loading');
+        if (btn)       { btn.disabled = true; btn.style.display = 'none'; }
+        if (cancelBtn) { cancelBtn.style.display = 'none'; }
+        if (loading)   { loading.style.display = 'block'; }
+      });
+    }
   </script>
 </body>
 </html>
