@@ -243,8 +243,9 @@ def _index_context(user=None, **extra):
 # ---------------------------------------------------------------------------
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    if _get_session(request):
-        return RedirectResponse(url="/home", status_code=302)
+    user = _get_session(request)
+    if user:
+        return RedirectResponse(url="/admin" if user.get("role") == "admin" else "/home", status_code=302)
     return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
@@ -255,7 +256,8 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
         return templates.TemplateResponse(
             request, "login.html", {"error": "Invalid username or password."}
         )
-    response = RedirectResponse(url="/home", status_code=303)
+    redirect_url = "/admin" if user.get("role") == "admin" else "/home"
+    response = RedirectResponse(url=redirect_url, status_code=303)
     _set_session(response, user)
     return response
 
@@ -300,6 +302,21 @@ def admin_create_user(
         "success": f"User '{username}' created successfully." if ok else None,
     }
     return templates.TemplateResponse(request, "admin.html", ctx)
+
+
+@app.get("/admin/users/{user_id}", response_class=HTMLResponse)
+def admin_user_detail(user_id: int, request: Request, user=Depends(require_admin),
+                      success: str = None, error: str = None):
+    target = adb.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "User not found.")
+    return templates.TemplateResponse(request, "admin_user.html", {
+        "current_user": user,
+        "target": target,
+        "success": success,
+        "error": error,
+    })
+
 
 
 @app.post("/admin/users/{user_id}/delete")

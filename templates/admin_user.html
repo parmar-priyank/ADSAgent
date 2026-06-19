@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ target.username }} — User Detail</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body { margin: 0; }
+    .dash-layout { display: flex; min-height: 100vh; }
+
+    /* Sidebar */
+    .dash-sidebar {
+      width: 220px; flex: none;
+      background: #1c1a17; color: #e8e3da;
+      display: flex; flex-direction: column;
+    }
+    .sidebar-brand {
+      display: flex; align-items: center; gap: 11px;
+      padding: 22px 20px 18px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .sidebar-logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--brand); display: grid; place-items: center;
+      font-size: 18px; color: #fff; flex: none;
+    }
+    .sidebar-brand-name { font-size: 13.5px; font-weight: 700; color: #fff; letter-spacing: -.01em; line-height: 1.2; }
+    .sidebar-brand-sub  { font-size: 10.5px; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: .07em; }
+    .sidebar-nav { flex: 1; padding: 16px 12px; }
+    .nav-section-label {
+      font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em;
+      color: rgba(255,255,255,.3); padding: 14px 10px 6px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 10px; border-radius: 8px;
+      color: rgba(255,255,255,.65); text-decoration: none;
+      font-size: 13.5px; font-weight: 500;
+      transition: background .12s ease, color .12s ease;
+    }
+    .nav-item:hover  { background: rgba(255,255,255,.07); color: #fff; }
+    .nav-item.active { background: rgba(222,93,24,.22); color: #f0a06a; }
+    .nav-icon { width: 20px; height: 20px; display: grid; place-items: center; opacity: .7; flex: none; }
+    .nav-item.active .nav-icon { opacity: 1; }
+    .sidebar-footer { padding: 14px 12px; border-top: 1px solid rgba(255,255,255,.08); }
+    .sidebar-user   { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+    .sidebar-avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--brand); display: grid; place-items: center;
+      font-size: 13px; color: #fff; font-weight: 700; flex: none;
+    }
+    .sidebar-user-name { font-size: 13px; color: rgba(255,255,255,.8); font-weight: 500; }
+    .sidebar-user-role { font-size: 11px; color: rgba(255,255,255,.35); }
+    .sidebar-logout {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 6px; padding: 8px 10px; border-radius: 8px;
+      color: rgba(255,100,80,.7); text-decoration: none; font-size: 13px; font-weight: 500;
+      transition: background .12s ease, color .12s ease;
+    }
+    .sidebar-logout:hover { background: rgba(255,100,80,.12); color: #ff8070; }
+
+    /* Main */
+    .dash-main { flex: 1; background: var(--bg); overflow-y: auto; }
+    .dash-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 32px; background: var(--card); border-bottom: 1px solid var(--line);
+    }
+    .dash-topbar-title      { font-size: 18px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; }
+    .dash-topbar-breadcrumb { font-size: 12.5px; color: var(--muted); }
+    .dash-content { padding: 40px 32px; display: flex; justify-content: center; }
+
+    /* User info card */
+    .user-card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+      box-shadow: var(--shadow); width: 100%; max-width: 440px; overflow: hidden;
+    }
+    .user-card-top {
+      background: var(--brand);
+      padding: 36px 28px 28px;
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      text-align: center;
+    }
+    .user-avatar-lg {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: rgba(255,255,255,.22);
+      display: grid; place-items: center;
+      font-size: 30px; font-weight: 800; color: #fff;
+      border: 3px solid rgba(255,255,255,.4);
+    }
+    .user-card-name { font-size: 1.3rem; font-weight: 700; color: #fff; letter-spacing: -.02em; }
+
+    .badge       { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+    .badge-admin { background: rgba(255,255,255,.25); color: #fff; }
+    .badge-user  { background: rgba(255,255,255,.18); color: #fff; }
+
+    /* Info rows */
+    .user-info-list { padding: 8px 0; }
+    .user-info-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 24px; border-bottom: 1px solid var(--line);
+    }
+    .user-info-row:last-child { border-bottom: none; }
+    .info-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .info-value { font-size: 14px; font-weight: 500; color: var(--ink); }
+
+    /* Actions */
+    .user-card-actions {
+      padding: 16px 24px;
+      border-top: 1px solid var(--line);
+      display: flex; gap: 10px; justify-content: flex-end;
+    }
+  </style>
+</head>
+<body>
+<div class="dash-layout">
+
+  <!-- Sidebar -->
+  <aside class="dash-sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-logo">&#9728;</div>
+      <div>
+        <div class="sidebar-brand-name">PDF Extractor</div>
+        <div class="sidebar-brand-sub">Admin Dashboard</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Overview</div>
+      <a href="/admin" class="nav-item">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+          </svg>
+        </span>
+        Dashboard
+      </a>
+      <a href="/home" class="nav-item">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </span>
+        Home
+      </a>
+
+      <div class="nav-section-label">Management</div>
+      <a href="/admin" class="nav-item active">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </span>
+        Users
+      </a>
+      <a href="/admin#section-records" class="nav-item">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+        </span>
+        Customer Records
+      </a>
+      <a href="/admin#section-templates" class="nav-item">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+            <line x1="8" y1="18" x2="21" y2="18"/>
+            <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+            <line x1="3" y1="18" x2="3.01" y2="18"/>
+          </svg>
+        </span>
+        Templates
+      </a>
+      <a href="/Excel" class="nav-item">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </span>
+        Checklist Editor
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar">{{ current_user.username[0]|upper }}</div>
+        <div>
+          <div class="sidebar-user-name">{{ current_user.username }}</div>
+          <div class="sidebar-user-role">Administrator</div>
+        </div>
+      </div>
+      <a href="/logout" class="sidebar-logout">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        Sign out
+      </a>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="dash-main">
+    <div class="dash-topbar">
+      <div>
+        <div class="dash-topbar-title">User Detail</div>
+        <div class="dash-topbar-breadcrumb">
+          <a href="/admin" style="color:var(--brand);text-decoration:none;">Dashboard</a>
+          &rsaquo; Users &rsaquo; {{ target.username }}
+        </div>
+      </div>
+      <a href="/admin" class="link-btn">&larr; Back</a>
+    </div>
+
+    <div class="dash-content">
+      <div class="user-card">
+
+        <!-- Avatar + name -->
+        <div class="user-card-top">
+          <div class="user-avatar-lg">{{ target.username[0]|upper }}</div>
+          <div class="user-card-name">{{ target.username }}</div>
+          <span class="badge badge-{{ target.role }}">{{ target.role }}</span>
+        </div>
+
+        <!-- Info rows -->
+        <div class="user-info-list">
+          <div class="user-info-row">
+            <span class="info-label">User ID</span>
+            <span class="info-value">#{{ target.id }}</span>
+          </div>
+          <div class="user-info-row">
+            <span class="info-label">Username</span>
+            <span class="info-value">{{ target.username }}</span>
+          </div>
+          <div class="user-info-row">
+            <span class="info-label">Role</span>
+            <span class="info-value">{{ target.role | capitalize }}</span>
+          </div>
+          <div class="user-info-row">
+            <span class="info-label">Member Since</span>
+            <span class="info-value">{{ target.created_at }}</span>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="user-card-actions">
+          {% if target.id != current_user.id %}
+          <form action="/admin/users/{{ target.id }}/delete" method="post"
+                onsubmit="return confirm('Delete {{ target.username }}? This cannot be undone.');">
+            <button type="submit" class="link-btn danger">Delete User</button>
+          </form>
+          {% endif %}
+          <a href="/admin" class="link-btn">Close</a>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+</div>
+</body>
+</html>

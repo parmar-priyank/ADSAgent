@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QC Checklist Templates</title>
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .tpl-row { cursor: pointer; }
+    .tpl-row:hover { background: #faf8f4; }
+    .tpl-row-active { background: var(--brand-light); }
+  </style>
 </head>
 <body>
   <div class="wrap-wide">
@@ -15,17 +20,37 @@
         <h1>{{ selected["name"] }}</h1>
         <p>{{ items|length }} items</p>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;">
-        {% if current_user and current_user.role == 'admin' %}
-        <a href="/admin" class="link-btn">&#9881; Admin</a>
-        {% endif %}
-        <a href="/home" class="link-btn">&larr; Home</a>
-        <a href="/logout" class="link-btn danger">Logout</a>
-      </div>
+      <a href="/admin" class="link-btn">&larr; Back</a>
     </header>
 
     <div class="card">
-      <h2>Saved Templates</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+        <h2 style="margin:0;">Saved Templates</h2>
+        <button type="button" class="link-btn" onclick="toggleUpload()" id="upload-toggle-btn">+ Upload New</button>
+      </div>
+
+      <!-- Upload form (hidden by default) -->
+      <div id="upload-form-wrap" style="display:none;margin-bottom:20px;padding:18px;background:var(--bg);border:1px solid var(--line);border-radius:10px;">
+        <form action="/templates/upload" method="post" enctype="multipart/form-data" id="tplUploadForm">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+            <div class="qc-field" style="flex:1;min-width:180px;margin-bottom:0;">
+              <label>Template Name</label>
+              <input type="text" name="name" required placeholder="e.g. ADS Standard QC"
+                     style="width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff;">
+            </div>
+            <div class="qc-field" style="flex:1;min-width:220px;margin-bottom:0;">
+              <label>Excel File (.xlsx)</label>
+              <input type="file" name="file" accept=".xlsx" required id="tplFileInput"
+                     style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff;">
+            </div>
+            <div style="display:flex;gap:8px;padding-bottom:1px;">
+              <button type="submit">Upload</button>
+              <button type="button" class="link-btn" onclick="toggleUpload()">Cancel</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
       {% if templates %}
       <table>
         <thead>
@@ -33,16 +58,16 @@
         </thead>
         <tbody>
           {% for t in templates %}
-          <tr {% if selected and selected["id"] == t["id"] %}style="background:var(--brand-light);"{% endif %}>
+          <tr class="tpl-row{% if selected and selected['id'] == t['id'] %} tpl-row-active{% endif %}"
+              onclick="toggleEditor({{ t['id'] }}, this)">
             <td><span class="id-pill">#{{ t["display_num"] }}</span></td>
             <td><strong>{{ t["name"] }}</strong></td>
             <td class="muted">{{ t["created_at"] }}</td>
-            <td style="text-align:right;white-space:nowrap;">
-              <a href="/Excel" class="link-btn">Edit</a>
+            <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
               <a href="/templates/{{ t['id'] }}/download" class="link-btn">Download</a>
               <form action="/templates/{{ t['id'] }}/delete" method="post" style="display:inline;"
                     onsubmit="return confirm('Delete this template?');">
-                <input type="hidden" name="return_to" value="{{ selected['id'] }}">
+                <input type="hidden" name="return_to" value="{% if selected %}{{ selected['id'] }}{% endif %}">
                 <button type="submit" class="link-btn danger">Delete</button>
               </form>
             </td>
@@ -51,13 +76,13 @@
         </tbody>
       </table>
       {% else %}
-      <div class="empty-state">No templates yet — upload your first checklist above.</div>
+      <div class="empty-state">No templates yet — upload your first checklist using the button above.</div>
       {% endif %}
     </div>
 
     {% if selected %}
-    <div class="card">
-      <h2>Editing: {{ selected["name"] }} &middot; {{ items|length }} items</h2>
+    <div class="card" id="editor-card">
+      <h2>{{ selected["name"] }} &middot; {{ items|length }} items</h2>
 
       <form action="/templates/{{ selected['id'] }}/items/add" method="post" style="margin-bottom:18px;">
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
@@ -183,5 +208,18 @@
     {% endif %}
 
   </div>
+
+  <script>
+    function toggleEditor(id, row) {
+      window.location.href = '/Excel/' + id;
+    }
+    function toggleUpload() {
+      var wrap = document.getElementById('upload-form-wrap');
+      var btn  = document.getElementById('upload-toggle-btn');
+      var open = wrap.style.display === 'none';
+      wrap.style.display = open ? '' : 'none';
+      btn.textContent    = open ? '✕ Cancel' : '+ Upload New';
+    }
+  </script>
 </body>
 </html>

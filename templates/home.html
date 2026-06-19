@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Solar Agreement Extractor</title>
+  <title>PDF Agreement Extractor</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -12,8 +12,10 @@
     <header class="masthead">
       <div class="logo-mark">&#9728;</div>
       <div style="flex:1;">
-        <h1>Solar Agreement Extractor</h1>
+        <h1>PDF Agreement Extractor</h1>
+        {% if current_user and current_user.role == 'admin' %}
         <p>Upload a signed PDF &middot; extract details with Groq &middot; save to database</p>
+        {% endif %}
       </div>
       <div style="display:flex;gap:10px;align-items:center;">
         {% if current_user and current_user.role == 'admin' %}
@@ -24,8 +26,10 @@
       </div>
     </header>
 
+    {% if not result %}
+    {% if current_user and current_user.role == 'admin' %}
+    {# Admin: two-column upload row #}
     <div class="upload-row">
-
       <div class="card upload-card">
         <div class="upload-card-title">Reference PDF</div>
         <form action="/upload" method="post" enctype="multipart/form-data">
@@ -79,8 +83,49 @@
           </div>
         </form>
       </div>
-
     </div>
+
+    {% else %}
+    {# Regular user: centered single upload card #}
+    <div class="user-upload-wrap">
+      <div class="card user-upload-card">
+        <div class="user-upload-hero">
+          <div class="user-upload-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <polyline points="9 15 12 12 15 15"/>
+            </svg>
+          </div>
+          <h2 style="font-size:1.2rem;font-weight:700;color:var(--ink);margin:0 0 6px;">Upload Solar Agreement</h2>
+          <p style="color:var(--muted);font-size:0.9rem;margin:0 0 28px;">Drop your signed PDF below to extract customer and quote details automatically.</p>
+        </div>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+          <label class="dropzone" id="dropzone" style="min-height:160px;">
+            <div class="icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <polyline points="9 15 12 12 15 15"/>
+              </svg>
+            </div>
+            <div class="prompt">Drop a PDF here, or <strong>browse</strong></div>
+            <div class="hint">Page 1 is ignored &middot; customer details extracted automatically</div>
+            <div class="filename" id="filename"></div>
+            <input type="file" name="file" id="fileInput" accept="application/pdf" required>
+          </label>
+          <div class="actions" style="margin-top:20px;">
+            <button type="submit" style="padding:13px 40px;font-size:1rem;">Upload &amp; Extract</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+    {% endif %}{# end not result #}
 
     {% if error %}
     <div class="card" style="border-color:#f0d4ce;background:#fcf2f0;">
@@ -89,9 +134,18 @@
     {% endif %}
 
     {% if result %}
+    <div class="extraction-toast">
+      <span class="extraction-toast-icon">&#10003;</span>
+      <div>
+        <strong>Extraction complete</strong>
+        <span>Agreement details have been extracted and saved successfully.</span>
+      </div>
+      <a href="/home" class="extraction-toast-btn">Upload another</a>
+    </div>
+
     <div class="card">
       <h2>Customer &amp; Quote Details</h2>
-      <span class="banner">&#10003; Extraction complete</span>
+
       <div class="kv">
         {% for key in ['quote_number','quote_valid_until','customer_name','contact_person',
                        'billing_address','delivery_address','email','phone','roof_type'] %}
@@ -159,6 +213,7 @@
     </div>
     {% endif %}
 
+    {% if current_user and current_user.role == 'admin' %}
     <div class="card">
       <h2>Saved Records</h2>
       {% if records %}
@@ -183,6 +238,7 @@
       <div class="empty-state">No records yet — upload your first agreement above.</div>
       {% endif %}
     </div>
+    {% endif %}
 
   </div>
 

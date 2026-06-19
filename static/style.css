@@ -276,3 +276,69 @@ table form { display:contents; }
 /* Hide template-name input until an xlsx is selected */
 #xlsxForm .tpl-inline-name { display: none; }
 #xlsxForm.has-file .tpl-inline-name { display: block; }
+
+/* ---- Extraction success toast ---- */
+.extraction-toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #f0faf3;
+  border: 1px solid #b2ddb2;
+  border-radius: 14px;
+  padding: 16px 22px;
+  margin-bottom: 20px;
+}
+.extraction-toast-icon {
+  width: 36px; height: 36px; flex: none;
+  background: #2f7d4f;
+  color: #fff;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 16px; font-weight: 700;
+}
+.extraction-toast > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.extraction-toast strong {
+  font-size: 0.95rem;
+  color: #1e5c38;
+}
+.extraction-toast span {
+  font-size: 0.82rem;
+  color: #3a7a55;
+}
+.extraction-toast-btn {
+  flex: none;
+  background: #fff;
+  border: 1px solid #b2ddb2;
+  color: #2f7d4f;
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 0.83rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background .12s ease;
+}
+.extraction-toast-btn:hover { background: #e6f5ec; }
+
+/* ---- Regular-user centered upload ---- */
+.user-upload-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.user-upload-card {
+  width: 100%;
+  max-width: 560px;
+  text-align: center;
+}
+.user-upload-hero { margin-bottom: 4px; }
+.user-upload-icon {
+  width: 64px; height: 64px; border-radius: 18px;
+  background: var(--brand-light); color: var(--brand);
+  display: grid; place-items: center;
+  margin: 0 auto 16px;
+}

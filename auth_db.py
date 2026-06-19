@@ -98,4 +98,18 @@ def get_user(user_id: int):
     return dict(row) if row else None
 
 
+def update_user(user_id: int, role: str, new_password: str | None = None) -> bool:
+    """Update role and optionally reset password. Returns False if user not found."""
+    with get_db() as conn:
+        if new_password:
+            hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+            conn.execute(
+                "UPDATE users SET role=?, password=? WHERE id=?",
+                (role, hashed, user_id),
+            )
+        else:
+            conn.execute("UPDATE users SET role=? WHERE id=?", (role, user_id))
+        return conn.execute("SELECT changes()").fetchone()[0] > 0
+
+
 init_auth_db()
