@@ -13,14 +13,8 @@ if they don't already exist (see ensure_db / init_db).
 """
 import os
 import json
-import sqlite3
-from contextlib import contextmanager
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-DB_PATH = os.environ.get("DB_PATH", "extractions.db")
+from database import get_db, DB_PATH
 
 # Scalar fields stored on the quotes table (everything that is 1-to-1 with a
 # quote). line_items are stored separately.
@@ -36,19 +30,6 @@ QUOTE_FIELDS = [
     "total_price", "deposit", "balance", "payment_terms", "install_date",
     "balance_due_date", "notes",
 ]
-
-
-@contextmanager
-def get_db():
-    """Yield a SQLite connection with row access by column name."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def init_db():

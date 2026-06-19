@@ -9,6 +9,8 @@
     .tpl-row { cursor: pointer; }
     .tpl-row:hover { background: #faf8f4; }
     .tpl-row-active { background: var(--brand-light); }
+    #checklist-table td { box-sizing: border-box; padding: 4px 6px; vertical-align: middle; }
+    #checklist-table td input[type=text] { box-sizing: border-box; width: 100%; }
   </style>
 </head>
 <body>
@@ -109,10 +111,6 @@
       {% if items %}
       <div style="overflow-x:auto;">
       <table id="checklist-table" style="width:100%;table-layout:fixed;border-collapse:collapse;">
-        <style>
-          #checklist-table td { box-sizing:border-box; padding:4px 6px; vertical-align:middle; }
-          #checklist-table td input[type=text] { box-sizing:border-box; width:100%; }
-        </style>
         <thead>
           <tr>
             <th style="width:70px;">Sno.</th>

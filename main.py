@@ -1,6 +1,9 @@
 import os
 import io
 import json
+import base64
+import mimetypes
+import zipfile as zipmod
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Request, HTTPException, Form, Depends
@@ -348,10 +351,6 @@ async def upload_zip(
     template_id: int = Form(...),
     user=Depends(require_login),
 ):
-    import zipfile as zipmod
-    import base64
-    import mimetypes
-
     # Load checklist items for the chosen template
     tpl = tdb.get_template(template_id)
     if not tpl:
@@ -373,101 +372,61 @@ async def upload_zip(
             _index_context(user=user, error="Uploaded file is not a valid ZIP archive."))
 
     client = Groq(api_key=GROQ_API_KEY)
+    QC_SYSTEM = (
+        "You are a QC document checker. "
+        "Determine if the requirement is met based on the provided content. "
+        'Reply with JSON only: {"status": "Yes" or "No", "remark": "one sentence explanation"}'
+    )
+
+    def _groq_check(model: str, messages: list) -> dict:
+        resp = client.chat.completions.create(
+            model=model, messages=messages, temperature=0,
+            response_format={"type": "json_object"},
+        )
+        r = json.loads(resp.choices[0].message.content)
+        return {"status": r.get("status", "N/A"), "remark": r.get("remark", "")}
 
     def _analyse_item(item: dict) -> dict:
-        """Run Groq on one checklist item and return {status, remark}."""
         ref = (item.get("reference") or "").strip()
         prompt_text = (item.get("prompt") or "").strip()
 
         if not ref:
             return {"status": "N/A", "remark": "No reference file specified."}
-
         file_bytes = zip_files.get(ref.lower())
         if file_bytes is None:
             return {"status": "N/A", "remark": f"File not found in ZIP: {ref}"}
-
         if not prompt_text:
             return {"status": "N/A", "remark": "No prompt defined for this item."}
 
         mime, _ = mimetypes.guess_type(ref)
         mime = mime or "application/octet-stream"
+        context = f"Checklist item: {item['text']}\nRequirement: {prompt_text}"
 
         try:
             if mime == "application/pdf":
-                # Extract text from PDF and send as text
-                pdf_text = ""
                 try:
                     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                        pdf_text = "\n".join(
-                            p.extract_text() or "" for p in pdf.pages
-                        )
+                        pdf_text = "\n".join(p.extract_text() or "" for p in pdf.pages)
                 except Exception:
                     pdf_text = ""
                 if not pdf_text.strip():
                     return {"status": "N/A", "remark": "Could not extract text from PDF."}
-
-                sys_msg = (
-                    "You are a QC document checker. "
-                    "Given the document content and a checklist prompt, "
-                    "determine if the requirement is met. "
-                    "Reply with JSON: {\"status\": \"Yes\" or \"No\", \"remark\": \"one sentence explanation\"}"
-                )
-                user_msg = (
-                    f"Checklist item: {item['text']}\n"
-                    f"Requirement: {prompt_text}\n\n"
-                    f"Document content:\n{pdf_text[:6000]}"
-                )
-                resp = client.chat.completions.create(
-                    model=GROQ_MODEL,
-                    messages=[
-                        {"role": "system", "content": sys_msg},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    temperature=0,
-                    response_format={"type": "json_object"},
-                )
-                result = json.loads(resp.choices[0].message.content)
-                return {
-                    "status": result.get("status", "N/A"),
-                    "remark": result.get("remark", ""),
-                }
-
-            elif mime and mime.startswith("image/"):
-                # Send image via vision
-                b64 = base64.standard_b64encode(file_bytes).decode()
-                sys_msg = (
-                    "You are a QC document checker. "
-                    "Given an image and a checklist prompt, determine if the requirement is met. "
-                    "Reply with JSON: {\"status\": \"Yes\" or \"No\", \"remark\": \"one sentence explanation\"}"
-                )
-                user_content = [
-                    {
-                        "type": "text",
-                        "text": (
-                            f"Checklist item: {item['text']}\n"
-                            f"Requirement: {prompt_text}\n"
-                            "Does the image satisfy this requirement?"
-                        ),
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime};base64,{b64}"},
-                    },
+                messages = [
+                    {"role": "system", "content": QC_SYSTEM},
+                    {"role": "user", "content": f"{context}\n\nDocument content:\n{pdf_text[:6000]}"},
                 ]
-                resp = client.chat.completions.create(
-                    model="meta-llama/llama-4-scout-17b-16e-instruct",
-                    messages=[
-                        {"role": "system", "content": sys_msg},
-                        {"role": "user", "content": user_content},
-                    ],
-                    temperature=0,
-                    response_format={"type": "json_object"},
-                )
-                result = json.loads(resp.choices[0].message.content)
-                return {
-                    "status": result.get("status", "N/A"),
-                    "remark": result.get("remark", ""),
-                }
+                return _groq_check(GROQ_MODEL, messages)
+
+            elif mime.startswith("image/"):
+                b64 = base64.standard_b64encode(file_bytes).decode()
+                messages = [
+                    {"role": "system", "content": QC_SYSTEM},
+                    {"role": "user", "content": [
+                        {"type": "text", "text": context},
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                    ]},
+                ]
+                return _groq_check("meta-llama/llama-4-scout-17b-16e-instruct", messages)
 
             else:
                 return {"status": "N/A", "remark": f"Unsupported file type: {mime}"}
@@ -495,8 +454,7 @@ async def upload_zip(
     xlsx_blob = cx.build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled)
 
     # Store blob temporarily in session via a signed token so download works
-    import base64 as _b64
-    xlsx_b64 = _b64.b64encode(xlsx_blob).decode()
+    xlsx_b64 = base64.b64encode(xlsx_blob).decode()
     dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]})
 
     return templates.TemplateResponse(request, "qc_result.html", {
@@ -510,12 +468,11 @@ async def upload_zip(
 
 @app.get("/qc-download", response_class=Response)
 def qc_download(token: str, _auth=Depends(require_login)):
-    import base64 as _b64
     try:
         payload = _signer.loads(token, max_age=3600)
     except BadSignature:
         raise HTTPException(400, "Invalid or expired download token.")
-    xlsx_blob = _b64.b64decode(payload["xlsx"])
+    xlsx_blob = base64.b64decode(payload["xlsx"])
     safe_name = (payload.get("name") or "qc_checklist").replace(" ", "_")
     return Response(
         content=xlsx_blob,

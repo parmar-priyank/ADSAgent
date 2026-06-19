@@ -8,27 +8,11 @@ Table: users
   role        TEXT DEFAULT 'user'  ('admin' or 'user')
   created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 """
-import os
 import sqlite3
-from contextlib import contextmanager
 
 import bcrypt
-from dotenv import load_dotenv
 
-load_dotenv()
-DB_PATH = os.environ.get("DB_PATH", "extractions.db")
-
-
-@contextmanager
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+from database import get_db
 
 
 def init_auth_db():
