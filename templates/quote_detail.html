@@ -15,7 +15,13 @@
         <h1>Customer Agreement</h1>
         <p>{{ record["customer_name"] }} &middot; {{ record["quote_number"] }}</p>
       </div>
-      <div><a href="/home" class="link-btn">&larr; Home</a></div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        {% if current_user and current_user.role == 'admin' %}
+        <a href="/admin" class="link-btn">&#9881; Admin</a>
+        {% endif %}
+        <a href="/home" class="link-btn">&larr; Home</a>
+        <a href="/logout" class="link-btn danger">Logout</a>
+      </div>
     </header>
 
     <div class="card">

@@ -3,19 +3,21 @@ import io
 import json
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Request, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, Request, HTTPException, Form, Depends
 from fastapi.responses import (
     HTMLResponse, Response, StreamingResponse, RedirectResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from itsdangerous import URLSafeTimedSerializer, BadSignature
 import pdfplumber
 from groq import Groq
 from groq import AuthenticationError, GroqError
 
-import db  # database layer (auto-creates extractions.db on import)
+import db           # database layer (auto-creates extractions.db on import)
 import templates_db as tdb       # template + checklist-item storage
 import checklist_xlsx as cx      # parse / regenerate checklist xlsx
+import auth_db as adb            # user accounts
 
 # ---------------------------------------------------------------------------
 # Config — loaded from .env
@@ -23,11 +25,46 @@ import checklist_xlsx as cx      # parse / regenerate checklist xlsx
 load_dotenv()
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL   = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+SECRET_KEY   = os.environ.get("SECRET_KEY", "change-me-in-production-secret")
 
 app = FastAPI(title="Solar Agreement Extractor")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+_signer = URLSafeTimedSerializer(SECRET_KEY)
+
+# ---------------------------------------------------------------------------
+# Session helpers
+# ---------------------------------------------------------------------------
+COOKIE = "session"
+
+def _set_session(response, user: dict):
+    token = _signer.dumps({"id": user["id"], "username": user["username"], "role": user["role"]})
+    response.set_cookie(COOKIE, token, httponly=True, samesite="lax")
+
+def _get_session(request: Request):
+    token = request.cookies.get(COOKIE)
+    if not token:
+        return None
+    try:
+        return _signer.loads(token, max_age=86400 * 7)  # 7-day session
+    except BadSignature:
+        return None
+
+def require_login(request: Request):
+    user = _get_session(request)
+    if not user:
+        raise HTTPException(status_code=307, headers={"Location": "/login"})
+    return user
+
+def require_admin(request: Request):
+    user = _get_session(request)
+    if not user:
+        raise HTTPException(status_code=307, headers={"Location": "/login"})
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    return user
 
 
 # Serve a small inline SVG favicon so the browser stops requesting /favicon.ico
@@ -186,8 +223,8 @@ def extract_with_groq(text: str) -> dict:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
-def _index_context(**extra):
-    """Common context for any render of index.html (home + upload result + errors)."""
+def _index_context(user=None, **extra):
+    """Common context for any render of home.html."""
     saved = tdb.list_templates()
     base = {
         "records": db.get_recent(),
@@ -195,26 +232,101 @@ def _index_context(**extra):
         "error": None,
         "latest_template": saved[0] if saved else None,
         "saved_templates": saved,
+        "current_user": user,
     }
     base.update(extra)
     return base
 
 
+# ---------------------------------------------------------------------------
+# Auth routes
+# ---------------------------------------------------------------------------
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    if _get_session(request):
+        return RedirectResponse(url="/home", status_code=302)
+    return templates.TemplateResponse(request, "login.html", {"error": None})
+
+
+@app.post("/login", response_class=HTMLResponse)
+def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
+    user = adb.verify_user(username, password)
+    if not user:
+        return templates.TemplateResponse(
+            request, "login.html", {"error": "Invalid username or password."}
+        )
+    response = RedirectResponse(url="/home", status_code=303)
+    _set_session(response, user)
+    return response
+
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(COOKIE)
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Admin routes
+# ---------------------------------------------------------------------------
+@app.get("/admin", response_class=HTMLResponse)
+def admin_dashboard(request: Request, user=Depends(require_admin)):
+    return templates.TemplateResponse(request, "admin.html", {
+        "current_user": user,
+        "users": adb.list_users(),
+        "records": db.get_recent(),
+        "templates": tdb.list_templates(),
+        "error": None,
+        "success": None,
+    })
+
+
+@app.post("/admin/users/create", response_class=HTMLResponse)
+def admin_create_user(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    role: str = Form("user"),
+    user=Depends(require_admin),
+):
+    ok = adb.create_user(username, password, role)
+    ctx = {
+        "current_user": user,
+        "users": adb.list_users(),
+        "records": db.get_recent(),
+        "templates": tdb.list_templates(),
+        "error": f"Username '{username}' already exists." if not ok else None,
+        "success": f"User '{username}' created successfully." if ok else None,
+    }
+    return templates.TemplateResponse(request, "admin.html", ctx)
+
+
+@app.post("/admin/users/{user_id}/delete")
+def admin_delete_user(user_id: int, request: Request, user=Depends(require_admin)):
+    if user_id == user["id"]:
+        raise HTTPException(400, "Cannot delete your own account.")
+    adb.delete_user(user_id)
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# App routes (require login)
+# ---------------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def root_redirect():
     return RedirectResponse(url="/home", status_code=301)
 
 
 @app.get("/home", response_class=HTMLResponse)
-def home(request: Request):
-    return templates.TemplateResponse(request, "home.html", _index_context())
+def home(request: Request, user=Depends(require_login)):
+    return templates.TemplateResponse(request, "home.html", _index_context(user=user))
 
 
 @app.get("/pdf", response_class=HTMLResponse)
-def quote_detail(request: Request, id: int = None):
+def quote_detail(request: Request, id: int = None, user=Depends(require_login)):
     all_records = db.get_recent()
     if id is None:
-        # No id given — show the most recent record.
         if not all_records:
             raise HTTPException(404, "No records found.")
         record = all_records[0]
@@ -228,18 +340,17 @@ def quote_detail(request: Request, id: int = None):
     )
     return templates.TemplateResponse(
         request, "quote_detail.html",
-        {"record": record, "display_num": display_num},
+        {"record": record, "display_num": display_num, "current_user": user},
     )
 
 
 @app.get("/quotes/{quote_id}", response_class=HTMLResponse)
 def quote_detail_legacy(request: Request, quote_id: int):
-    """Legacy route — redirect old /quotes/{id} links to /pdf."""
     return RedirectResponse(url=f"/pdf?id={quote_id}", status_code=301)
 
 
 @app.post("/upload", response_class=HTMLResponse)
-async def upload(request: Request, file: UploadFile = File(...)):
+async def upload(request: Request, file: UploadFile = File(...), user=Depends(require_login)):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Please upload a PDF file.")
 
@@ -251,18 +362,18 @@ async def upload(request: Request, file: UploadFile = File(...)):
     except AuthenticationError:
         return templates.TemplateResponse(
             request, "home.html",
-            _index_context(error="Invalid Groq API key. Check the GROQ_API_KEY value in your .env file "
+            _index_context(user=user, error="Invalid Groq API key. Check the GROQ_API_KEY value in your .env file "
                                  "(it should start with 'gsk_') and restart the server."),
         )
     except GroqError as e:
         return templates.TemplateResponse(
             request, "home.html",
-            _index_context(error=f"Groq error: {e}"),
+            _index_context(user=user, error=f"Groq error: {e}"),
         )
 
     db.save_extraction(file.filename, data)
     return templates.TemplateResponse(
-        request, "home.html", _index_context(result=data),
+        request, "home.html", _index_context(user=user, result=data),
     )
 
 
@@ -270,8 +381,7 @@ async def upload(request: Request, file: UploadFile = File(...)):
 # Checklist template management + editor
 # ===========================================================================
 @app.get("/Excel", response_class=HTMLResponse)
-def template_editor(request: Request):
-    """The checklist editor — always loads the most recent template."""
+def template_editor(request: Request, user=Depends(require_login)):
     all_templates = tdb.list_templates()
     if not all_templates:
         raise HTTPException(404, "No templates found. Upload a checklist first.")
@@ -279,13 +389,12 @@ def template_editor(request: Request):
     items = tdb.get_items(tpl["id"])
     return templates.TemplateResponse(
         request, "templates.html",
-        {"templates": all_templates, "selected": tpl, "items": items},
+        {"templates": all_templates, "selected": tpl, "items": items, "current_user": user},
     )
 
 
 @app.get("/Excel/{template_id}", response_class=HTMLResponse)
-def template_editor_by_id(request: Request, template_id: int):
-    """Switch to a specific template by id — still shows clean /Excel URL via JS."""
+def template_editor_by_id(request: Request, template_id: int, user=Depends(require_login)):
     tpl = tdb.get_template(template_id)
     if not tpl:
         raise HTTPException(404, "Template not found.")
@@ -293,7 +402,7 @@ def template_editor_by_id(request: Request, template_id: int):
     all_templates = tdb.list_templates()
     return templates.TemplateResponse(
         request, "templates.html",
-        {"templates": all_templates, "selected": tpl, "items": items},
+        {"templates": all_templates, "selected": tpl, "items": items, "current_user": user},
     )
 
 
@@ -302,6 +411,7 @@ async def templates_upload(
     request: Request,
     name: str = Form(...),
     file: UploadFile = File(...),
+    user=Depends(require_login),
 ):
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(400, "Please upload an .xlsx checklist template.")
@@ -313,7 +423,8 @@ async def templates_upload(
 
 @app.post("/templates/{template_id}/items/add")
 def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
-             is_section: str = Form(""), reference: str = Form("")):
+             is_section: str = Form(""), reference: str = Form(""),
+             user=Depends(require_login)):
     tdb.add_item(template_id, text=text, sno=sno,
                  is_section=bool(is_section), reference=reference)
     return RedirectResponse(url="/Excel", status_code=303)
@@ -322,13 +433,14 @@ def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
 @app.post("/templates/{template_id}/items/{item_id}/update")
 def item_update(template_id: int, item_id: int,
                 text: str = Form(...), sno: str = Form(""),
-                reference: str = Form(""), prompt: str = Form("")):
+                reference: str = Form(""), prompt: str = Form(""),
+                user=Depends(require_login)):
     tdb.update_item(item_id, text=text, sno=sno, reference=reference, prompt=prompt)
     return RedirectResponse(url="/Excel", status_code=303)
 
 
 @app.post("/templates/{template_id}/save-all")
-async def items_save_all(template_id: int, request: Request):
+async def items_save_all(template_id: int, request: Request, user=Depends(require_login)):
     form = await request.form()
     item_ids = form.getlist("item_id")
     snos = form.getlist("sno")
@@ -341,13 +453,14 @@ async def items_save_all(template_id: int, request: Request):
 
 
 @app.post("/templates/{template_id}/items/{item_id}/delete")
-def item_delete(template_id: int, item_id: int):
+def item_delete(template_id: int, item_id: int, user=Depends(require_login)):
     tdb.delete_item(item_id)
     return RedirectResponse(url="/Excel", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/move")
-def item_move(template_id: int, item_id: int, direction: str = Form(...)):
+def item_move(template_id: int, item_id: int, direction: str = Form(...),
+              user=Depends(require_login)):
     items = tdb.get_items(template_id)
     ids = [it["id"] for it in items]
     if item_id in ids:
@@ -360,19 +473,11 @@ def item_move(template_id: int, item_id: int, direction: str = Form(...)):
 
 
 @app.post("/templates/{template_id}/delete")
-def template_delete(template_id: int, return_to: str = Form("")):
-    """
-    Delete a template. If the deleted template is the one we were editing,
-    fall back to the most recent remaining template's editor (or home if none).
-    Otherwise stay on the current editor.
-    """
+def template_delete(template_id: int, return_to: str = Form(""),
+                    user=Depends(require_login)):
     tdb.delete_template(template_id)
-
-    # If caller told us which editor they were on and it still exists, go there.
     if return_to.isdigit() and int(return_to) != template_id:
         return RedirectResponse(url="/Excel", status_code=303)
-
-    # Otherwise pick the most recent surviving template, or home.
     remaining = tdb.list_templates()
     if remaining:
         return RedirectResponse(url="/Excel", status_code=303)
@@ -380,7 +485,7 @@ def template_delete(template_id: int, return_to: str = Form("")):
 
 
 @app.get("/templates/{template_id}/download")
-def template_download(template_id: int):
+def template_download(template_id: int, user=Depends(require_login)):
     tpl = tdb.get_template(template_id)
     if not tpl:
         raise HTTPException(404, "Template not found.")
