@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quote #{{ display_num }} &mdash; {{ record["customer_name"] }}</title>
+  <title>Customer Agreement &mdash; {{ record["customer_name"] }}</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -12,10 +12,10 @@
     <header class="masthead">
       <div class="logo-mark">&#9728;</div>
       <div style="flex:1;">
-        <h1>Quote #{{ display_num }}</h1>
+        <h1>Customer Agreement</h1>
         <p>{{ record["customer_name"] }} &middot; {{ record["quote_number"] }}</p>
       </div>
-      <div><a href="/" class="link-btn">&larr; Home</a></div>
+      <div><a href="/home" class="link-btn">&larr; Home</a></div>
     </header>
 
     <div class="card">
@@ -26,7 +26,7 @@
         {% set value = record.get(key, '') %}
         <div class="kv-row">
           <div class="k">{{ key.replace('_', ' ').title() }}</div>
-          <div class="v {{ 'empty' if not value }}">{{ value if value else '&mdash;' }}</div>
+          <div class="v {{ 'empty' if not value }}">{{ value if value else '—' }}</div>
         </div>
         {% endfor %}
       </div>
@@ -40,7 +40,7 @@
         {% set value = record.get(key, '') %}
         <div class="kv-row">
           <div class="k">{{ key.replace('retailer_', '').replace('_', ' ').title() }}</div>
-          <div class="v {{ 'empty' if not value }}">{{ value if value else '&mdash;' }}</div>
+          <div class="v {{ 'empty' if not value }}">{{ value if value else '—' }}</div>
         </div>
         {% endfor %}
       </div>
@@ -63,11 +63,11 @@
           <tr>
             <td><strong>{{ li.get('item', '') }}</strong></td>
             <td style="text-align:center;white-space:nowrap;">
-              {{ li.get('quantity', '') if li.get('quantity', '') else '&mdash;' }}
+              {{ li.get('quantity', '') if li.get('quantity', '') else '—' }}
             </td>
             <td>{{ li.get('specification', '') }}</td>
             <td style="text-align:right;white-space:nowrap;">
-              {{ li.get('price', '') if li.get('price', '') else '&mdash;' }}
+              {{ li.get('price', '') if li.get('price', '') else '—' }}
             </td>
           </tr>
           {% endfor %}
@@ -85,7 +85,7 @@
         {% set value = record.get(key, '') %}
         <div class="kv-row">
           <div class="k">{{ key.replace('_', ' ').title() }}</div>
-          <div class="v {{ 'empty' if not value }}">{{ value if value else '&mdash;' }}</div>
+          <div class="v {{ 'empty' if not value }}">{{ value if value else '—' }}</div>
         </div>
         {% endfor %}
       </div>

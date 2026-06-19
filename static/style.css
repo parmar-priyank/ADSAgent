@@ -29,6 +29,7 @@ body {
 }
 
 .wrap { max-width: 920px; margin: 0 auto; padding: 56px 24px 80px; }
+.wrap-wide { max-width: 1400px; margin: 0 auto; padding: 56px 24px 80px; }
 
 /* ---- Header ---- */
 .masthead {

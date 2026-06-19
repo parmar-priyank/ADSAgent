@@ -83,10 +83,12 @@ def create_template(name: str, blob: bytes, items: list,
                     note_text: str = "") -> int:
     """
     Create a named template plus its checklist items.
-    `items` is a list of dicts: {position, sno, parent_position, is_section,
-    text, active}.
+    If a template with the same name already exists it is replaced, so
+    re-uploading the same checklist never creates duplicates.
     """
     with get_db() as conn:
+        # Delete any existing template with the same name (cascades to items).
+        conn.execute("DELETE FROM templates WHERE LOWER(name) = LOWER(?)", (name,))
         cur = conn.execute(
             "INSERT INTO templates (name, blob, note_text) VALUES (?,?,?)",
             (name, blob, note_text),
@@ -124,7 +126,12 @@ def list_templates():
         rows = conn.execute(
             "SELECT id, name, note_text, created_at FROM templates ORDER BY id DESC"
         ).fetchall()
-    return [dict(r) for r in rows]
+    result = []
+    for display_num, row in enumerate(rows, start=1):
+        d = dict(row)
+        d["display_num"] = display_num
+        result.append(d)
+    return result
 
 
 def get_template(template_id: int):

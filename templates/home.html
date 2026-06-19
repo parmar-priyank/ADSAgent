@@ -67,7 +67,7 @@
           <div class="actions">
             <button type="submit">Upload</button>
             {% if latest_template %}
-            <a href="/editor/{{ latest_template['id'] }}" class="btn-link-primary">Open editor &rarr;</a>
+            <a href="/Excel" class="btn-link-primary">Open editor &rarr;</a>
             {% endif %}
           </div>
         </form>
@@ -161,7 +161,7 @@
         </thead>
         <tbody>
           {% for r in records %}
-          <tr class="row-link" data-href="/quotes/{{ r['id'] }}" style="cursor:pointer;">
+          <tr class="row-link" data-href="/pdf?id={{ r['id'] }}" style="cursor:pointer;">
             <td><span class="id-pill">#{{ r["display_num"] }}</span></td>
             <td>{{ r["quote_number"] }}</td>
             <td>{{ r["customer_name"] }}</td>

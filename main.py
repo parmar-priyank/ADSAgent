@@ -201,24 +201,41 @@ def _index_context(**extra):
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request):
-    return templates.TemplateResponse(request, "index.html", _index_context())
+def root_redirect():
+    return RedirectResponse(url="/home", status_code=301)
 
 
-@app.get("/quotes/{quote_id}", response_class=HTMLResponse)
-def quote_detail(request: Request, quote_id: int):
-    record = db.get_quote(quote_id)
-    if not record:
-        raise HTTPException(404, "Quote not found.")
-    # Compute display number by position in the full list (newest = #1).
+@app.get("/home", response_class=HTMLResponse)
+def home(request: Request):
+    return templates.TemplateResponse(request, "home.html", _index_context())
+
+
+@app.get("/pdf", response_class=HTMLResponse)
+def quote_detail(request: Request, id: int = None):
     all_records = db.get_recent()
+    if id is None:
+        # No id given — show the most recent record.
+        if not all_records:
+            raise HTTPException(404, "No records found.")
+        record = all_records[0]
+    else:
+        record = db.get_quote(id)
+        if not record:
+            raise HTTPException(404, "Quote not found.")
     display_num = next(
-        (r["display_num"] for r in all_records if r["id"] == quote_id), quote_id
+        (r["display_num"] for r in all_records if r["id"] == record["id"]),
+        record["id"],
     )
     return templates.TemplateResponse(
         request, "quote_detail.html",
         {"record": record, "display_num": display_num},
     )
+
+
+@app.get("/quotes/{quote_id}", response_class=HTMLResponse)
+def quote_detail_legacy(request: Request, quote_id: int):
+    """Legacy route — redirect old /quotes/{id} links to /pdf."""
+    return RedirectResponse(url=f"/pdf?id={quote_id}", status_code=301)
 
 
 @app.post("/upload", response_class=HTMLResponse)
@@ -233,28 +250,42 @@ async def upload(request: Request, file: UploadFile = File(...)):
         data = extract_with_groq(text)
     except AuthenticationError:
         return templates.TemplateResponse(
-            request, "index.html",
+            request, "home.html",
             _index_context(error="Invalid Groq API key. Check the GROQ_API_KEY value in your .env file "
                                  "(it should start with 'gsk_') and restart the server."),
         )
     except GroqError as e:
         return templates.TemplateResponse(
-            request, "index.html",
+            request, "home.html",
             _index_context(error=f"Groq error: {e}"),
         )
 
     db.save_extraction(file.filename, data)
     return templates.TemplateResponse(
-        request, "index.html", _index_context(result=data),
+        request, "home.html", _index_context(result=data),
     )
 
 
 # ===========================================================================
 # Checklist template management + editor
 # ===========================================================================
-@app.get("/editor/{template_id}", response_class=HTMLResponse)
-def template_editor(request: Request, template_id: int):
-    """The checklist editor: items table + saved-templates list for switching."""
+@app.get("/Excel", response_class=HTMLResponse)
+def template_editor(request: Request):
+    """The checklist editor — always loads the most recent template."""
+    all_templates = tdb.list_templates()
+    if not all_templates:
+        raise HTTPException(404, "No templates found. Upload a checklist first.")
+    tpl = tdb.get_template(all_templates[0]["id"])
+    items = tdb.get_items(tpl["id"])
+    return templates.TemplateResponse(
+        request, "templates.html",
+        {"templates": all_templates, "selected": tpl, "items": items},
+    )
+
+
+@app.get("/Excel/{template_id}", response_class=HTMLResponse)
+def template_editor_by_id(request: Request, template_id: int):
+    """Switch to a specific template by id — still shows clean /Excel URL via JS."""
     tpl = tdb.get_template(template_id)
     if not tpl:
         raise HTTPException(404, "Template not found.")
@@ -277,7 +308,7 @@ async def templates_upload(
     blob = await file.read()
     items, headers, note = cx.parse_xlsx(blob)
     tid = tdb.create_template(name, blob, items, note)
-    return RedirectResponse(url=f"/editor/{tid}", status_code=303)
+    return RedirectResponse(url="/Excel", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/add")
@@ -285,7 +316,7 @@ def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
              is_section: str = Form(""), reference: str = Form("")):
     tdb.add_item(template_id, text=text, sno=sno,
                  is_section=bool(is_section), reference=reference)
-    return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
+    return RedirectResponse(url="/Excel", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/update")
@@ -293,7 +324,7 @@ def item_update(template_id: int, item_id: int,
                 text: str = Form(...), sno: str = Form(""),
                 reference: str = Form(""), prompt: str = Form("")):
     tdb.update_item(item_id, text=text, sno=sno, reference=reference, prompt=prompt)
-    return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
+    return RedirectResponse(url="/Excel", status_code=303)
 
 
 @app.post("/templates/{template_id}/save-all")
@@ -306,13 +337,13 @@ async def items_save_all(template_id: int, request: Request):
     prompts = form.getlist("prompt")
     for item_id, sno, text, ref, prompt in zip(item_ids, snos, texts, refs, prompts):
         tdb.update_item(int(item_id), text=text, sno=sno, reference=ref, prompt=prompt)
-    return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
+    return RedirectResponse(url="/Excel", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/delete")
 def item_delete(template_id: int, item_id: int):
     tdb.delete_item(item_id)
-    return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
+    return RedirectResponse(url="/Excel", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/move")
@@ -325,7 +356,7 @@ def item_move(template_id: int, item_id: int, direction: str = Form(...)):
         if 0 <= j < len(ids):
             ids[i], ids[j] = ids[j], ids[i]
             tdb.reorder_items(template_id, ids)
-    return RedirectResponse(url=f"/editor/{template_id}", status_code=303)
+    return RedirectResponse(url="/Excel", status_code=303)
 
 
 @app.post("/templates/{template_id}/delete")
@@ -339,13 +370,13 @@ def template_delete(template_id: int, return_to: str = Form("")):
 
     # If caller told us which editor they were on and it still exists, go there.
     if return_to.isdigit() and int(return_to) != template_id:
-        return RedirectResponse(url=f"/editor/{return_to}", status_code=303)
+        return RedirectResponse(url="/Excel", status_code=303)
 
     # Otherwise pick the most recent surviving template, or home.
     remaining = tdb.list_templates()
     if remaining:
-        return RedirectResponse(url=f"/editor/{remaining[0]['id']}", status_code=303)
-    return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url="/Excel", status_code=303)
+    return RedirectResponse(url="/home", status_code=303)
 
 
 @app.get("/templates/{template_id}/download")
