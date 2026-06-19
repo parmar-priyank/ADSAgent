@@ -35,12 +35,12 @@
       <div id="upload-form-wrap" style="display:none;margin-bottom:20px;padding:18px;background:var(--bg);border:1px solid var(--line);border-radius:10px;">
         <form action="/templates/upload" method="post" enctype="multipart/form-data" id="tplUploadForm">
           <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-            <div class="qc-field" style="flex:1;min-width:180px;margin-bottom:0;">
+            <div class="form-field" style="flex:1;min-width:180px;margin-bottom:0;">
               <label>Template Name</label>
               <input type="text" name="name" required placeholder="e.g. ADS Standard QC"
                      style="width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff;">
             </div>
-            <div class="qc-field" style="flex:1;min-width:220px;margin-bottom:0;">
+            <div class="form-field" style="flex:1;min-width:220px;margin-bottom:0;">
               <label>Excel File (.xlsx)</label>
               <input type="file" name="file" accept=".xlsx" required id="tplFileInput"
                      style="width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff;">
@@ -88,17 +88,17 @@
 
       <form action="/templates/{{ selected['id'] }}/items/add" method="post" style="margin-bottom:18px;">
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-          <div class="qc-field" style="flex:0 0 90px;margin-bottom:0;">
+          <div class="form-field" style="flex:0 0 90px;margin-bottom:0;">
             <label>Sno.</label>
             <input type="text" name="sno" placeholder="35 or i"
                    style="width:100%;padding:8px;border:1px solid var(--line);border-radius:7px;">
           </div>
-          <div class="qc-field" style="flex:1;min-width:220px;margin-bottom:0;">
+          <div class="form-field" style="flex:1;min-width:220px;margin-bottom:0;">
             <label>New checklist text</label>
             <input type="text" name="text" required placeholder="Add a new item"
                    style="width:100%;padding:8px;border:1px solid var(--line);border-radius:7px;">
           </div>
-          <div class="qc-field" style="flex:0 0 auto;margin-bottom:0;">
+          <div class="form-field" style="flex:0 0 auto;margin-bottom:0;">
             <label>&nbsp;</label>
             <label style="font-weight:400;font-size:13px;color:var(--ink);">
               <input type="checkbox" name="is_section" value="1"> Section header

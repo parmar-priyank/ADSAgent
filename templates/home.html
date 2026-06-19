@@ -7,6 +7,14 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+
+  <!-- PDF upload loading overlay -->
+  <div class="upload-loading-overlay" id="upload-loading-overlay">
+    <div class="upload-loading-spinner"></div>
+    <div class="upload-loading-title">Extracting PDF&hellip;</div>
+    <div class="upload-loading-sub">Groq AI is reading your agreement &mdash; please wait</div>
+  </div>
+
   <div class="wrap">
 
     <header class="masthead">
@@ -227,7 +235,7 @@
         <p style="font-size:14px;color:var(--muted);margin:0 0 20px;">
           Select a checklist template, then upload the ZIP containing the supporting documents (images &amp; PDFs) referenced in that template.
         </p>
-        <form action="/upload-zip" method="post" enctype="multipart/form-data" id="qc-form">
+        <form action="/run-checklist" method="post" enctype="multipart/form-data" id="check-form">
           <input type="hidden" name="quote_id" value="{{ result.get('id','') }}">
 
           <!-- Template picker -->
@@ -265,15 +273,15 @@
           </label>
 
           <div class="actions" style="margin-top:18px;justify-content:space-between;">
-            <button type="button" class="link-btn" id="qc-cancel-btn"
+            <button type="button" class="link-btn" id="check-cancel-btn"
                     onclick="document.getElementById('zip-upload-box').style.display='none';
                              document.getElementById('proceed-btn').style.display='';">
               Cancel
             </button>
-            <button type="submit" id="qc-submit-btn">Run QC Check &rarr;</button>
+            <button type="submit" id="check-submit-btn">Run Checklist &rarr;</button>
           </div>
-          <div id="qc-loading" style="display:none;text-align:center;padding:20px 0;color:var(--muted);font-size:14px;">
-            <div class="qc-spinner"></div>
+          <div id="check-loading" style="display:none;text-align:center;padding:20px 0;color:var(--muted);font-size:14px;">
+            <div class="check-spinner"></div>
             Analysing documents with AI &mdash; this may take up to a minute&hellip;
           </div>
         </form>
@@ -337,25 +345,35 @@
     wireDropzone('dropzone', 'fileInput', 'filename');
     wireDropzone('xlsxDropzone', 'xlsxFileInput', 'xlsxFilename', 'xlsxForm');
 
+    // PDF upload: show full-page loading overlay on submit
+    document.querySelectorAll('form[action="/upload"]').forEach(function(form) {
+      form.addEventListener('submit', function() {
+        var fileInput = form.querySelector('input[type="file"]');
+        if (fileInput && fileInput.files.length > 0) {
+          document.getElementById('upload-loading-overlay').classList.add('active');
+        }
+      });
+    });
+
     document.querySelectorAll('tr.row-link').forEach(function(row) {
       row.addEventListener('click', function() {
         window.location.href = row.dataset.href;
       });
     });
 
-    // QC form: validate + show loading state on submit
-    var qcForm = document.getElementById('qc-form');
-    if (qcForm) {
-      qcForm.addEventListener('submit', function(e) {
+    // Checklist form: validate + show loading state on submit
+    var checkForm = document.getElementById('check-form');
+    if (checkForm) {
+      checkForm.addEventListener('submit', function(e) {
         var zipInput = document.getElementById('zipInput');
         if (!zipInput || !zipInput.files.length) {
           e.preventDefault();
           alert('Please select a ZIP file before submitting.');
           return;
         }
-        var btn = document.getElementById('qc-submit-btn');
-        var cancelBtn = document.getElementById('qc-cancel-btn');
-        var loading = document.getElementById('qc-loading');
+        var btn       = document.getElementById('check-submit-btn');
+        var cancelBtn = document.getElementById('check-cancel-btn');
+        var loading   = document.getElementById('check-loading');
         if (btn)       { btn.disabled = true; btn.style.display = 'none'; }
         if (cancelBtn) { cancelBtn.style.display = 'none'; }
         if (loading)   { loading.style.display = 'block'; }

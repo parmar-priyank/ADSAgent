@@ -232,7 +232,7 @@ def backfill_references():
     re-parse the stored blob and fill in the reference column from the Remarks
     column (stripping the leading 'Refer to ' prefix).
     """
-    import checklist_xlsx as cx
+    import excel as cx
 
     with get_db() as conn:
         templates = conn.execute(

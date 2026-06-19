@@ -151,10 +151,10 @@ tbody tr:last-child td { border-bottom: none; }
   .kv-row .k { font-size: 12px; }
 }
 
-/* ---- QC cross-check form ---- */
-.qc-field { margin-bottom: 14px; }
-.qc-field label { display:block; font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:6px; }
-.qc-field input[type=file] { font-size:13px; }
+/* ---- Checklist form fields ---- */
+.form-field { margin-bottom: 14px; }
+.form-field label { display:block; font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:6px; }
+.form-field input[type=file] { font-size:13px; }
 
 /* ---- Template editor buttons/links ---- */
 .link-btn {
@@ -547,25 +547,25 @@ table form { display:contents; }
   display: flex; gap: 10px; justify-content: flex-end;
 }
 
-/* ---- QC result page ---- */
-.qc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.qc-table thead th {
+/* ---- Checklist result page ---- */
+.checklist-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.checklist-table thead th {
   background: var(--brand); color: #fff; padding: 9px 10px;
   text-align: left; font-weight: 600; white-space: nowrap;
   position: sticky; top: 0; z-index: 1;
 }
-.qc-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.qc-table tr:last-child td { border-bottom: none; }
-.qc-table tr.section-row td {
+.checklist-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.checklist-table tr:last-child td { border-bottom: none; }
+.checklist-table tr.section-row td {
   background: var(--brand-light); font-weight: 700; color: var(--brand);
   font-size: 12px; letter-spacing: .04em; text-transform: uppercase; padding: 6px 10px;
 }
 .badge-yes { display: inline-block; padding: 2px 10px; border-radius: 20px; background: #d1fae5; color: #065f46; font-size: 12px; font-weight: 700; }
 .badge-no  { display: inline-block; padding: 2px 10px; border-radius: 20px; background: #fee2e2; color: #991b1b; font-size: 12px; font-weight: 700; }
 .badge-na  { display: inline-block; padding: 2px 10px; border-radius: 20px; background: #f1f5f9; color: #64748b; font-size: 12px; font-weight: 700; }
-.qc-sno-cell    { width: 56px; text-align: center; font-weight: 700; color: var(--ink); }
-.qc-ref-cell    { width: 180px; color: var(--muted); font-size: 12px; }
-.qc-status-cell { width: 72px; text-align: center; }
+.checklist-sno-cell    { width: 56px; text-align: center; font-weight: 700; color: var(--ink); }
+.checklist-ref-cell    { width: 180px; color: var(--muted); font-size: 12px; }
+.checklist-status-cell { width: 72px; text-align: center; }
 .dl-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
 .summary-chips  { display: flex; gap: 8px; flex-wrap: wrap; }
 .chip           { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
@@ -573,10 +573,36 @@ table form { display:contents; }
 .chip-no  { background: #fee2e2; color: #991b1b; }
 .chip-na  { background: #f1f5f9; color: #64748b; }
 
-/* ---- QC loading bar animation ---- */
-@keyframes qc-spin { to { transform: rotate(360deg); } }
-.qc-spinner {
+/* ---- Loading spinner ---- */
+@keyframes check-spin { to { transform: rotate(360deg); } }
+.check-spinner {
   width: 28px; height: 28px; border-radius: 50%;
   border: 3px solid var(--line); border-top-color: var(--brand);
-  animation: qc-spin .7s linear infinite; margin: 0 auto 8px;
+  animation: check-spin .7s linear infinite; margin: 0 auto 8px;
+}
+
+/* ---- PDF upload loading overlay ---- */
+.upload-loading-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 999;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+.upload-loading-overlay.active { display: flex; }
+.upload-loading-spinner {
+  width: 48px; height: 48px; border-radius: 50%;
+  border: 4px solid var(--line); border-top-color: var(--brand);
+  animation: check-spin .75s linear infinite;
+}
+.upload-loading-title {
+  font-size: 1rem; font-weight: 700; color: var(--ink);
+}
+.upload-loading-sub {
+  font-size: 0.85rem; color: var(--muted); margin-top: -8px;
 }

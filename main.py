@@ -17,10 +17,10 @@ import pdfplumber
 from groq import Groq
 from groq import AuthenticationError, GroqError
 
-import db           # database layer (auto-creates extractions.db on import)
-import templates_db as tdb       # template + checklist-item storage
-import checklist_xlsx as cx      # parse / regenerate checklist xlsx
-import auth_db as adb            # user accounts
+import records as db      # quote/extraction storage
+import checklists as tdb  # checklist template storage
+import excel as cx         # parse / build checklist Excel files
+import users as adb        # user accounts
 
 # ---------------------------------------------------------------------------
 # Config — loaded from .env
@@ -343,7 +343,7 @@ def home(request: Request, user=Depends(require_login)):
     return templates.TemplateResponse(request, "home.html", _index_context(user=user))
 
 
-@app.post("/upload-zip", response_class=HTMLResponse)
+@app.post("/run-checklist", response_class=HTMLResponse)
 async def upload_zip(
     request: Request,
     zip_file: UploadFile = File(...),
@@ -435,15 +435,15 @@ async def upload_zip(
             return {"status": "N/A", "remark": f"Error analysing file: {exc}"}
 
     # Run analysis for every non-section item that has a reference
-    qc_rows = []
+    checklist_rows = []
     filled: dict[int, dict] = {}
     for item in items:
         if item.get("is_section"):
-            qc_rows.append({**item, "status": "", "remark": ""})
+            checklist_rows.append({**item, "status": "", "remark": ""})
             continue
         result = _analyse_item(item)
         filled[item["position"]] = result
-        qc_rows.append({**item, "status": result["status"], "remark": result["remark"]})
+        checklist_rows.append({**item, "status": result["status"], "remark": result["remark"]})
 
     # Build a downloadable Excel blob with the results filled in
     headers = {
@@ -457,23 +457,23 @@ async def upload_zip(
     xlsx_b64 = base64.b64encode(xlsx_blob).decode()
     dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]})
 
-    return templates.TemplateResponse(request, "qc_result.html", {
+    return templates.TemplateResponse(request, "checklist_result.html", {
         "current_user": user,
         "tpl": tpl,
-        "qc_rows": qc_rows,
+        "checklist_rows": checklist_rows,
         "dl_token": dl_token,
         "quote_id": quote_id,
     })
 
 
-@app.get("/qc-download", response_class=Response)
-def qc_download(token: str, _auth=Depends(require_login)):
+@app.get("/checklist-download", response_class=Response)
+def checklist_download(token: str, _auth=Depends(require_login)):
     try:
         payload = _signer.loads(token, max_age=3600)
     except BadSignature:
         raise HTTPException(400, "Invalid or expired download token.")
     xlsx_blob = base64.b64decode(payload["xlsx"])
-    safe_name = (payload.get("name") or "qc_checklist").replace(" ", "_")
+    safe_name = (payload.get("name") or "checklist").replace(" ", "_")
     return Response(
         content=xlsx_blob,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
