@@ -381,6 +381,7 @@ async def upload_zip(
     def _groq_check(model: str, messages: list) -> dict:
         resp = client.chat.completions.create(
             model=model, messages=messages, temperature=0,
+            max_tokens=300,
             response_format={"type": "json_object"},
         )
         r = json.loads(resp.choices[0].message.content)
