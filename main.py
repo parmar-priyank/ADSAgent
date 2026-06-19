@@ -340,6 +340,22 @@ def home(request: Request, user=Depends(require_login)):
     return templates.TemplateResponse(request, "home.html", _index_context(user=user))
 
 
+@app.post("/upload-zip", response_class=HTMLResponse)
+async def upload_zip(request: Request, zip_file: UploadFile = File(...),
+                     quote_id: str = Form(""), user=Depends(require_login)):  # noqa: ARG001
+    import zipfile, io
+    data = await zip_file.read()
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            names = zf.namelist()
+    except zipfile.BadZipFile:
+        names = []
+    return templates.TemplateResponse(request, "home.html", {
+        **_index_context(user=user),
+        "zip_result": {"filename": zip_file.filename, "files": names},
+    })
+
+
 @app.get("/pdf", response_class=HTMLResponse)
 def quote_detail(request: Request, id: int = None, user=Depends(require_login)):
     all_records = db.get_recent()
