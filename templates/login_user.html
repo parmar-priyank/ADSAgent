@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Login — Solar Agreement Extractor</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo blue-logo">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      </div>
+      <h1>User Login</h1>
+      <p>Solar Agreement Extractor</p>
+
+      {% if error %}
+      <div class="login-error">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" action="/login">
+        <div class="login-field">
+          <label>Username</label>
+          <input type="text" name="username" required autofocus placeholder="Enter username">
+        </div>
+        <div class="login-field">
+          <label>Password</label>
+          <input type="password" name="password" required placeholder="Enter password">
+        </div>
+        <button type="submit" class="login-btn blue-btn">Sign In</button>
+      </form>
+
+    </div>
+  </div>
+</body>
+</html>

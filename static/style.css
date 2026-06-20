@@ -343,6 +343,44 @@ table form { display:contents; }
   margin: 0 auto 16px;
 }
 
+/* ---- Login chooser landing ---- */
+.portal-wrap {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; background: var(--bg); padding: 24px;
+}
+.portal-logo {
+  width: 60px; height: 60px; background: var(--brand); border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 30px; color: #fff; margin-bottom: 20px;
+}
+.portal-title { font-size: 1.55rem; font-weight: 750; color: var(--ink); margin: 0 0 6px; letter-spacing: -.02em; }
+.portal-sub   { color: var(--muted); font-size: 0.9rem; margin: 0 0 40px; }
+.portal-cards { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+.portal-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: var(--shadow); padding: 36px 32px 28px;
+  width: 220px; text-align: center; text-decoration: none; color: var(--ink);
+  transition: box-shadow .15s, transform .15s, border-color .15s;
+  cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.portal-card:hover {
+  box-shadow: 0 4px 24px rgba(28,26,23,.12);
+  transform: translateY(-2px); border-color: var(--brand);
+}
+.portal-card-icon {
+  width: 56px; height: 56px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+}
+.portal-card-icon.orange { background: #fff1e8; color: var(--brand); }
+.portal-card-icon.slate  { background: #e8f0ff; color: #2b5cc8; }
+.portal-card-label { font-size: 1.05rem; font-weight: 700; }
+.portal-card-hint  { font-size: 0.8rem; color: var(--muted); margin-top: -8px; }
+.portal-card-arrow {
+  font-size: 1.1rem; color: var(--brand); opacity: 0;
+  transition: opacity .15s;
+}
+.portal-card:hover .portal-card-arrow { opacity: 1; }
+
 /* ---- Login page ---- */
 .login-wrap {
   min-height: 100vh; display: flex;
@@ -358,8 +396,11 @@ table form { display:contents; }
   display: flex; align-items: center; justify-content: center;
   font-size: 26px; margin: 0 auto 20px;
 }
+.login-logo.blue-logo { background: #2b5cc8; }
 .login-card h1 { font-size: 1.4rem; font-weight: 700; text-align: center; margin-bottom: 6px; color: var(--ink); }
 .login-card p  { text-align: center; color: var(--muted); font-size: 0.85rem; margin-bottom: 28px; }
+.login-back { display:block; text-align:center; margin-bottom: 20px; font-size: 0.82rem; color: var(--muted); text-decoration: none; }
+.login-back:hover { color: var(--brand); }
 .login-field { margin-bottom: 16px; }
 .login-field label {
   display: block; font-size: 0.8rem; font-weight: 600; color: var(--ink);
@@ -377,6 +418,8 @@ table form { display:contents; }
   cursor: pointer; margin-top: 8px;
 }
 .login-btn:hover { background: var(--brand-dark); }
+.login-btn.blue-btn { background: #2b5cc8; }
+.login-btn.blue-btn:hover { background: #1e47a0; }
 .login-error {
   background: #fcf2f0; border: 1px solid #f0d4ce; color: #b4321f;
   border-radius: 8px; padding: 10px 14px; font-size: 0.88rem; margin-bottom: 18px;

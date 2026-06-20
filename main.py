@@ -63,10 +63,8 @@ def require_login(request: Request):
 
 def require_admin(request: Request):
     user = _get_session(request)
-    if not user:
+    if not user or user.get("role") != "admin":
         raise HTTPException(status_code=307, headers={"Location": "/login"})
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required.")
     return user
 
 
@@ -244,23 +242,58 @@ def _index_context(user=None, **extra):
 # ---------------------------------------------------------------------------
 # Auth routes
 # ---------------------------------------------------------------------------
+
 @app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
+def login_user_page(request: Request):
+    """Public user login page."""
     user = _get_session(request)
     if user:
-        return RedirectResponse(url="/admin" if user.get("role") == "admin" else "/home", status_code=302)
-    return templates.TemplateResponse(request, "login.html", {"error": None})
+        # Send each role to its own destination — never cross-redirect
+        if user.get("role") == "admin":
+            return RedirectResponse(url="/admin", status_code=302)
+        return RedirectResponse(url="/home", status_code=302)
+    return templates.TemplateResponse(request, "login_user.html", {"error": None})
 
 
 @app.post("/login", response_class=HTMLResponse)
-def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
+def login_user_post(request: Request, username: str = Form(...), password: str = Form(...)):
     user = adb.verify_user(username, password)
     if not user:
         return templates.TemplateResponse(
-            request, "login.html", {"error": "Invalid username or password."}
+            request, "login_user.html",
+            {"error": "Invalid username or password."}
         )
-    redirect_url = "/admin" if user.get("role") == "admin" else "/home"
-    response = RedirectResponse(url=redirect_url, status_code=303)
+    if user.get("role") == "admin":
+        return templates.TemplateResponse(
+            request, "login_user.html",
+            {"error": "Invalid username or password."}
+        )
+    response = RedirectResponse(url="/home", status_code=303)
+    _set_session(response, user)
+    return response
+
+
+@app.get("/admin-dashboard", response_class=HTMLResponse)
+def login_admin_page(request: Request):
+    """Secret admin login — URL not publicly linked anywhere."""
+    user = _get_session(request)
+    if user:
+        # Already logged in — send each role to its correct destination
+        if user.get("role") == "admin":
+            return RedirectResponse(url="/admin", status_code=302)
+        return RedirectResponse(url="/home", status_code=302)
+    return templates.TemplateResponse(request, "login_admin.html", {"error": None})
+
+
+@app.post("/admin-dashboard", response_class=HTMLResponse)
+def login_admin_post(request: Request, username: str = Form(...), password: str = Form(...)):
+    user = adb.verify_user(username, password)
+    if not user or user.get("role") != "admin":
+        return templates.TemplateResponse(
+            request, "login_admin.html",
+            {"error": "Invalid credentials."}
+        )
+    response = RedirectResponse(url="/admin", status_code=303)
     _set_session(response, user)
     return response
 
