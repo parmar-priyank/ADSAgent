@@ -7,3 +7,6 @@ groq
 python-dotenv
 pyyaml
 openpyxl
+itsdangerous
+bcrypt
+slowapi

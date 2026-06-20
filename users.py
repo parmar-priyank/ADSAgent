@@ -43,7 +43,10 @@ def _create_user(conn, username: str, password: str, role: str = "user"):
 
 
 def create_user(username: str, password: str, role: str = "user") -> bool:
-    """Returns False if username already exists."""
+    """Returns False if username already exists or inputs are invalid."""
+    username = username.strip()
+    if not username or len(password) < 8:
+        return False
     try:
         with get_db() as conn:
             _create_user(conn, username, password, role)
@@ -54,6 +57,9 @@ def create_user(username: str, password: str, role: str = "user") -> bool:
 
 def verify_user(username: str, password: str):
     """Return user row dict if credentials are valid, else None."""
+    username = username.strip()
+    if not username or not password:
+        return None
     with get_db() as conn:
         row = conn.execute(
             "SELECT * FROM users WHERE username = ?", (username,)

@@ -13,6 +13,10 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeTimedSerializer, BadSignature
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 import pdfplumber
 from groq import Groq
 from groq import AuthenticationError, GroqError
@@ -29,11 +33,42 @@ load_dotenv()
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_MODEL   = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-SECRET_KEY   = os.environ.get("SECRET_KEY", "change-me-in-production-secret")
+SECRET_KEY   = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY is not set. Add SECRET_KEY=<random-string> to your .env file and restart."
+    )
 
-app = FastAPI(title="Solar Agreement Extractor")
+MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB hard cap for all uploads
+
+# Rate limiter (keyed by client IP)
+limiter = Limiter(key_func=get_remote_address)
+
+app = FastAPI(
+    title="Solar Agreement Extractor",
+    docs_url=None,    # disable /docs  (H5)
+    redoc_url=None,   # disable /redoc (H5)
+)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+
+# ---------------------------------------------------------------------------
+# Security headers middleware  (L1)
+# ---------------------------------------------------------------------------
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 _signer = URLSafeTimedSerializer(SECRET_KEY)
 
@@ -42,29 +77,37 @@ _signer = URLSafeTimedSerializer(SECRET_KEY)
 # ---------------------------------------------------------------------------
 COOKIE = "session"
 
+SESSION_MAX_AGE = 86400 * 7  # 7 days — must match _signer max_age in _get_session
+
 def _set_session(response, user: dict):
     token = _signer.dumps({"id": user["id"], "username": user["username"], "role": user["role"]})
-    response.set_cookie(COOKIE, token, httponly=True, samesite="lax")
+    response.set_cookie(
+        COOKIE, token,
+        httponly=True,
+        samesite="lax",
+        secure=False,       # set to True when serving over HTTPS in production
+        max_age=SESSION_MAX_AGE,
+    )
 
 def _get_session(request: Request):
     token = request.cookies.get(COOKIE)
     if not token:
         return None
     try:
-        return _signer.loads(token, max_age=86400 * 7)  # 7-day session
+        return _signer.loads(token, max_age=SESSION_MAX_AGE)
     except BadSignature:
         return None
 
 def require_login(request: Request):
     user = _get_session(request)
     if not user:
-        raise HTTPException(status_code=307, headers={"Location": "/login"})
+        raise HTTPException(status_code=303, headers={"Location": "/login"})
     return user
 
 def require_admin(request: Request):
     user = _get_session(request)
     if not user or user.get("role") != "admin":
-        raise HTTPException(status_code=307, headers={"Location": "/login"})
+        raise HTTPException(status_code=303, headers={"Location": "/login"})
     return user
 
 
@@ -252,10 +295,14 @@ def login_user_page(request: Request):
         if user.get("role") == "admin":
             return RedirectResponse(url="/admin", status_code=302)
         return RedirectResponse(url="/home", status_code=302)
-    return templates.TemplateResponse(request, "login_user.html", {"error": None})
+    response = templates.TemplateResponse(request, "login_user.html", {"error": None})
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.post("/login", response_class=HTMLResponse)
+@limiter.limit("5/minute")
 def login_user_post(request: Request, username: str = Form(...), password: str = Form(...)):
     user = adb.verify_user(username, password)
     if not user:
@@ -282,10 +329,14 @@ def login_admin_page(request: Request):
         if user.get("role") == "admin":
             return RedirectResponse(url="/admin", status_code=302)
         return RedirectResponse(url="/home", status_code=302)
-    return templates.TemplateResponse(request, "login_admin.html", {"error": None})
+    response = templates.TemplateResponse(request, "login_admin.html", {"error": None})
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.post("/admin-dashboard", response_class=HTMLResponse)
+@limiter.limit("5/minute")
 def login_admin_post(request: Request, username: str = Form(...), password: str = Form(...)):
     user = adb.verify_user(username, password)
     if not user or user.get("role") != "admin":
@@ -310,7 +361,7 @@ def logout():
 # ---------------------------------------------------------------------------
 @app.get("/admin", response_class=HTMLResponse)
 def admin_dashboard(request: Request, user=Depends(require_admin)):
-    return templates.TemplateResponse(request, "admin.html", {
+    response = templates.TemplateResponse(request, "admin.html", {
         "current_user": user,
         "users": adb.list_users(),
         "records": db.get_recent(),
@@ -318,6 +369,9 @@ def admin_dashboard(request: Request, user=Depends(require_admin)):
         "error": None,
         "success": None,
     })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.post("/admin/users/create", response_class=HTMLResponse)
@@ -328,30 +382,38 @@ def admin_create_user(
     role: str = Form("user"),
     user=Depends(require_admin),
 ):
+    # H2 — allowlist role to prevent arbitrary role injection via crafted POST
+    if role not in {"user", "admin"}:
+        role = "user"
     ok = adb.create_user(username, password, role)
     ctx = {
         "current_user": user,
         "users": adb.list_users(),
         "records": db.get_recent(),
         "templates": tdb.list_templates(),
-        "error": f"Username '{username}' already exists." if not ok else None,
+        "error": (
+            f"Username '{username}' already exists, is invalid, or password is too short (min. 8 characters)."
+            if not ok else None
+        ),
         "success": f"User '{username}' created successfully." if ok else None,
     }
     return templates.TemplateResponse(request, "admin.html", ctx)
 
 
 @app.get("/admin/users/{user_id}", response_class=HTMLResponse)
-def admin_user_detail(user_id: int, request: Request, user=Depends(require_admin),
-                      success: str = None, error: str = None):
+def admin_user_detail(user_id: int, request: Request, user=Depends(require_admin)):
     target = adb.get_user(user_id)
     if not target:
         raise HTTPException(404, "User not found.")
-    return templates.TemplateResponse(request, "admin_user.html", {
+    response = templates.TemplateResponse(request, "admin_user.html", {
         "current_user": user,
         "target": target,
-        "success": success,
-        "error": error,
+        "success": None,
+        "error": None,
     })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 
@@ -368,12 +430,15 @@ def admin_delete_user(user_id: int, request: Request, user=Depends(require_admin
 # ---------------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def root_redirect():
-    return RedirectResponse(url="/home", status_code=301)
+    return RedirectResponse(url="/home", status_code=302)
 
 
 @app.get("/home", response_class=HTMLResponse)
 def home(request: Request, user=Depends(require_login)):
-    return templates.TemplateResponse(request, "home.html", _index_context(user=user))
+    response = templates.TemplateResponse(request, "home.html", _index_context(user=user))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.post("/run-checklist", response_class=HTMLResponse)
@@ -392,12 +457,18 @@ async def upload_zip(
 
     # Extract ZIP into a flat dict: lowercase filename → bytes
     data = await zip_file.read()
+
+    # H1 — file size cap
+    if len(data) > MAX_UPLOAD_BYTES:
+        return templates.TemplateResponse(request, "home.html",
+            _index_context(user=user, error="ZIP file is too large. Maximum allowed size is 30 MB."))
+
     zip_files: dict[str, bytes] = {}
     try:
         with zipmod.ZipFile(io.BytesIO(data)) as zf:
             for name in zf.namelist():
-                # strip directory prefix, keep only the filename
-                basename = name.split("/")[-1].strip()
+                # H3 — use os.path.basename to handle both / and \ separators safely
+                basename = os.path.basename(name).strip()
                 if basename:
                     zip_files[basename.lower()] = zf.read(name)
     except zipmod.BadZipFile:
@@ -465,8 +536,9 @@ async def upload_zip(
             else:
                 return {"status": "N/A", "remark": f"Unsupported file type: {mime}"}
 
-        except Exception as exc:
-            return {"status": "N/A", "remark": f"Error analysing file: {exc}"}
+        except Exception:
+            # M6 — never expose internal exception details to the user
+            return {"status": "N/A", "remark": "Error analysing file. Please check the file format and try again."}
 
     # Run analysis for every non-section item that has a reference
     checklist_rows = []
@@ -511,7 +583,11 @@ def checklist_download(token: str, _auth=Depends(require_login)):
     return Response(
         content=xlsx_blob,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}_QC.xlsx"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}_QC.xlsx"',
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+        },
     )
 
 
@@ -530,15 +606,18 @@ def quote_detail(request: Request, id: int = None, user=Depends(require_login)):
         (r["display_num"] for r in all_records if r["id"] == record["id"]),
         record["id"],
     )
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request, "quote_detail.html",
         {"record": record, "display_num": display_num, "current_user": user},
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.get("/quotes/{quote_id}", response_class=HTMLResponse)
-def quote_detail_legacy(request: Request, quote_id: int):
-    return RedirectResponse(url=f"/pdf?id={quote_id}", status_code=301)
+def quote_detail_legacy(request: Request, quote_id: int, user=Depends(require_login)):
+    return RedirectResponse(url=f"/pdf?id={quote_id}", status_code=302)
 
 
 @app.post("/upload", response_class=HTMLResponse)
@@ -547,6 +626,13 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
         raise HTTPException(400, "Please upload a PDF file.")
 
     file_bytes = await file.read()
+
+    # H1 — file size cap
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        return templates.TemplateResponse(
+            request, "home.html",
+            _index_context(user=user, error="PDF file is too large. Maximum allowed size is 30 MB."),
+        )
     text = extract_pdf_text(file_bytes)
 
     try:
@@ -557,10 +643,10 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
             _index_context(user=user, error="Invalid Groq API key. Check the GROQ_API_KEY value in your .env file "
                                  "(it should start with 'gsk_') and restart the server."),
         )
-    except GroqError as e:
+    except GroqError:
         return templates.TemplateResponse(
             request, "home.html",
-            _index_context(user=user, error=f"Groq error: {e}"),
+            _index_context(user=user, error="AI service error. Please try again in a moment."),
         )
 
     db.save_extraction(file.filename, data)
@@ -579,10 +665,13 @@ def template_editor(request: Request, user=Depends(require_login)):
         raise HTTPException(404, "No templates found. Upload a checklist first.")
     tpl = tdb.get_template(all_templates[0]["id"])
     items = tdb.get_items(tpl["id"])
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request, "templates.html",
         {"templates": all_templates, "selected": tpl, "items": items, "current_user": user},
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.get("/Excel/{template_id}", response_class=HTMLResponse)
@@ -592,10 +681,13 @@ def template_editor_by_id(request: Request, template_id: int, user=Depends(requi
         raise HTTPException(404, "Template not found.")
     items = tdb.get_items(template_id)
     all_templates = tdb.list_templates()
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request, "templates.html",
         {"templates": all_templates, "selected": tpl, "items": items, "current_user": user},
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.post("/templates/upload")
@@ -603,7 +695,7 @@ async def templates_upload(
     request: Request,
     name: str = Form(...),
     file: UploadFile = File(...),
-    user=Depends(require_login),
+    user=Depends(require_admin),  # M4 — admin only
 ):
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(400, "Please upload an .xlsx checklist template.")
@@ -616,7 +708,7 @@ async def templates_upload(
 @app.post("/templates/{template_id}/items/add")
 def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
              is_section: str = Form(""), reference: str = Form(""),
-             user=Depends(require_login)):
+             user=Depends(require_admin)):  # M4 — admin only
     tdb.add_item(template_id, text=text, sno=sno,
                  is_section=bool(is_section), reference=reference)
     return RedirectResponse(url="/Excel", status_code=303)
@@ -626,13 +718,13 @@ def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
 def item_update(template_id: int, item_id: int,
                 text: str = Form(...), sno: str = Form(""),
                 reference: str = Form(""), prompt: str = Form(""),
-                user=Depends(require_login)):
+                user=Depends(require_admin)):  # M4 — admin only
     tdb.update_item(item_id, text=text, sno=sno, reference=reference, prompt=prompt)
     return RedirectResponse(url="/Excel", status_code=303)
 
 
 @app.post("/templates/{template_id}/save-all")
-async def items_save_all(template_id: int, request: Request, user=Depends(require_login)):
+async def items_save_all(template_id: int, request: Request, user=Depends(require_admin)):  # M4
     form = await request.form()
     item_ids = form.getlist("item_id")
     snos = form.getlist("sno")
@@ -645,14 +737,14 @@ async def items_save_all(template_id: int, request: Request, user=Depends(requir
 
 
 @app.post("/templates/{template_id}/items/{item_id}/delete")
-def item_delete(template_id: int, item_id: int, user=Depends(require_login)):
+def item_delete(template_id: int, item_id: int, user=Depends(require_admin)):  # M4
     tdb.delete_item(item_id)
     return RedirectResponse(url="/Excel", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/move")
 def item_move(template_id: int, item_id: int, direction: str = Form(...),
-              user=Depends(require_login)):
+              user=Depends(require_admin)):  # M4
     items = tdb.get_items(template_id)
     ids = [it["id"] for it in items]
     if item_id in ids:
@@ -666,7 +758,7 @@ def item_move(template_id: int, item_id: int, direction: str = Form(...),
 
 @app.post("/templates/{template_id}/delete")
 def template_delete(template_id: int, return_to: str = Form(""),
-                    user=Depends(require_login)):
+                    user=Depends(require_admin)):  # M4
     tdb.delete_template(template_id)
     if return_to.isdigit() and int(return_to) != template_id:
         return RedirectResponse(url="/Excel", status_code=303)
