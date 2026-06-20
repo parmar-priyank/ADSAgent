@@ -24,11 +24,24 @@ def init_auth_db():
                 username   TEXT UNIQUE NOT NULL,
                 password   TEXT NOT NULL,
                 role       TEXT DEFAULT 'user',
+                theme      TEXT DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
-        # Create a default admin account if no users exist yet.
+        # Add theme column if upgrading from older schema without it.
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT NULL")
+        except Exception:
+            pass
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
         count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         if count == 0:
             _create_user(conn, "admin", "admin123", "admin")
@@ -86,6 +99,33 @@ def get_user(user_id: int):
     with get_db() as conn:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     return dict(row) if row else None
+
+
+def get_user_theme(user_id: int) -> str | None:
+    """Return user's personal theme override, or None if they have none set."""
+    with get_db() as conn:
+        row = conn.execute("SELECT theme FROM users WHERE id = ?", (user_id,)).fetchone()
+    return row["theme"] if row else None
+
+
+def set_user_theme(user_id: int, theme: str):
+    with get_db() as conn:
+        conn.execute("UPDATE users SET theme = ? WHERE id = ?", (theme, user_id))
+
+
+def get_setting(key: str, default: str = "") -> str:
+    with get_db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(key: str, value: str):
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
 
 
 init_auth_db()

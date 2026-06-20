@@ -295,6 +295,14 @@ def extract_with_groq(text: str) -> dict:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+def _resolve_theme(user: dict) -> str:
+    """User's personal DB preference wins; falls back to admin-set global default."""
+    personal = adb.get_user_theme(user["id"])
+    if personal in ("dark", "light"):
+        return personal
+    return adb.get_setting("user_panel_theme", "dark")
+
+
 def _index_context(user=None, **extra):
     """Common context for any render of home.html."""
     saved = tdb.list_templates()
@@ -305,6 +313,7 @@ def _index_context(user=None, **extra):
         "latest_template": saved[0] if saved else None,
         "saved_templates": saved,
         "current_user": user,
+        "theme": _resolve_theme(user) if user else "dark",
     }
     base.update(extra)
     return base
@@ -381,6 +390,13 @@ def logout(request: Request):
     return response
 
 
+@app.get("/toggle-theme")
+def toggle_theme(request: Request, user=Depends(require_login)):
+    current = _resolve_theme(user)
+    adb.set_user_theme(user["id"], "light" if current == "dark" else "dark")
+    return RedirectResponse(url="/home", status_code=303)
+
+
 # ---------------------------------------------------------------------------
 # Admin routes
 # ---------------------------------------------------------------------------
@@ -391,6 +407,7 @@ def admin_dashboard(request: Request, user=Depends(require_admin)):
         "users": adb.list_users(),
         "records": db.get_recent(),
         "templates": tdb.list_templates(),
+        "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
         "error": None,
         "success": None,
     })
@@ -448,6 +465,13 @@ def admin_delete_user(user_id: int, request: Request, user=Depends(require_admin
         raise HTTPException(400, "Cannot delete your own account.")
     adb.delete_user(user_id)
     return RedirectResponse(url="/admin", status_code=303)
+
+
+@app.post("/admin/settings/theme")
+def admin_set_theme(request: Request, theme: str = Form(...), user=Depends(require_admin)):
+    if theme in ("dark", "light"):
+        adb.set_setting("user_panel_theme", theme)
+    return RedirectResponse(url="/admin#settings", status_code=303)
 
 
 # ---------------------------------------------------------------------------
