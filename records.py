@@ -11,10 +11,9 @@ Two-table design:
 The database file and both tables are created automatically on first import
 if they don't already exist (see ensure_db / init_db).
 """
-import os
 import json
 
-from database import get_db, DB_PATH
+from database import get_db
 
 # Scalar fields stored on the quotes table (everything that is 1-to-1 with a
 # quote). line_items are stored separately.
@@ -66,13 +65,6 @@ def init_db():
             )
             """
         )
-
-
-def ensure_db():
-    """Create the database file/tables only if they are not already present."""
-    if not os.path.exists(DB_PATH):
-        print(f"[db] '{DB_PATH}' not found — creating new database.")
-    init_db()
 
 
 def save_extraction(filename: str, data: dict) -> int:
@@ -171,6 +163,4 @@ def get_recent(limit: int = 20):
     return result
 
 
-# Create the database/tables automatically when this module is imported,
-# only if the database file is not already present.
-ensure_db()
+init_db()

@@ -3,6 +3,7 @@ import io
 import json
 import base64
 import mimetypes
+import secrets
 import zipfile as zipmod
 
 from dotenv import load_dotenv
@@ -41,6 +42,11 @@ if not SECRET_KEY:
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB hard cap for all uploads
 
+# A random ID generated fresh every time the server starts.
+# Embedding it in every session token means all existing sessions are
+# automatically invalidated on restart — users must log in again.
+_SERVER_INSTANCE_ID = secrets.token_hex(8)
+
 # Rate limiter (keyed by client IP)
 limiter = Limiter(key_func=get_remote_address)
 
@@ -53,6 +59,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +87,12 @@ COOKIE = "session"
 SESSION_MAX_AGE = 86400 * 7  # 7 days — must match _signer max_age in _get_session
 
 def _set_session(response, user: dict):
-    token = _signer.dumps({"id": user["id"], "username": user["username"], "role": user["role"]})
+    token = _signer.dumps({
+        "id": user["id"],
+        "username": user["username"],
+        "role": user["role"],
+        "sid": _SERVER_INSTANCE_ID,
+    })
     response.set_cookie(
         COOKIE, token,
         httponly=True,
@@ -94,20 +106,36 @@ def _get_session(request: Request):
     if not token:
         return None
     try:
-        return _signer.loads(token, max_age=SESSION_MAX_AGE)
+        data = _signer.loads(token, max_age=SESSION_MAX_AGE)
     except BadSignature:
         return None
+    # Reject tokens issued before this server boot — forces re-login on restart.
+    if data.get("sid") != _SERVER_INSTANCE_ID:
+        return None
+    return data
+
+class _AuthRedirect(Exception):
+    """Raised by auth dependencies to trigger a redirect that also clears the stale cookie."""
+    def __init__(self, url: str):
+        self.url = url
+
+async def _auth_redirect_handler(_request: Request, exc: _AuthRedirect):
+    r = RedirectResponse(url=exc.url, status_code=303)
+    r.delete_cookie(COOKIE)
+    return r
+
+app.add_exception_handler(_AuthRedirect, _auth_redirect_handler)
 
 def require_login(request: Request):
     user = _get_session(request)
     if not user:
-        raise HTTPException(status_code=303, headers={"Location": "/login"})
+        raise _AuthRedirect("/login")
     return user
 
 def require_admin(request: Request):
     user = _get_session(request)
     if not user or user.get("role") != "admin":
-        raise HTTPException(status_code=303, headers={"Location": "/login"})
+        raise _AuthRedirect("/login")
     return user
 
 
