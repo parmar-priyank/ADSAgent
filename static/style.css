@@ -741,7 +741,7 @@ tbody tr:last-child td { border-bottom: none; }
 /* --------------------------------------------------------------------------
    Metric Cards
    -------------------------------------------------------------------------- */
-.metric-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 28px; }
+.metric-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 28px; }
 @media (max-width: 1100px) { .metric-row { grid-template-columns: repeat(2,1fr); } }
 @media (max-width:  680px) { .metric-row { grid-template-columns: 1fr; } }
 .metric-card {
@@ -763,6 +763,25 @@ tbody tr:last-child td { border-bottom: none; }
 .metric-icon-wrap.purple { background: rgba(167,139,250,.12); color: #a78bfa; }
 .metric-num   { font-size: 2rem; font-weight: 900; color: #fff; line-height: 1; letter-spacing: -.04em; }
 .metric-label { font-size: 11px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   Installation Calendar
+   -------------------------------------------------------------------------- */
+.cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; margin-bottom: 4px; }
+.cal-day-hdr { text-align: center; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 4px 0 6px; }
+.cal-cell { position: relative; min-height: 48px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid transparent; transition: background .15s, border-color .15s; }
+.cal-cell:not(.cal-blank) { cursor: default; background: var(--surface2); border-color: var(--line); }
+.cal-cell.cal-blank { background: transparent; border-color: transparent; }
+.cal-day-num { font-size: 12px; font-weight: 600; color: var(--ink2); }
+.cal-cell.cal-today { background: rgba(245,166,35,.12); border-color: var(--brand); }
+.cal-cell.cal-today .cal-day-num { color: var(--brand); font-weight: 800; }
+.cal-cell.cal-has-install { background: rgba(52,211,153,.10); border-color: var(--ok); cursor: pointer; }
+.cal-cell.cal-has-install:hover { background: rgba(52,211,153,.20); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(52,211,153,.15); }
+.cal-cell.cal-has-install .cal-day-num { color: var(--ok); font-weight: 800; }
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); margin-top: 3px; }
+[data-theme="light"] .cal-cell:not(.cal-blank) { background: #f7f5f1; border-color: rgba(28,26,23,.08); }
+[data-theme="light"] .cal-day-num { color: var(--ink); }
+[data-theme="light"] .cal-cell.cal-has-install { background: rgba(52,211,153,.12); }
 
 /* --------------------------------------------------------------------------
    Dashboard Cards
