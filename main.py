@@ -459,9 +459,13 @@ async def upload_zip(
     data = await zip_file.read()
 
     # H1 — file size cap
+    _no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+
     if len(data) > MAX_UPLOAD_BYTES:
-        return templates.TemplateResponse(request, "home.html",
+        resp = templates.TemplateResponse(request, "home.html",
             _index_context(user=user, error="ZIP file is too large. Maximum allowed size is 30 MB."))
+        resp.headers.update(_no_cache)
+        return resp
 
     zip_files: dict[str, bytes] = {}
     try:
@@ -472,8 +476,10 @@ async def upload_zip(
                 if basename:
                     zip_files[basename.lower()] = zf.read(name)
     except zipmod.BadZipFile:
-        return templates.TemplateResponse(request, "home.html",
+        resp = templates.TemplateResponse(request, "home.html",
             _index_context(user=user, error="Uploaded file is not a valid ZIP archive."))
+        resp.headers.update(_no_cache)
+        return resp
 
     client = Groq(api_key=GROQ_API_KEY)
     QC_SYSTEM = (
@@ -563,13 +569,15 @@ async def upload_zip(
     xlsx_b64 = base64.b64encode(xlsx_blob).decode()
     dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]})
 
-    return templates.TemplateResponse(request, "checklist_result.html", {
+    resp = templates.TemplateResponse(request, "checklist_result.html", {
         "current_user": user,
         "tpl": tpl,
         "checklist_rows": checklist_rows,
         "dl_token": dl_token,
         "quote_id": quote_id,
     })
+    resp.headers.update(_no_cache)
+    return resp
 
 
 @app.get("/checklist-download", response_class=Response)
@@ -629,30 +637,43 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
 
     # H1 — file size cap
     if len(file_bytes) > MAX_UPLOAD_BYTES:
-        return templates.TemplateResponse(
+        resp = templates.TemplateResponse(
             request, "home.html",
             _index_context(user=user, error="PDF file is too large. Maximum allowed size is 30 MB."),
         )
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
+
     text = extract_pdf_text(file_bytes)
 
     try:
         data = extract_with_groq(text)
     except AuthenticationError:
-        return templates.TemplateResponse(
+        resp = templates.TemplateResponse(
             request, "home.html",
             _index_context(user=user, error="Invalid Groq API key. Check the GROQ_API_KEY value in your .env file "
                                  "(it should start with 'gsk_') and restart the server."),
         )
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
     except GroqError:
-        return templates.TemplateResponse(
+        resp = templates.TemplateResponse(
             request, "home.html",
             _index_context(user=user, error="AI service error. Please try again in a moment."),
         )
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
 
     db.save_extraction(file.filename, data)
-    return templates.TemplateResponse(
+    resp = templates.TemplateResponse(
         request, "home.html", _index_context(user=user, result=data),
     )
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 # ===========================================================================
