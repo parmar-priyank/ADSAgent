@@ -135,7 +135,7 @@ def require_login(request: Request):
 def require_admin(request: Request):
     user = _get_session(request)
     if not user or user.get("role") != "admin":
-        raise _AuthRedirect("/login")
+        raise _AuthRedirect("/admin-dashboard")
     return user
 
 
@@ -318,10 +318,7 @@ def _index_context(user=None, **extra):
 def login_user_page(request: Request):
     """Public user login page."""
     user = _get_session(request)
-    if user:
-        # Send each role to its own destination — never cross-redirect
-        if user.get("role") == "admin":
-            return RedirectResponse(url="/admin", status_code=302)
+    if user and user.get("role") == "user":
         return RedirectResponse(url="/home", status_code=302)
     response = templates.TemplateResponse(request, "login_user.html", {"error": None})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -333,16 +330,14 @@ def login_user_page(request: Request):
 @limiter.limit("5/minute")
 def login_user_post(request: Request, username: str = Form(...), password: str = Form(...)):
     user = adb.verify_user(username, password)
-    if not user:
-        return templates.TemplateResponse(
+    if not user or user.get("role") == "admin":
+        resp = templates.TemplateResponse(
             request, "login_user.html",
             {"error": "Invalid username or password."}
         )
-    if user.get("role") == "admin":
-        return templates.TemplateResponse(
-            request, "login_user.html",
-            {"error": "Invalid username or password."}
-        )
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
     response = RedirectResponse(url="/home", status_code=303)
     _set_session(response, user)
     return response
@@ -352,11 +347,8 @@ def login_user_post(request: Request, username: str = Form(...), password: str =
 def login_admin_page(request: Request):
     """Secret admin login — URL not publicly linked anywhere."""
     user = _get_session(request)
-    if user:
-        # Already logged in — send each role to its correct destination
-        if user.get("role") == "admin":
-            return RedirectResponse(url="/admin", status_code=302)
-        return RedirectResponse(url="/home", status_code=302)
+    if user and user.get("role") == "admin":
+        return RedirectResponse(url="/admin", status_code=302)
     response = templates.TemplateResponse(request, "login_admin.html", {"error": None})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
@@ -368,18 +360,23 @@ def login_admin_page(request: Request):
 def login_admin_post(request: Request, username: str = Form(...), password: str = Form(...)):
     user = adb.verify_user(username, password)
     if not user or user.get("role") != "admin":
-        return templates.TemplateResponse(
+        resp = templates.TemplateResponse(
             request, "login_admin.html",
             {"error": "Invalid credentials."}
         )
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
     response = RedirectResponse(url="/admin", status_code=303)
     _set_session(response, user)
     return response
 
 
 @app.get("/logout")
-def logout():
-    response = RedirectResponse(url="/login", status_code=303)
+def logout(request: Request):
+    user = _get_session(request)
+    dest = "/admin-dashboard" if (user and user.get("role") == "admin") else "/login"
+    response = RedirectResponse(url=dest, status_code=303)
     response.delete_cookie(COOKIE)
     return response
 
