@@ -1009,6 +1009,36 @@ tbody tr:last-child td { border-bottom: none; }
 [data-theme="light"] select { background: #fff; border-color: rgba(28,26,23,.14); color: var(--ink); }
 
 /* --------------------------------------------------------------------------
+   LIGHT THEME — Admin Dashboard overrides
+   -------------------------------------------------------------------------- */
+[data-theme="light"] .dash-sidebar       { background: #fff; border-right-color: rgba(28,26,23,.10); }
+[data-theme="light"] .sidebar-brand      { border-bottom-color: rgba(28,26,23,.08); }
+[data-theme="light"] .sidebar-brand-name { color: var(--ink); }
+[data-theme="light"] .sidebar-footer     { border-top-color: rgba(28,26,23,.08); }
+[data-theme="light"] .sidebar-user-name  { color: var(--ink); }
+[data-theme="light"] .nav-item           { color: var(--muted); }
+[data-theme="light"] .nav-item:hover     { background: #f3f1ed; color: var(--ink); }
+[data-theme="light"] .nav-item.active    { background: rgba(222,93,24,.08); color: #b94a0e; }
+[data-theme="light"] .dash-main          { background: #f7f5f1; }
+[data-theme="light"] .dash-topbar        { background: #fff; border-bottom-color: rgba(28,26,23,.10); }
+[data-theme="light"] .dash-topbar-title  { color: var(--ink); }
+[data-theme="light"] .dash-card          { background: #fff; border-color: rgba(28,26,23,.10); }
+[data-theme="light"] .dash-card-header   { border-bottom-color: rgba(28,26,23,.07); }
+[data-theme="light"] .dash-card-title    { color: var(--ink); }
+[data-theme="light"] .dash-card-count    { background: #f3f1ed; border-color: rgba(28,26,23,.10); }
+[data-theme="light"] .metric-card        { background: #fff; border-color: rgba(28,26,23,.10); }
+[data-theme="light"] .metric-num         { color: var(--ink); }
+[data-theme="light"] .user-row           { border-bottom-color: rgba(28,26,23,.07); }
+[data-theme="light"] .user-row:hover     { background: #f7f5f1; }
+[data-theme="light"] .user-row-name      { color: var(--ink); }
+[data-theme="light"] .dash-table thead th { background: #f3f1ed; color: var(--muted); border-bottom-color: rgba(28,26,23,.10); }
+[data-theme="light"] .dash-table tbody td { color: var(--ink); border-bottom-color: rgba(28,26,23,.06); }
+[data-theme="light"] .dash-table tbody tr:hover { background: #faf8f4; }
+[data-theme="light"] .form-field label   { color: var(--muted); }
+[data-theme="light"] .form-field input,
+[data-theme="light"] .form-field select  { background: #fff; border-color: rgba(28,26,23,.14); color: var(--ink); }
+
+/* --------------------------------------------------------------------------
    HOME PAGE TOPBAR (replaces hero banner for user page)
    -------------------------------------------------------------------------- */
 .home-topbar {
@@ -1057,7 +1087,7 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .home-nav-btn.danger:hover { background: rgba(248,113,113,.14); color: var(--err); }
 
-/* ── Theme toggle (now an <a> tag, server-side) ── */
+/* ── Theme toggle — works as <a> or <button> ── */
 .theme-toggle {
   display: inline-flex; align-items: center; justify-content: center;
   width: 34px; height: 34px;
@@ -1066,12 +1096,18 @@ tbody tr:last-child td { border-bottom: none; }
   border-radius: 8px; cursor: pointer;
   color: var(--muted);
   text-decoration: none;
+  font-size: 0; /* suppress any accidental text */
+  padding: 0;
+  box-shadow: none;
+  letter-spacing: 0;
+  font-weight: normal;
   transition: background .15s, color .15s, box-shadow .15s;
   flex: none;
 }
 .theme-toggle:hover {
   background: var(--surface2); color: var(--brand);
   box-shadow: 0 0 0 3px var(--brand-glow);
+  opacity: 1; transform: none;
 }
 
 /* --------------------------------------------------------------------------

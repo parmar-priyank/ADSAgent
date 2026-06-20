@@ -394,7 +394,8 @@ def logout(request: Request):
 def toggle_theme(request: Request, user=Depends(require_login)):
     current = _resolve_theme(user)
     adb.set_user_theme(user["id"], "light" if current == "dark" else "dark")
-    return RedirectResponse(url="/home", status_code=303)
+    referer = request.headers.get("referer", "/home")
+    return RedirectResponse(url=referer, status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -737,7 +738,8 @@ def template_editor(request: Request, user=Depends(require_login)):
     items = tdb.get_items(tpl["id"])
     response = templates.TemplateResponse(
         request, "templates.html",
-        {"templates": all_templates, "selected": tpl, "items": items, "current_user": user},
+        {"templates": all_templates, "selected": tpl, "items": items,
+         "current_user": user, "theme": _resolve_theme(user)},
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
@@ -753,7 +755,8 @@ def template_editor_by_id(request: Request, template_id: int, user=Depends(requi
     all_templates = tdb.list_templates()
     response = templates.TemplateResponse(
         request, "templates.html",
-        {"templates": all_templates, "selected": tpl, "items": items, "current_user": user},
+        {"templates": all_templates, "selected": tpl, "items": items,
+         "current_user": user, "theme": _resolve_theme(user)},
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
