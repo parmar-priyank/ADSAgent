@@ -34,3 +34,6 @@ check_db.py
 # ---- OS ----
 .DS_Store
 Thumbs.db
+
+# ---- Media / large files ----
+static/bg.mp4.mp4
