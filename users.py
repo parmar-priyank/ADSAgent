@@ -8,6 +8,7 @@ Table: users
   role        TEXT DEFAULT 'user'  ('admin' or 'user')
   created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 """
+import secrets
 import sqlite3
 
 import bcrypt
@@ -32,7 +33,7 @@ def init_auth_db():
         # Add theme column if upgrading from older schema without it.
         try:
             conn.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT NULL")
-        except Exception:
+        except sqlite3.OperationalError:
             pass
         conn.execute(
             """
@@ -44,7 +45,16 @@ def init_auth_db():
         )
         count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         if count == 0:
-            _create_user(conn, "admin", "admin123", "admin")
+            initial_password = secrets.token_urlsafe(16)
+            _create_user(conn, "admin", initial_password, "admin")
+            print(
+                f"\n{'='*60}\n"
+                f"  First-run admin account created.\n"
+                f"  Username : admin\n"
+                f"  Password : {initial_password}\n"
+                f"  Change this password immediately after first login.\n"
+                f"{'='*60}\n"
+            )
 
 
 def _create_user(conn, username: str, password: str, role: str = "user"):

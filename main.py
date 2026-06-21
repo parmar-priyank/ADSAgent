@@ -40,7 +40,20 @@ if not SECRET_KEY:
         "SECRET_KEY is not set. Add SECRET_KEY=<random-string> to your .env file and restart."
     )
 
+# Module-level Groq client — instantiated once, reused on every request.
+_groq_client: "Groq | None" = None
+
+def _get_groq() -> "Groq":
+    global _groq_client
+    if _groq_client is None:
+        if not GROQ_API_KEY:
+            raise HTTPException(500, "GROQ_API_KEY not set. Add it to your .env file.")
+        _groq_client = Groq(api_key=GROQ_API_KEY)
+    return _groq_client
+
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB hard cap for all uploads
+
+_NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 
 # A random ID generated fresh every time the server starts.
 # Embedding it in every session token means all existing sessions are
@@ -71,7 +84,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         return response
 
@@ -245,10 +257,7 @@ EXTRACTION_SCHEMA = {
 
 
 def extract_with_groq(text: str) -> dict:
-    if not GROQ_API_KEY:
-        raise HTTPException(500, "GROQ_API_KEY not set. Add it to your .env file.")
-
-    client = Groq(api_key=GROQ_API_KEY)
+    client = _get_groq()
 
     system_prompt = (
         "You are a precise data extraction engine for solar agreements. "
@@ -390,12 +399,14 @@ def logout(request: Request):
     return response
 
 
-@app.get("/toggle-theme")
+@app.post("/toggle-theme")
 def toggle_theme(request: Request, user=Depends(require_login)):
     current = _resolve_theme(user)
     adb.set_user_theme(user["id"], "light" if current == "dark" else "dark")
-    referer = request.headers.get("referer", "/home")
-    return RedirectResponse(url=referer, status_code=303)
+    referer = request.headers.get("referer", "")
+    origin = str(request.base_url).rstrip("/")
+    dest = referer if referer.startswith(origin) else "/home"
+    return RedirectResponse(url=dest, status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +445,7 @@ def admin_create_user(
         "users": adb.list_users(),
         "records": db.get_recent(),
         "templates": tdb.list_templates(),
+        "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
         "error": (
             f"Username '{username}' already exists, is invalid, or password is too short (min. 8 characters)."
             if not ok else None
@@ -508,13 +520,10 @@ async def upload_zip(
     # Extract ZIP into a flat dict: lowercase filename → bytes
     data = await zip_file.read()
 
-    # H1 — file size cap
-    _no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
-
     if len(data) > MAX_UPLOAD_BYTES:
         resp = templates.TemplateResponse(request, "home.html",
             _index_context(user=user, error="ZIP file is too large. Maximum allowed size is 30 MB."))
-        resp.headers.update(_no_cache)
+        resp.headers.update(_NO_CACHE)
         return resp
 
     zip_files: dict[str, bytes] = {}
@@ -528,10 +537,10 @@ async def upload_zip(
     except zipmod.BadZipFile:
         resp = templates.TemplateResponse(request, "home.html",
             _index_context(user=user, error="Uploaded file is not a valid ZIP archive."))
-        resp.headers.update(_no_cache)
+        resp.headers.update(_NO_CACHE)
         return resp
 
-    client = Groq(api_key=GROQ_API_KEY)
+    client = _get_groq()
     QC_SYSTEM = (
         "You are a QC document checker. "
         "Determine if the requirement is met based on the provided content. "
@@ -774,7 +783,7 @@ async def templates_upload(
         raise HTTPException(400, "Please upload an .xlsx checklist template.")
     blob = await file.read()
     items, headers, note = cx.parse_xlsx(blob)
-    tid = tdb.create_template(name, blob, items, note)
+    tdb.create_template(name, blob, items, note)
     return RedirectResponse(url="/Excel", status_code=303)
 
 
@@ -830,15 +839,11 @@ def item_move(template_id: int, item_id: int, direction: str = Form(...),
 
 
 @app.post("/templates/{template_id}/delete")
-def template_delete(template_id: int, return_to: str = Form(""),
-                    user=Depends(require_admin)):  # M4
+def template_delete(template_id: int, user=Depends(require_admin)):  # M4
     tdb.delete_template(template_id)
-    if return_to.isdigit() and int(return_to) != template_id:
-        return RedirectResponse(url="/Excel", status_code=303)
     remaining = tdb.list_templates()
-    if remaining:
-        return RedirectResponse(url="/Excel", status_code=303)
-    return RedirectResponse(url="/home", status_code=303)
+    dest = "/Excel" if remaining else "/home"
+    return RedirectResponse(url=dest, status_code=303)
 
 
 @app.get("/templates/{template_id}/download")

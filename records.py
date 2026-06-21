@@ -11,8 +11,6 @@ Two-table design:
 The database file and both tables are created automatically on first import
 if they don't already exist (see ensure_db / init_db).
 """
-import json
-
 from database import get_db
 
 # Scalar fields stored on the quotes table (everything that is 1-to-1 with a
@@ -116,15 +114,24 @@ def save_extraction(filename: str, data: dict) -> int:
         return quote_id
 
 
-def get_line_items(quote_number: str):
-    """Return the line items for a quote, in their original order."""
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT item, quantity, specification, price FROM line_items "
-            "WHERE quote_number = ? ORDER BY position ASC",
-            (quote_number,),
-        ).fetchall()
-    return [dict(r) for r in rows]
+def _attach_line_items(conn, quotes: list) -> list:
+    """Fetch all line items for the given quotes in a single query and attach them."""
+    if not quotes:
+        return quotes
+    numbers = [q["quote_number"] for q in quotes]
+    placeholders = ",".join("?" * len(numbers))
+    rows = conn.execute(
+        f"SELECT quote_number, item, quantity, specification, price "
+        f"FROM line_items WHERE quote_number IN ({placeholders}) ORDER BY position ASC",
+        numbers,
+    ).fetchall()
+    items_by_qn: dict[str, list] = {}
+    for r in rows:
+        items_by_qn.setdefault(r["quote_number"], []).append(dict(r))
+    for q in quotes:
+        q["line_items"] = items_by_qn.get(q["quote_number"], [])
+        q["data"] = {**{f: q.get(f, "") for f in QUOTE_FIELDS}, "line_items": q["line_items"]}
+    return quotes
 
 
 def get_quote(quote_id: int):
@@ -133,12 +140,10 @@ def get_quote(quote_id: int):
         row = conn.execute(
             "SELECT * FROM quotes WHERE id = ?", (quote_id,)
         ).fetchone()
-    if not row:
-        return None
-    d = dict(row)
-    d["line_items"] = get_line_items(row["quote_number"])
-    d["data"] = {**{f: d.get(f, "") for f in QUOTE_FIELDS}, "line_items": d["line_items"]}
-    return d
+        if not row:
+            return None
+        quotes = [dict(row)]
+        return _attach_line_items(conn, quotes)[0]
 
 
 def get_recent(limit: int = 20):
@@ -150,17 +155,12 @@ def get_recent(limit: int = 20):
         rows = conn.execute(
             "SELECT * FROM quotes ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
+        quotes = [dict(r) for r in rows]
+        quotes = _attach_line_items(conn, quotes)
 
-    result = []
-    for display_num, row in enumerate(rows, start=1):
-        d = dict(row)
-        d["line_items"] = get_line_items(row["quote_number"])
-        d["display_num"] = display_num
-        # Keep a 'data' dict mirroring the old shape for template convenience.
-        d["data"] = {**{f: d.get(f, "") for f in QUOTE_FIELDS},
-                     "line_items": d["line_items"]}
-        result.append(d)
-    return result
+    for display_num, q in enumerate(quotes, start=1):
+        q["display_num"] = display_num
+    return quotes
 
 
 init_db()

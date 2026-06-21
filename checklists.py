@@ -124,24 +124,9 @@ def get_template(template_id: int):
     return dict(t) if t else None
 
 
-def get_template_blob(template_id: int):
-    with get_db() as conn:
-        r = conn.execute(
-            "SELECT blob FROM templates WHERE id = ?", (template_id,)
-        ).fetchone()
-    return r["blob"] if r else None
-
-
 def delete_template(template_id: int):
     with get_db() as conn:
         conn.execute("DELETE FROM templates WHERE id = ?", (template_id,))
-
-
-def rename_template(template_id: int, name: str):
-    with get_db() as conn:
-        conn.execute(
-            "UPDATE templates SET name = ? WHERE id = ?", (name, template_id)
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -154,15 +139,6 @@ def get_items(template_id: int):
             (template_id,),
         ).fetchall()
     return [dict(r) for r in rows]
-
-
-def replace_items(template_id: int, items: list):
-    """Wholesale replace a template's items (used by the editor on save)."""
-    with get_db() as conn:
-        conn.execute(
-            "DELETE FROM checklist_items WHERE template_id = ?", (template_id,)
-        )
-        _insert_items(conn, template_id, items)
 
 
 def add_item(template_id: int, text: str, sno: str = "",
@@ -226,12 +202,32 @@ def reorder_items(template_id: int, ordered_ids: list):
             )
 
 
+def _needs_backfill() -> bool:
+    """Return True only if there are templates whose items all have empty references."""
+    with get_db() as conn:
+        unfilled = conn.execute(
+            """
+            SELECT 1 FROM templates t
+            WHERE blob IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM checklist_items c
+                  WHERE c.template_id = t.id AND c.reference <> ''
+              )
+            LIMIT 1
+            """
+        ).fetchone()
+    return unfilled is not None
+
+
 def backfill_references():
     """
-    One-time migration: for templates where every item has an empty reference,
-    re-parse the stored blob and fill in the reference column from the Remarks
-    column (stripping the leading 'Refer to ' prefix).
+    One-time migration: fill the reference column from the stored xlsx blob for
+    templates that still have all-empty references. Skips immediately if nothing
+    needs backfilling so it is cheap on every subsequent start.
     """
+    if not _needs_backfill():
+        return
+
     import excel as cx
 
     with get_db() as conn:
@@ -240,25 +236,22 @@ def backfill_references():
         ).fetchall()
         for t in templates:
             tid, blob = t["id"], t["blob"]
-            # Check if any item already has a reference value.
             has_refs = conn.execute(
                 "SELECT 1 FROM checklist_items WHERE template_id = ? AND reference <> '' LIMIT 1",
                 (tid,),
             ).fetchone()
             if has_refs:
-                continue  # already populated, skip
+                continue
 
             try:
                 parsed_items, _, _ = cx.parse_xlsx(bytes(blob))
             except Exception:
-                continue  # corrupt blob — skip silently
+                continue
 
-            # Build a lookup by (sno, text) → reference.
             ref_map = {
                 (it.get("sno", ""), it.get("text", "")): it.get("reference", "")
                 for it in parsed_items
             }
-
             db_items = conn.execute(
                 "SELECT id, sno, text FROM checklist_items WHERE template_id = ?",
                 (tid,),
