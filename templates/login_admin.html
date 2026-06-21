@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Sign In — Solar Agreement Extractor</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
 
@@ -61,6 +62,7 @@
             <label>Password</label>
             <input type="password" name="password" required placeholder="Enter password" minlength="8">
           </div>
+          <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}" style="margin-bottom:14px;"></div>
           <button type="submit" class="login-btn admin-btn">Sign In as Admin</button>
         </form>
 

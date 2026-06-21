@@ -4,6 +4,8 @@ import json
 import base64
 import mimetypes
 import secrets
+import urllib.request
+import urllib.parse
 import zipfile as zipmod
 
 from dotenv import load_dotenv
@@ -32,13 +34,37 @@ import users as adb        # user accounts
 # ---------------------------------------------------------------------------
 load_dotenv()
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GROQ_MODEL   = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-SECRET_KEY   = os.environ.get("SECRET_KEY")
+GROQ_API_KEY          = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL            = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+SECRET_KEY            = os.environ.get("SECRET_KEY")
+RECAPTCHA_SITE_KEY    = os.environ.get("RECAPTCHA_SITE_KEY", "")
+RECAPTCHA_SECRET_KEY  = os.environ.get("RECAPTCHA_SECRET_KEY", "")
+
 if not SECRET_KEY:
     raise RuntimeError(
         "SECRET_KEY is not set. Add SECRET_KEY=<random-string> to your .env file and restart."
     )
+
+
+def _verify_recaptcha(token: str) -> bool:
+    """Return True if the reCAPTCHA v2 token passes Google's verification."""
+    if not RECAPTCHA_SECRET_KEY or RECAPTCHA_SECRET_KEY == "YOUR_RECAPTCHA_SECRET_KEY_HERE":
+        return True  # skip check when keys are not configured yet
+    try:
+        payload = urllib.parse.urlencode({
+            "secret": RECAPTCHA_SECRET_KEY,
+            "response": token,
+        }).encode()
+        req = urllib.request.Request(
+            "https://www.google.com/recaptcha/api/siteverify",
+            data=payload,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            result = json.loads(resp.read())
+        return bool(result.get("success"))
+    except Exception:
+        return False
 
 # Module-level Groq client — instantiated once, reused on every request.
 _groq_client: "Groq | None" = None
@@ -78,6 +104,20 @@ templates = Jinja2Templates(directory="templates")
 # ---------------------------------------------------------------------------
 # Security headers middleware  (L1)
 # ---------------------------------------------------------------------------
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; "
+    "frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "media-src 'self'; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self';"
+)
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -85,6 +125,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["Content-Security-Policy"] = _CSP
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
@@ -332,29 +373,43 @@ def _index_context(user=None, **extra):
 # Auth routes
 # ---------------------------------------------------------------------------
 
+def _login_ctx(error=None) -> dict:
+    return {"error": error, "recaptcha_site_key": RECAPTCHA_SITE_KEY}
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_user_page(request: Request):
     """Public user login page."""
     user = _get_session(request)
     if user and user.get("role") == "user":
         return RedirectResponse(url="/home", status_code=302)
-    response = templates.TemplateResponse(request, "login_user.html", {"error": None})
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
+    response = templates.TemplateResponse(request, "login_user.html", _login_ctx())
+    response.headers.update(_NO_CACHE)
     return response
 
 
 @app.post("/login", response_class=HTMLResponse)
 @limiter.limit("5/minute")
-def login_user_post(request: Request, username: str = Form(...), password: str = Form(...)):
+def login_user_post(
+    request: Request,
+    username: str = Form(..., max_length=150),
+    password: str = Form(..., max_length=256),
+    g_recaptcha_response: str = Form("", alias="g-recaptcha-response"),
+):
+    if not _verify_recaptcha(g_recaptcha_response):
+        resp = templates.TemplateResponse(
+            request, "login_user.html",
+            _login_ctx("Please complete the CAPTCHA."),
+        )
+        resp.headers.update(_NO_CACHE)
+        return resp
     user = adb.verify_user(username, password)
     if not user or user.get("role") == "admin":
         resp = templates.TemplateResponse(
             request, "login_user.html",
-            {"error": "Invalid username or password."}
+            _login_ctx("Invalid username or password."),
         )
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-        resp.headers["Pragma"] = "no-cache"
+        resp.headers.update(_NO_CACHE)
         return resp
     response = RedirectResponse(url="/home", status_code=303)
     _set_session(response, user)
@@ -367,23 +422,33 @@ def login_admin_page(request: Request):
     user = _get_session(request)
     if user and user.get("role") == "admin":
         return RedirectResponse(url="/admin", status_code=302)
-    response = templates.TemplateResponse(request, "login_admin.html", {"error": None})
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
+    response = templates.TemplateResponse(request, "login_admin.html", _login_ctx())
+    response.headers.update(_NO_CACHE)
     return response
 
 
 @app.post("/admin-dashboard", response_class=HTMLResponse)
 @limiter.limit("5/minute")
-def login_admin_post(request: Request, username: str = Form(...), password: str = Form(...)):
+def login_admin_post(
+    request: Request,
+    username: str = Form(..., max_length=150),
+    password: str = Form(..., max_length=256),
+    g_recaptcha_response: str = Form("", alias="g-recaptcha-response"),
+):
+    if not _verify_recaptcha(g_recaptcha_response):
+        resp = templates.TemplateResponse(
+            request, "login_admin.html",
+            _login_ctx("Please complete the CAPTCHA."),
+        )
+        resp.headers.update(_NO_CACHE)
+        return resp
     user = adb.verify_user(username, password)
     if not user or user.get("role") != "admin":
         resp = templates.TemplateResponse(
             request, "login_admin.html",
-            {"error": "Invalid credentials."}
+            _login_ctx("Invalid credentials."),
         )
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-        resp.headers["Pragma"] = "no-cache"
+        resp.headers.update(_NO_CACHE)
         return resp
     response = RedirectResponse(url="/admin", status_code=303)
     _set_session(response, user)
