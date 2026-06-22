@@ -1,0 +1,82 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Users{% endblock %}
+{% block nav_users %}active{% endblock %}
+{% block page_title %}Users{% endblock %}
+{% block page_crumb %}Manage Users{% endblock %}
+
+{% block content %}
+
+<!-- All Users -->
+<div class="dash-card" style="margin-bottom:20px;">
+  <div class="dash-card-header">
+    <div class="dash-card-title">All Users</div>
+    <span class="dash-card-count">{{ users|length }}</span>
+  </div>
+  <div style="padding:8px 0;">
+    {% for u in users %}
+    <div class="user-row" onclick="window.location='/admin/users/{{ u.id }}'">
+      <div class="user-row-avatar" style="background:{{ ['#fff1e8','#e8f0ff','#e8f7ee','#f2eaff','#fef3e8'][loop.index0 % 5] }};color:{{ ['#c04a10','#2b5cc8','#2a7d4f','#7c3fc0','#c04a10'][loop.index0 % 5] }};">
+        {{ u.username[0]|upper }}
+      </div>
+      <div class="user-row-info">
+        <span class="user-row-name">{{ u.username }}</span>
+        <span class="user-row-since">Joined {{ u.created_at }}</span>
+      </div>
+      <div class="user-row-mid">
+        <span class="badge badge-{{ u.role }}">{{ u.role }}</span>
+        {% if u.id == current_user.id %}
+        <span style="font-size:11px;color:var(--muted);margin-left:6px;">you</span>
+        {% endif %}
+      </div>
+      <div class="user-row-action" onclick="event.stopPropagation();">
+        {% if u.id != current_user.id %}
+        <form action="/admin/users/{{ u.id }}/delete" method="post"
+              onsubmit="return confirm('Delete {{ u.username }}?');">
+          <button type="submit" class="link-btn danger">Delete</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Create New User -->
+<div class="dash-card">
+  <div class="dash-card-header">
+    <div class="dash-card-title">Create New User</div>
+  </div>
+  <div class="dash-card-body">
+    {% if success %}
+    <div class="alert-success">&#10003; {{ success }}</div>
+    {% endif %}
+    {% if error %}
+    <div class="alert-error">&#9888; {{ error }}</div>
+    {% endif %}
+    <form action="/admin/users/create" method="post">
+      <div class="create-form-grid">
+        <div class="form-field" style="margin-bottom:0;">
+          <label>Username</label>
+          <input type="text" name="username" required placeholder="Enter username">
+        </div>
+        <div class="form-field" style="margin-bottom:0;">
+          <label>Password</label>
+          <input type="password" name="password" required placeholder="Min. 8 characters" minlength="8">
+        </div>
+        <div class="form-field" style="margin-bottom:0;">
+          <label>Role</label>
+          <select name="role">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <button type="submit" style="padding:11px 32px;">Create User</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

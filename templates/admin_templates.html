@@ -1,0 +1,210 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Templates{% endblock %}
+{% block nav_templates %}active{% endblock %}
+{% block page_title %}Templates{% endblock %}
+{% block page_crumb %}QC Checklist Templates{% endblock %}
+
+{% block content %}
+
+<!-- Saved Templates list -->
+<div class="dash-card" style="margin-bottom:20px;">
+  <div class="dash-card-header">
+    <div class="dash-card-title">QC Checklist Templates</div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span class="dash-card-count">{{ templates|length }}</span>
+      <button type="button" class="link-btn" onclick="toggleTplUpload()" id="tpl-upload-toggle-btn">+ Upload New</button>
+    </div>
+  </div>
+
+  <!-- Upload form (hidden by default) -->
+  <div id="tpl-upload-form-wrap" style="display:none;padding:18px 22px;border-bottom:1px solid var(--line);">
+    <form action="/templates/upload" method="post" enctype="multipart/form-data">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="form-field" style="flex:1;min-width:180px;margin-bottom:0;">
+          <label>Template Name</label>
+          <input type="text" name="name" required placeholder="e.g. ADS Standard QC"
+                 style="width:100%;padding:9px 10px;border:1px solid var(--line2);border-radius:8px;font-size:14px;background:var(--surface3);color:var(--ink);">
+        </div>
+        <div class="form-field" style="flex:1;min-width:220px;margin-bottom:0;">
+          <label>Excel File (.xlsx)</label>
+          <input type="file" name="file" accept=".xlsx" required
+                 style="width:100%;padding:7px 10px;border:1px solid var(--line2);border-radius:8px;font-size:13px;background:var(--surface3);color:var(--ink);">
+        </div>
+        <div style="display:flex;gap:8px;padding-bottom:1px;">
+          <button type="submit">Upload</button>
+          <button type="button" class="link-btn" onclick="toggleTplUpload()">Cancel</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {% if templates %}
+  <table class="dash-table">
+    <thead>
+      <tr><th>ID</th><th>Name</th><th>Created</th><th style="text-align:right;">Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for t in templates %}
+      <tr class="tpl-admin-row" style="cursor:pointer;" onclick="loadTplEditor({{ t['id'] }}, this)">
+        <td><span class="id-pill">{{ t["display_num"] }}</span></td>
+        <td><strong>{{ t["name"] }}</strong></td>
+        <td class="muted">{{ t["created_at"] }}</td>
+        <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
+          <a href="/templates/{{ t['id'] }}/download" class="link-btn">Download</a>
+          <form action="/templates/{{ t['id'] }}/delete" method="post" style="display:inline;"
+                onsubmit="return confirm('Delete this template?');">
+            <button type="submit" class="link-btn danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="dash-card-body">
+    <div class="empty-state">No templates yet — upload your first checklist using the button above.</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Template Editor (shown when a template row is clicked) -->
+<div class="dash-card" id="tpl-editor-card" style="display:none;">
+  <div class="dash-card-header">
+    <div class="dash-card-title" id="tpl-editor-title">Template Editor</div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <span class="dash-card-count" id="tpl-editor-count"></span>
+      <button type="button" class="link-btn" onclick="closeTplEditor()">✕ Close</button>
+    </div>
+  </div>
+  <div class="dash-card-body" id="tpl-editor-body">
+    <div style="text-align:center;padding:40px;color:var(--muted);">Loading…</div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function toggleTplUpload() {
+    var wrap = document.getElementById('tpl-upload-form-wrap');
+    var btn  = document.getElementById('tpl-upload-toggle-btn');
+    var open = wrap.style.display === 'none';
+    wrap.style.display = open ? '' : 'none';
+    btn.textContent    = open ? '✕ Cancel' : '+ Upload New';
+  }
+
+  function closeTplEditor() {
+    document.getElementById('tpl-editor-card').style.display = 'none';
+    document.querySelectorAll('.tpl-admin-row').forEach(function(r){ r.classList.remove('tpl-row-active'); });
+  }
+
+  function loadTplEditor(id, row) {
+    document.querySelectorAll('.tpl-admin-row').forEach(function(r){ r.classList.remove('tpl-row-active'); });
+    if (row) row.classList.add('tpl-row-active');
+
+    var card  = document.getElementById('tpl-editor-card');
+    var body  = document.getElementById('tpl-editor-body');
+    var title = document.getElementById('tpl-editor-title');
+    var count = document.getElementById('tpl-editor-count');
+    card.style.display = '';
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Loading…</div>';
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    fetch('/admin/templates/' + id + '/fragment')
+      .then(function(r){ return r.text(); })
+      .then(function(html){
+        body.innerHTML = html;
+        var meta = body.querySelector('[data-tpl-name]');
+        if (meta) {
+          title.textContent = meta.dataset.tplName + ' · Editor';
+          count.textContent = meta.dataset.tplItems + ' items';
+        }
+        // Intercept all form submissions inside the editor
+        body.querySelectorAll('form').forEach(function(form) {
+          form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var submitter = e.submitter;
+            var action = (submitter && submitter.hasAttribute('formaction')) ? submitter.getAttribute('formaction') : form.getAttribute('action');
+            var method = form.getAttribute('method') || 'post';
+
+            if (form.id === 'tpl-save-all-form') {
+              body.querySelectorAll('tr[data-item-id]').forEach(function(r) {
+                var iid    = r.dataset.itemId;
+                var sno    = r.querySelector('input[name="sno"]').value;
+                var text   = r.querySelector('input[name="text"]').value;
+                var ref    = r.querySelector('input[name="reference"]').value;
+                var prompt = r.querySelector('[name="prompt"]').value;
+                [['item_id',iid],['sno',sno],['text',text],['reference',ref],['prompt',prompt]].forEach(function(p){
+                  var inp = document.createElement('input');
+                  inp.type = 'hidden'; inp.name = p[0]; inp.value = p[1];
+                  form.appendChild(inp);
+                });
+              });
+            }
+
+            var formData = new FormData(form);
+            if (submitter && submitter.name) {
+              formData.append(submitter.name, submitter.value);
+            }
+            if (submitter) submitter.disabled = true;
+
+            fetch(action, { method: method, body: formData })
+              .then(function() { loadTplEditor(id, document.querySelector('.tpl-row-active')); })
+              .catch(function(err) {
+                console.error('Action failed', err);
+                if (submitter) submitter.disabled = false;
+                alert('An error occurred. Please try again.');
+              });
+          });
+        });
+
+        // Drag and Drop reordering
+        var draggedRow = null;
+        body.querySelectorAll('tr[data-item-id]').forEach(function(row) {
+          row.style.cursor = 'grab';
+          row.addEventListener('mousedown', function(e) {
+            if (['INPUT', 'BUTTON', 'A', 'TEXTAREA', 'SELECT'].indexOf(e.target.tagName) !== -1) {
+              this.removeAttribute('draggable');
+            } else {
+              this.setAttribute('draggable', true);
+            }
+          });
+          row.addEventListener('dragstart', function(e) {
+            draggedRow = this;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', this.dataset.itemId);
+            setTimeout(function() { row.style.opacity = '0.5'; }, 0);
+          });
+          row.addEventListener('dragend', function(e) {
+            this.style.opacity = '1';
+            draggedRow = null;
+          });
+          row.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (draggedRow !== this && this.parentNode === draggedRow.parentNode) {
+              var bounding = this.getBoundingClientRect();
+              var offset = e.clientY - bounding.top;
+              if (offset > bounding.height / 2) {
+                this.parentNode.insertBefore(draggedRow, this.nextSibling);
+              } else {
+                this.parentNode.insertBefore(draggedRow, this);
+              }
+            }
+          });
+          row.addEventListener('drop', function(e) {
+            e.preventDefault();
+            var newOrder = Array.from(body.querySelectorAll('tr[data-item-id]')).map(function(r) { return r.dataset.itemId; });
+            var fd = new FormData();
+            newOrder.forEach(function(iid) { fd.append('item_id', iid); });
+            fetch('/templates/' + id + '/reorder', { method: 'POST', body: fd })
+              .then(function() { loadTplEditor(id, document.querySelector('.tpl-row-active')); })
+              .catch(function(err) { console.error('Reorder failed', err); });
+          });
+        });
+      })
+      .catch(function(){ body.innerHTML = '<div style="padding:20px;color:var(--err);">Failed to load template editor.</div>'; });
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Customer Records{% endblock %}
+{% block nav_records %}active{% endblock %}
+{% block page_title %}Customer Records{% endblock %}
+{% block page_crumb %}All Extractions{% endblock %}
+
+{% block content %}
+<div class="dash-card">
+  <div class="dash-card-header">
+    <div class="dash-card-title">Customer Records</div>
+    <span class="dash-card-count">{{ records|length }}</span>
+  </div>
+  {% if records %}
+  <table class="dash-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Quote</th>
+        <th>Customer</th>
+        <th>Email</th>
+        <th>Total</th>
+        <th>Install Date</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr class="clickable" data-href="/pdf?id={{ r['id'] }}">
+        <td><span class="id-pill">{{ r['display_num'] }}</span></td>
+        <td>{{ r['quote_number'] }}</td>
+        <td><strong>{{ r['customer_name'] }}</strong></td>
+        <td class="muted">{{ r['email'] }}</td>
+        <td>{{ r['total_price'] }}</td>
+        <td class="muted">{{ r['install_date'] }}</td>
+        <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
+          <form action="/admin/records/{{ r['id'] }}/delete" method="post" style="display:inline;"
+                onsubmit="return confirm('Delete this customer record? This cannot be undone.');">
+            <button type="submit" class="link-btn danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="dash-card-body">
+    <div class="empty-state">No customer records yet.</div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.querySelectorAll('tr.clickable[data-href]').forEach(function(row) {
+    row.addEventListener('click', function() {
+      window.location.href = row.dataset.href;
+    });
+  });
+</script>
+{% endblock %}

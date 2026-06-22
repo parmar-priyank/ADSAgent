@@ -385,7 +385,7 @@ def login_user_page(request: Request):
     """Public user login page."""
     user = _get_session(request)
     if user and user.get("role") == "user":
-        return RedirectResponse(url="/home", status_code=302)
+        return RedirectResponse(url="/user_home", status_code=302)
     if user and user.get("role") == "admin":
         return RedirectResponse(url="/admin", status_code=302)
     response = templates.TemplateResponse(request, "login_user.html", _login_ctx())
@@ -416,7 +416,7 @@ def login_user_post(
         )
         resp.headers.update(_NO_CACHE)
         return resp
-    response = RedirectResponse(url="/home", status_code=303)
+    response = RedirectResponse(url="/user_home", status_code=303)
     _set_session(response, user)
     return response
 
@@ -475,7 +475,7 @@ def toggle_theme(request: Request, user=Depends(require_login)):
     adb.set_user_theme(user["id"], "light" if current == "dark" else "dark")
     referer = request.headers.get("referer", "")
     origin = str(request.base_url).rstrip("/")
-    dest = referer if referer.startswith(origin) else "/home"
+    dest = referer if referer.startswith(origin) else "/user_home"
     return RedirectResponse(url=dest, status_code=303)
 
 
@@ -507,20 +507,67 @@ def _build_install_map(records: list) -> str:
     return json.dumps(install_map)
 
 
+def _admin_ctx(user: dict, **extra) -> dict:
+    """Common context shared by all admin pages."""
+    base = {
+        "current_user": user,
+        "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
+        "theme": _resolve_theme(user),
+    }
+    base.update(extra)
+    return base
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_dashboard(request: Request, user=Depends(require_admin)):
     records = db.get_recent()
-    response = templates.TemplateResponse(request, "admin.html", {
-        "current_user": user,
-        "users": adb.list_users(),
-        "records": records,
-        "install_map_json": _build_install_map(records),
-        "templates": tdb.list_templates(),
-        "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
-        "theme": _resolve_theme(user),
-        "error": None,
-        "success": None,
-    })
+    ctx = _admin_ctx(user,
+        users_count=len(adb.list_users()),
+        records_count=len(records),
+        templates_count=len(tdb.list_templates()),
+        install_map_json=_build_install_map(records),
+    )
+    response = templates.TemplateResponse(request, "admin_dashboard.html", ctx)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.get("/admin/users", response_class=HTMLResponse)
+def admin_users_page(request: Request, user=Depends(require_admin), success: str = None):
+    ctx = _admin_ctx(user,
+        users=adb.list_users(),
+        success="User created successfully." if success else None,
+        error=None,
+    )
+    response = templates.TemplateResponse(request, "admin_users.html", ctx)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.get("/admin/records", response_class=HTMLResponse)
+def admin_records_page(request: Request, user=Depends(require_admin)):
+    ctx = _admin_ctx(user, records=db.get_recent())
+    response = templates.TemplateResponse(request, "admin_records.html", ctx)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.get("/admin/templates", response_class=HTMLResponse)
+def admin_templates_page(request: Request, user=Depends(require_admin)):
+    ctx = _admin_ctx(user, templates=tdb.list_templates())
+    response = templates.TemplateResponse(request, "admin_templates.html", ctx)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.get("/admin/database", response_class=HTMLResponse)
+def admin_database_page(request: Request, user=Depends(require_admin)):
+    ctx = _admin_ctx(user)
+    response = templates.TemplateResponse(request, "admin_database.html", ctx)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -538,22 +585,14 @@ def admin_create_user(
     if role not in {"user", "admin"}:
         role = "user"
     ok = adb.create_user(username, password, role)
-    records = db.get_recent()
-    ctx = {
-        "current_user": user,
-        "users": adb.list_users(),
-        "records": records,
-        "install_map_json": _build_install_map(records),
-        "templates": tdb.list_templates(),
-        "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
-        "theme": _resolve_theme(user),
-        "error": (
-            f"Username '{username}' already exists, is invalid, or password is too short (min. 8 characters)."
-            if not ok else None
-        ),
-        "success": f"User '{username}' created successfully." if ok else None,
-    }
-    response = templates.TemplateResponse(request, "admin.html", ctx)
+    if ok:
+        return RedirectResponse(url="/admin/users?success=1", status_code=303)
+    ctx = _admin_ctx(user,
+        users=adb.list_users(),
+        error=f"Username '{username}' already exists, is invalid, or password is too short (min. 8 characters).",
+        success=None,
+    )
+    response = templates.TemplateResponse(request, "admin_users.html", ctx)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -582,20 +621,23 @@ def admin_delete_user(user_id: int, request: Request, user=Depends(require_admin
     if user_id == user["id"]:
         raise HTTPException(400, "Cannot delete your own account.")
     adb.delete_user(user_id)
-    return RedirectResponse(url="/admin#users", status_code=303)
+    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 @app.post("/admin/records/{record_id}/delete")
 def admin_delete_record(record_id: int, request: Request, user=Depends(require_admin)):
     db.delete_quote(record_id)
-    return RedirectResponse(url="/admin#records", status_code=303)
+    return RedirectResponse(url="/admin/records", status_code=303)
 
 
 @app.post("/admin/settings/theme")
-def admin_set_theme(request: Request, theme: str = Form(...), hash: str = Form(""), user=Depends(require_admin)):
+def admin_set_theme(request: Request, theme: str = Form(...), user=Depends(require_admin),
+                    referer: str = None):
     if theme in ("dark", "light"):
         adb.set_setting("user_panel_theme", theme)
-    dest = f"/admin{hash}" if hash else "/admin"
+    ref = request.headers.get("referer", "")
+    origin = str(request.base_url).rstrip("/")
+    dest = ref if (ref.startswith(origin + "/admin")) else "/admin"
     return RedirectResponse(url=dest, status_code=303)
 
 
@@ -646,10 +688,10 @@ def root_redirect(request: Request):
     user = _get_session(request)
     if user and user.get("role") == "admin":
         return RedirectResponse(url="/admin", status_code=302)
-    return RedirectResponse(url="/home", status_code=302)
+    return RedirectResponse(url="/user_home", status_code=302)
 
 
-@app.get("/home", response_class=HTMLResponse)
+@app.get("/user_home", response_class=HTMLResponse)
 def home(request: Request, user=Depends(require_login)):
     response = templates.TemplateResponse(request, "home.html", _index_context(user=user))
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -939,7 +981,7 @@ async def templates_upload(
     blob = await file.read()
     items, headers, note = cx.parse_xlsx(blob)
     tdb.create_template(name, blob, items, note)
-    return RedirectResponse(url="/admin#templates", status_code=303)
+    return RedirectResponse(url="/admin/templates", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/add")
@@ -948,7 +990,7 @@ def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
              user=Depends(require_admin)):  # M4 — admin only
     tdb.add_item(template_id, text=text, sno=sno,
                  is_section=bool(is_section), reference=reference)
-    return RedirectResponse(url="/admin#templates", status_code=303)
+    return RedirectResponse(url="/admin", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/update")
@@ -957,7 +999,7 @@ def item_update(template_id: int, item_id: int,
                 reference: str = Form(""), prompt: str = Form(""),
                 user=Depends(require_admin)):  # M4 — admin only
     tdb.update_item(item_id, text=text, sno=sno, reference=reference, prompt=prompt)
-    return RedirectResponse(url="/admin#templates", status_code=303)
+    return RedirectResponse(url="/admin", status_code=303)
 
 
 @app.post("/templates/{template_id}/save-all")
@@ -970,13 +1012,13 @@ async def items_save_all(template_id: int, request: Request, user=Depends(requir
     prompts = form.getlist("prompt")
     for item_id, sno, text, ref, prompt in zip(item_ids, snos, texts, refs, prompts):
         tdb.update_item(int(item_id), text=text, sno=sno, reference=ref, prompt=prompt)
-    return RedirectResponse(url="/admin#templates", status_code=303)
+    return RedirectResponse(url="/admin", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/delete")
 def item_delete(template_id: int, item_id: int, user=Depends(require_admin)):  # M4
     tdb.delete_item(item_id)
-    return RedirectResponse(url="/admin#templates", status_code=303)
+    return RedirectResponse(url="/admin", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/move")
@@ -990,7 +1032,7 @@ def item_move(template_id: int, item_id: int, direction: str = Form(...),
         if 0 <= j < len(ids):
             ids[i], ids[j] = ids[j], ids[i]
             tdb.reorder_items(template_id, ids)
-    return RedirectResponse(url="/admin#templates", status_code=303)
+    return RedirectResponse(url="/admin", status_code=303)
 
 
 @app.post("/templates/{template_id}/reorder")
@@ -1021,7 +1063,7 @@ def admin_template_fragment(template_id: int, request: Request, user=Depends(req
 @app.post("/templates/{template_id}/delete")
 def template_delete(template_id: int, user=Depends(require_admin)):  # M4
     tdb.delete_template(template_id)
-    return RedirectResponse(url="/admin#templates", status_code=303)
+    return RedirectResponse(url="/admin", status_code=303)
 
 
 @app.get("/templates/{template_id}/download")
