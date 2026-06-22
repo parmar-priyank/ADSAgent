@@ -106,7 +106,6 @@
 }
 .upload-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .upload-card-header .upload-card-title { margin-bottom: 0; }
-.editor-link { font-size: 12px; padding: 4px 9px; }
 .tpl-inline-name {
   width: 100%; margin-top: 14px; padding: 11px 13px;
   border: 1px solid var(--line2); border-radius: 10px;
@@ -233,6 +232,28 @@
 .chip-na  { background: var(--surface3); color: var(--muted); }
 
 /* --------------------------------------------------------------------------
+   Navbar centre page title / breadcrumb
+   -------------------------------------------------------------------------- */
+.user-nav-page-title {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 6px;
+  pointer-events: none;
+}
+.user-nav-page-crumb {
+  font-size: 12px; color: var(--muted); font-weight: 500;
+}
+.user-nav-page-sep {
+  font-size: 12px; color: var(--line2);
+}
+.user-nav-page-name {
+  font-size: 13px; font-weight: 700; color: var(--ink);
+  letter-spacing: -.01em;
+}
+[data-theme="light"] .user-nav-page-crumb { color: #999; }
+[data-theme="light"] .user-nav-page-sep   { color: #ccc; }
+[data-theme="light"] .user-nav-page-name  { color: var(--ink); }
+
+/* --------------------------------------------------------------------------
    HOME PAGE TOPBAR (replaces hero banner for user page)
    -------------------------------------------------------------------------- */
 .home-topbar {
@@ -247,6 +268,7 @@
   height: 62px;
   display: flex; align-items: center; justify-content: space-between;
   box-sizing: border-box;
+  position: relative;
 }
 
 /* Brand */

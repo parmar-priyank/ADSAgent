@@ -1,0 +1,116 @@
+{% extends "user_base.html" %}
+
+{% block title %}QC Cross-Check{% endblock %}
+{% block nav_crumb %}Upload Agreement{% endblock %}
+{% block nav_title %}QC Cross-Check{% endblock %}
+
+{% block nav_back %}
+<a href="/user_upload?id={{ quote_id }}" class="home-nav-btn">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="15 18 9 12 15 6"/>
+  </svg>
+  Back
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="wrap" style="max-width:760px;padding-top:32px;">
+
+  <div class="user-result-wrap" style="margin-top:8px;">
+    <div class="user-step-label">
+      <span class="user-step-num">2</span>
+      QC Cross-Check
+    </div>
+  </div>
+
+  <div class="card" style="border-color:rgba(245,166,35,.35);box-shadow:0 0 0 3px rgba(245,166,35,.06),var(--shadow-card);margin-top:16px;">
+    <h2>QC Cross-Check</h2>
+    <p style="font-size:14px;color:var(--muted);margin:0 0 24px;">
+      Select a checklist template, then upload the ZIP containing the supporting documents (images &amp; PDFs) referenced in that template.
+    </p>
+
+    {% if error %}
+    <div style="padding:12px;background:var(--err-bg);border:1px solid rgba(248,113,113,.25);border-radius:8px;font-size:13px;color:var(--err);margin-bottom:18px;">
+      &#9888; {{ error }}
+    </div>
+    {% endif %}
+
+    <form action="/run-checklist" method="post" enctype="multipart/form-data" id="check-form">
+      <input type="hidden" name="quote_id" value="{{ quote_id }}">
+
+      {% if saved_templates %}
+      <div style="margin-bottom:20px;">
+        <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;">Checklist Template</label>
+        <select name="template_id" required
+                style="width:100%;padding:10px 12px;border:1px solid var(--line2);border-radius:8px;font-size:14px;background:var(--surface3);color:var(--ink);">
+          {% for t in saved_templates %}
+          <option value="{{ t['id'] }}">{{ t['name'] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% else %}
+      <div style="padding:12px;background:var(--err-bg);border:1px solid rgba(248,113,113,.25);border-radius:8px;font-size:13px;color:var(--err);margin-bottom:18px;">
+        No checklist templates found. <a href="/Excel" style="color:var(--brand);">Upload one first &rarr;</a>
+      </div>
+      {% endif %}
+
+      <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;">Supporting Documents (.zip)</label>
+      <label class="dropzone" id="zip-dropzone" style="min-height:160px;">
+        <div class="icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <div class="prompt">Drop a <strong>.zip</strong> file here, or <strong>browse</strong></div>
+        <div class="hint">Must contain the files listed in the Reference column of the template</div>
+        <div class="filename" id="zip-filename"></div>
+        <input type="file" name="zip_file" id="zipInput" accept=".zip" required>
+      </label>
+
+      <div class="actions" style="margin-top:20px;">
+        <button type="submit" id="check-submit-btn">Run Checklist &rarr;</button>
+      </div>
+
+      <div id="check-loading" style="display:none;text-align:center;padding:24px 0;color:var(--muted);font-size:14px;">
+        <div class="check-spinner"></div>
+        Analysing documents with AI &mdash; this may take up to a minute&hellip;
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var dz    = document.getElementById('zip-dropzone');
+    var input = document.getElementById('zipInput');
+    var label = document.getElementById('zip-filename');
+    if (!dz || !input) return;
+    var sync = function() { label.textContent = input.files.length ? input.files[0].name : ''; };
+    input.addEventListener('change', sync);
+    ['dragenter','dragover'].forEach(function(e) {
+      dz.addEventListener(e, function(ev) { ev.preventDefault(); dz.classList.add('drag'); });
+    });
+    ['dragleave','drop'].forEach(function(e) {
+      dz.addEventListener(e, function(ev) { ev.preventDefault(); dz.classList.remove('drag'); });
+    });
+    dz.addEventListener('drop', function(ev) {
+      if (ev.dataTransfer.files.length) { input.files = ev.dataTransfer.files; sync(); }
+    });
+    document.getElementById('check-form').addEventListener('submit', function(e) {
+      if (!input.files.length) {
+        e.preventDefault(); alert('Please select a ZIP file before submitting.'); return;
+      }
+      document.getElementById('check-submit-btn').disabled = true;
+      document.getElementById('check-submit-btn').style.display = 'none';
+      document.getElementById('check-loading').style.display = 'block';
+    });
+  })();
+</script>
+{% endblock %}

@@ -175,6 +175,21 @@ def find_by_filename(filename: str):
         return _attach_line_items(conn, quotes)[0]
 
 
+def find_by_quote_number(quote_number: str):
+    """Return the existing quote with this quote_number, or None."""
+    if not quote_number:
+        return None
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM quotes WHERE quote_number = ? ORDER BY id DESC LIMIT 1",
+            (quote_number,),
+        ).fetchone()
+        if not row:
+            return None
+        quotes = [dict(row)]
+        return _attach_line_items(conn, quotes)[0]
+
+
 def delete_quote(quote_id: int):
     """Delete a quote and its line items (cascade handles line_items)."""
     with get_db() as conn:

@@ -74,6 +74,8 @@
   display: grid; place-items: center;
   font-size: 14px; font-weight: 800; color: #000;
 }
+.sidebar-footer { padding: 14px; border-top: 1px solid var(--line); }
+.sidebar-user   { display: flex; align-items: center; gap: 10px; padding: 6px 10px; }
 .sidebar-user-name { font-size: 13.5px; color: var(--ink); font-weight: 600; }
 .sidebar-user-role { font-size: 11px; color: var(--muted); margin-top: 1px; }
 

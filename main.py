@@ -1,10 +1,11 @@
-import os
+﻿import os
 import io
 import json
 import base64
 import mimetypes
 import secrets
 import sqlite3
+import asyncio
 import urllib.request
 import urllib.parse
 import zipfile as zipmod
@@ -31,7 +32,7 @@ import excel as cx         # parse / build checklist Excel files
 import users as adb        # user accounts
 
 # ---------------------------------------------------------------------------
-# Config — loaded from .env
+# Config â€" loaded from .env
 # ---------------------------------------------------------------------------
 load_dotenv()
 
@@ -67,15 +68,15 @@ def _verify_recaptcha(token: str) -> bool:
     except Exception:
         return False
 
-# Module-level Groq client — instantiated once, reused on every request.
-_groq_client: "Groq | None" = None
+# Groq client initialised once at module load -- no mutable global, no race condition.
+if not GROQ_API_KEY:
+    _groq_client = None
+else:
+    _groq_client = Groq(api_key=GROQ_API_KEY)
 
-def _get_groq() -> "Groq":
-    global _groq_client
+def _get_groq():
     if _groq_client is None:
-        if not GROQ_API_KEY:
-            raise HTTPException(500, "GROQ_API_KEY not set. Add it to your .env file.")
-        _groq_client = Groq(api_key=GROQ_API_KEY)
+        raise HTTPException(500, "GROQ_API_KEY not set. Add it to your .env file.")
     return _groq_client
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB hard cap for all uploads
@@ -84,7 +85,7 @@ _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "
 
 # A random ID generated fresh every time the server starts.
 # Embedding it in every session token means all existing sessions are
-# automatically invalidated on restart — users must log in again.
+# automatically invalidated on restart â€" users must log in again.
 _SERVER_INSTANCE_ID = secrets.token_hex(8)
 
 # Rate limiter (keyed by client IP)
@@ -138,7 +139,7 @@ _signer = URLSafeTimedSerializer(SECRET_KEY)
 # ---------------------------------------------------------------------------
 COOKIE = "session"
 
-SESSION_MAX_AGE = 86400 * 7  # 7 days — must match _signer max_age in _get_session
+SESSION_MAX_AGE = 86400 * 7  # 7 days â€" must match _signer max_age in _get_session
 
 def _set_session(response, user: dict):
     token = _signer.dumps({
@@ -163,7 +164,7 @@ def _get_session(request: Request):
         data = _signer.loads(token, max_age=SESSION_MAX_AGE)
     except BadSignature:
         return None
-    # Reject tokens issued before this server boot — forces re-login on restart.
+    # Reject tokens issued before this server boot â€" forces re-login on restart.
     if data.get("sid") != _SERVER_INSTANCE_ID:
         return None
     return data
@@ -184,8 +185,7 @@ def require_login(request: Request):
     user = _get_session(request)
     if not user:
         raise _AuthRedirect("/login")
-    if user.get("role") == "admin":
-        raise _AuthRedirect("/admin")
+    # Admins are allowed to use user pages (e.g. for testing).
     return user
 
 def require_admin(request: Request):
@@ -238,9 +238,9 @@ def extract_pdf_text(file_bytes: bytes) -> str:
             full_parts.append(page.extract_text() or "")
 
     return (
-        "===== LEFT COLUMN — CUSTOMER SIDE (use for the customer_* fields) =====\n"
+        "===== LEFT COLUMN - CUSTOMER SIDE (use for the customer_* fields) =====\n"
         + "\n".join(left_parts)
-        + "\n\n===== RIGHT COLUMN — RETAILER SIDE (use for the retailer_* fields; "
+        + "\n\n===== RIGHT COLUMN - RETAILER SIDE (use for the retailer_* fields; "
           "do NOT use for customer fields) =====\n"
         + "\n".join(right_parts)
         + "\n\n===== FULL TEXT (use ONLY for pricing/dates) =====\n"
@@ -258,8 +258,8 @@ EXTRACTION_SCHEMA = {
     "contact_person": "string (the customer's contact person only, never 'Nik' or the retailer's)",
     "billing_address": "string (single line, comma separated; the customer's billing address only)",
     "delivery_address": "string (single line, comma separated; the customer's delivery address only)",
-    "email": "string (the customer's email, e.g. a personal address — never sales@adssolar.com.au)",
-    "phone": "string (the customer's phone/mobile — never the retailer's 1300 number)",
+    "email": "string (the customer's email, e.g. a personal address -- never sales@adssolar.com.au)",
+    "phone": "string (the customer's phone/mobile -- never the retailer's 1300 number)",
     "retailer_name": "string (the retailer, e.g. 'ADS Pty Ltd t/as ADS Solar')",
     "retailer_contact_person": "string (the retailer's contact person, e.g. 'Nik')",
     "retailer_postal_address": "string (single line; the retailer's postal address, e.g. 'PO Box 6208, Norwest NSW 2153')",
@@ -283,7 +283,7 @@ EXTRACTION_SCHEMA = {
         "\"price\": string (the dollar amount shown on that row, e.g. "
         "'$ 31,742.62', '$ 3,142.62', '$ -1,400.00', '$ 21,100.00'; empty if the row has "
         "no price)}. IMPORTANT: read the prices from the 'FULL TEXT' section, where each "
-        "amount appears at the END of its row — do not leave a price blank if the FULL "
+        "amount appears at the END of its row -- do not leave a price blank if the FULL "
         "TEXT shows a dollar amount for that row."
     ),
     "system_price": "string",
@@ -310,7 +310,7 @@ def extract_with_groq(text: str) -> dict:
         "NEVER mix in retailer details: the retailer is 'ADS Pty Ltd t/as ADS Solar', "
         "its contact person is 'Nik', its postal address contains 'PO Box 6208 / Norwest', "
         "its street address is 'Solent Circuit, Baulkham Hills', its email is "
-        "'sales@adssolar.com.au', and its phone is a 1300 number — none of these belong "
+        "'sales@adssolar.com.au', and its phone is a 1300 number -- none of these belong "
         "in customer fields. The CUSTOMER section is under the 'LEFT COLUMN' heading "
         "and is the source for the customer_* fields. The RETAILER section is under the "
         "'RIGHT COLUMN' heading and IS the source for the retailer_* fields: fill "
@@ -320,7 +320,7 @@ def extract_with_groq(text: str) -> dict:
         "Do NOT use the RIGHT section for any customer field, and do NOT use the LEFT "
         "section for any retailer field. For the line_items pricing table, take the PRICE for "
         "each row from the 'FULL TEXT' section (the column-split text clips the price "
-        "column, so prices may be missing there) — every row that shows a dollar amount "
+        "column, so prices may be missing there) -- every row that shows a dollar amount "
         "in the FULL TEXT must carry that amount in its 'price'. "
         "Return ONLY a valid JSON object matching the schema, "
         "with no markdown, no code fences, and no commentary. If a field is missing, "
@@ -357,7 +357,7 @@ def _resolve_theme(user: dict) -> str:
 
 
 def _index_context(user=None, **extra):
-    """Common context for any render of home.html."""
+    """Common context for any render of user_home.html."""
     saved = tdb.list_templates()
     base = {
         "records": db.get_recent(),
@@ -423,7 +423,7 @@ def login_user_post(
 
 @app.get("/admin-dashboard", response_class=HTMLResponse)
 def login_admin_page(request: Request):
-    """Secret admin login — URL not publicly linked anywhere."""
+    """Secret admin login â€" URL not publicly linked anywhere."""
     user = _get_session(request)
     if user and user.get("role") == "admin":
         return RedirectResponse(url="/admin", status_code=302)
@@ -470,12 +470,17 @@ def logout(request: Request):
 
 
 @app.post("/toggle-theme")
-def toggle_theme(request: Request, user=Depends(require_login)):
+async def toggle_theme(request: Request, user=Depends(require_login)):
     current = _resolve_theme(user)
     adb.set_user_theme(user["id"], "light" if current == "dark" else "dark")
-    referer = request.headers.get("referer", "")
+    form = await request.form()
+    next_url = form.get("next", "")
     origin = str(request.base_url).rstrip("/")
-    dest = referer if referer.startswith(origin) else "/user_home"
+    if next_url and next_url.startswith(origin):
+        dest = next_url
+    else:
+        referer = request.headers.get("referer", "")
+        dest = referer if referer.startswith(origin) else "/user_home"
     return RedirectResponse(url=dest, status_code=303)
 
 
@@ -581,7 +586,7 @@ def admin_create_user(
     role: str = Form("user"),
     user=Depends(require_admin),
 ):
-    # H2 — allowlist role to prevent arbitrary role injection via crafted POST
+    # H2 â€" allowlist role to prevent arbitrary role injection via crafted POST
     if role not in {"user", "admin"}:
         role = "user"
     ok = adb.create_user(username, password, role)
@@ -669,10 +674,13 @@ async def db_restore(request: Request, file: UploadFile = File(...), user=Depend
     from database import DB_PATH
     import shutil, tempfile
     data = await file.read()
-    # Validate it's a SQLite file
     if not data.startswith(b"SQLite format 3"):
         raise HTTPException(400, "Invalid file — must be a SQLite database.")
-    # Write to a temp file then atomically replace the live DB
+    # Snapshot the live DB before overwriting so the admin can recover if the
+    # uploaded file turns out to be corrupt despite passing the header check.
+    backup_path = DB_PATH + ".pre_restore_backup"
+    if os.path.exists(DB_PATH):
+        shutil.copy2(DB_PATH, backup_path)
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.write(data)
     tmp.close()
@@ -693,7 +701,7 @@ def root_redirect(request: Request):
 
 @app.get("/user_home", response_class=HTMLResponse)
 def home(request: Request, user=Depends(require_login)):
-    response = templates.TemplateResponse(request, "home.html", _index_context(user=user))
+    response = templates.TemplateResponse(request, "user_home.html", _index_context(user=user))
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -702,7 +710,7 @@ def home(request: Request, user=Depends(require_login)):
 @app.get("/qc-check", response_class=HTMLResponse)
 def qc_check_page(request: Request, quote_id: str = "", user=Depends(require_login)):
     saved = tdb.list_templates()
-    resp = templates.TemplateResponse(request, "qc_check.html", {
+    resp = templates.TemplateResponse(request, "user_qc.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
         "quote_id": quote_id,
@@ -727,12 +735,12 @@ async def upload_zip(
         raise HTTPException(404, "Template not found.")
     items = tdb.get_items(template_id)
 
-    # Extract ZIP into a flat dict: lowercase filename → bytes
+    # Extract ZIP into a flat dict: lowercase filename â†' bytes
     data = await zip_file.read()
 
     def _qc_error(error: str):
         saved = tdb.list_templates()
-        resp = templates.TemplateResponse(request, "qc_check.html", {
+        resp = templates.TemplateResponse(request, "user_qc.html", {
             "current_user": user,
             "theme": _resolve_theme(user),
             "quote_id": quote_id,
@@ -749,7 +757,7 @@ async def upload_zip(
     try:
         with zipmod.ZipFile(io.BytesIO(data)) as zf:
             for name in zf.namelist():
-                # H3 — use os.path.basename to handle both / and \ separators safely
+                # H3 â€" use os.path.basename to handle both / and \ separators safely
                 basename = os.path.basename(name).strip()
                 if basename:
                     zip_files[basename.lower()] = zf.read(name)
@@ -818,19 +826,30 @@ async def upload_zip(
                 return {"status": "N/A", "remark": f"Unsupported file type: {mime}"}
 
         except Exception:
-            # M6 — never expose internal exception details to the user
+            # M6 â€" never expose internal exception details to the user
             return {"status": "N/A", "remark": "Error analysing file. Please check the file format and try again."}
 
-    # Run analysis for every non-section item that has a reference
+    # Run analysis concurrently — each Groq call is a blocking HTTP request so
+    # we offload to threads to avoid freezing the event loop.
+    non_section = [(i, item) for i, item in enumerate(items) if not item.get("is_section")]
+    section_rows = {i: item for i, item in enumerate(items) if item.get("is_section")}
+
+    results = await asyncio.gather(
+        *[asyncio.to_thread(_analyse_item, item) for _, item in non_section]
+    )
+
     checklist_rows = []
     filled: dict[int, dict] = {}
-    for item in items:
+    ns_iter = iter(zip(non_section, results))
+    next_ns = next(ns_iter, None)
+    for i, item in enumerate(items):
         if item.get("is_section"):
             checklist_rows.append({**item, "status": "", "remark": ""})
-            continue
-        result = _analyse_item(item)
-        filled[item["position"]] = result
-        checklist_rows.append({**item, "status": result["status"], "remark": result["remark"]})
+        else:
+            (_, _item), result = next_ns
+            filled[item["position"]] = result
+            checklist_rows.append({**item, "status": result["status"], "remark": result["remark"]})
+            next_ns = next(ns_iter, None)
 
     # Build a downloadable Excel blob with the results filled in
     headers = {
@@ -840,16 +859,35 @@ async def upload_zip(
     }
     xlsx_blob = cx.build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled)
 
-    # Store blob temporarily in session via a signed token so download works
+    # Two separate signed tokens so neither URL param grows too large.
+    # result_token carries tpl + rows + quote_id (no binary blob).
+    # dl_token carries only the xlsx bytes and is reused by the download endpoint.
     xlsx_b64 = base64.b64encode(xlsx_blob).decode()
     dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]})
-
-    resp = templates.TemplateResponse(request, "checklist_result.html", {
-        "current_user": user,
-        "tpl": tpl,
-        "checklist_rows": checklist_rows,
-        "dl_token": dl_token,
+    # Strip the raw Excel blob from tpl — it is bytes and not JSON-serialisable.
+    tpl_safe = {k: v for k, v in tpl.items() if not isinstance(v, (bytes, bytearray))}
+    result_token = _signer.dumps({
+        "tpl": tpl_safe,
+        "rows": checklist_rows,
         "quote_id": quote_id,
+        "dl_token": dl_token,
+    })
+    rt_enc = urllib.parse.quote(result_token, safe="")
+    return RedirectResponse(url=f"/checklist-result?token={rt_enc}", status_code=303)
+
+
+@app.get("/checklist-result", response_class=HTMLResponse)
+def checklist_result(request: Request, token: str, user=Depends(require_login)):
+    try:
+        payload = _signer.loads(token, max_age=7200)
+    except BadSignature:
+        raise HTTPException(400, "Result link has expired. Please re-run the checklist.")
+    resp = templates.TemplateResponse(request, "user_result.html", {
+        "current_user": user,
+        "tpl": payload["tpl"],
+        "checklist_rows": payload["rows"],
+        "dl_token": payload["dl_token"],
+        "quote_id": payload["quote_id"],
         "theme": _resolve_theme(user),
     })
     resp.headers.update(_NO_CACHE)
@@ -859,7 +897,7 @@ async def upload_zip(
 @app.get("/checklist-download", response_class=Response)
 def checklist_download(token: str, _auth=Depends(require_login)):
     try:
-        payload = _signer.loads(token, max_age=3600)
+        payload = _signer.loads(token, max_age=7200)
     except BadSignature:
         raise HTTPException(400, "Invalid or expired download token.")
     xlsx_blob = base64.b64decode(payload["xlsx"])
@@ -891,7 +929,7 @@ def quote_detail(request: Request, id: int = None, user=Depends(require_login)):
         record["id"],
     )
     response = templates.TemplateResponse(
-        request, "quote_detail.html",
+        request, "user_pdf.html",
         {"record": record, "display_num": display_num, "current_user": user, "theme": _resolve_theme(user), "user_panel_theme": adb.get_setting("user_panel_theme", "dark")},
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -912,7 +950,7 @@ def upload_get(request: Request, id: int = None, user=Depends(require_login)):
         if record:
             result = record.get("data") or record
             result["id"] = id
-    response = templates.TemplateResponse(request, "home.html", _index_context(user=user, result=result))
+    response = templates.TemplateResponse(request, "user_home.html", _index_context(user=user, result=result))
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -925,23 +963,29 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
 
     file_bytes = await file.read()
 
-    # H1 — file size cap
+    # H1 â€" file size cap
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         resp = templates.TemplateResponse(
-            request, "home.html",
+            request, "user_home.html",
             _index_context(user=user, error="PDF file is too large. Maximum allowed size is 30 MB."),
         )
         resp.headers.update(_NO_CACHE)
         return resp
 
-    # Check if this filename was already extracted — skip Groq if user wants to reuse
-    existing = db.find_by_filename(file.filename)
+    # Duplicate detection: extract the quote number from the PDF first (cheap text
+    # scan), then look it up by quote_number — not filename, which is not unique
+    # across different customers who both happen to save their file as "quote.pdf".
+    import re as _re
+    _qn_text = extract_pdf_text(file_bytes)
+    _qn_match = _re.search(r'(?i)quote\s*(?:number|no\.?|#)?\s*[:\-]?\s*([A-Z0-9\-]{4,20})', _qn_text)
+    _detected_qn = _qn_match.group(1).strip() if _qn_match else None
+    existing = db.find_by_quote_number(_detected_qn) if _detected_qn else None
     if existing:
         pdf_b64 = base64.b64encode(file_bytes).decode()
         pdf_token = _signer.dumps({"pdf": pdf_b64, "filename": file.filename})
         existing_data = existing.get("data") or existing
         existing_data["id"] = existing["id"]
-        resp = templates.TemplateResponse(request, "upload_confirm.html", {
+        resp = templates.TemplateResponse(request, "user_confirm.html", {
             "current_user": user,
             "theme": _resolve_theme(user),
             "existing": existing_data,
@@ -957,7 +1001,7 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
         data = extract_with_groq(text)
     except AuthenticationError:
         resp = templates.TemplateResponse(
-            request, "home.html",
+            request, "user_home.html",
             _index_context(user=user, error="Invalid Groq API key. Check the GROQ_API_KEY value in your .env file "
                                  "(it should start with 'gsk_') and restart the server."),
         )
@@ -965,7 +1009,7 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
         return resp
     except GroqError:
         resp = templates.TemplateResponse(
-            request, "home.html",
+            request, "user_home.html",
             _index_context(user=user, error="AI service error. Please try again in a moment."),
         )
         resp.headers.update(_NO_CACHE)
@@ -986,12 +1030,12 @@ async def upload_confirm(
     if action == "keep":
         return RedirectResponse(url=f"/user_upload?id={existing_id}", status_code=303)
 
-    # action == "reextract" — decode the stored PDF and run Groq
+    # action == "reextract" â€" decode the stored PDF and run Groq
     try:
         payload = _signer.loads(pdf_token, max_age=3600)
     except BadSignature:
         resp = templates.TemplateResponse(
-            request, "home.html",
+            request, "user_home.html",
             _index_context(user=user, error="Session expired. Please upload the PDF again."),
         )
         resp.headers.update(_NO_CACHE)
@@ -1005,14 +1049,14 @@ async def upload_confirm(
         data = extract_with_groq(text)
     except AuthenticationError:
         resp = templates.TemplateResponse(
-            request, "home.html",
+            request, "user_home.html",
             _index_context(user=user, error="Invalid Groq API key."),
         )
         resp.headers.update(_NO_CACHE)
         return resp
     except GroqError:
         resp = templates.TemplateResponse(
-            request, "home.html",
+            request, "user_home.html",
             _index_context(user=user, error="AI service error. Please try again in a moment."),
         )
         resp.headers.update(_NO_CACHE)
@@ -1033,7 +1077,7 @@ def template_editor(request: Request, user=Depends(require_login)):
     tpl = tdb.get_template(all_templates[0]["id"])
     items = tdb.get_items(tpl["id"])
     response = templates.TemplateResponse(
-        request, "templates.html",
+        request, "user_excel.html",
         {"templates": all_templates, "selected": tpl, "items": items,
          "current_user": user, "theme": _resolve_theme(user)},
     )
@@ -1050,7 +1094,7 @@ def template_editor_by_id(request: Request, template_id: int, user=Depends(requi
     items = tdb.get_items(template_id)
     all_templates = tdb.list_templates()
     response = templates.TemplateResponse(
-        request, "templates.html",
+        request, "user_excel.html",
         {"templates": all_templates, "selected": tpl, "items": items,
          "current_user": user, "theme": _resolve_theme(user)},
     )
@@ -1064,7 +1108,7 @@ async def templates_upload(
     request: Request,
     name: str = Form(...),
     file: UploadFile = File(...),
-    user=Depends(require_admin),  # M4 — admin only
+    user=Depends(require_admin),  # M4 â€" admin only
 ):
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(400, "Please upload an .xlsx checklist template.")
@@ -1077,7 +1121,7 @@ async def templates_upload(
 @app.post("/templates/{template_id}/items/add")
 def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
              is_section: str = Form(""), reference: str = Form(""),
-             user=Depends(require_admin)):  # M4 — admin only
+             user=Depends(require_admin)):  # M4 â€" admin only
     tdb.add_item(template_id, text=text, sno=sno,
                  is_section=bool(is_section), reference=reference)
     return RedirectResponse(url="/admin", status_code=303)
@@ -1087,7 +1131,7 @@ def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
 def item_update(template_id: int, item_id: int,
                 text: str = Form(...), sno: str = Form(""),
                 reference: str = Form(""), prompt: str = Form(""),
-                user=Depends(require_admin)):  # M4 — admin only
+                user=Depends(require_admin)):  # M4 â€" admin only
     tdb.update_item(item_id, text=text, sno=sno, reference=reference, prompt=prompt)
     return RedirectResponse(url="/admin", status_code=303)
 
@@ -1142,7 +1186,7 @@ def admin_template_fragment(template_id: int, request: Request, user=Depends(req
         raise HTTPException(404, "Template not found.")
     items = tdb.get_items(template_id)
     response = templates.TemplateResponse(
-        request, "template_fragment.html",
+        request, "user_fragment.html",
         {"tpl": tpl, "items": items, "current_user": user, "theme": _resolve_theme(user)},
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -1180,3 +1224,4 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
