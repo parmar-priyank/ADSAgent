@@ -94,8 +94,9 @@
         <div class="dash-topbar-title" id="topbar-title">Dashboard</div>
         <div class="dash-topbar-breadcrumb" id="topbar-breadcrumb">Overview</div>
       </div>
-      <form method="post" action="/admin/settings/theme" style="margin:0;">
+      <form method="post" action="/admin/settings/theme" style="margin:0;" onsubmit="document.getElementById('theme-hash').value = window.location.hash;">
         <input type="hidden" name="theme" value="{{ 'light' if user_panel_theme == 'dark' else 'dark' }}">
+        <input type="hidden" name="hash" id="theme-hash" value="">
         <button type="submit" class="theme-toggle" title="User panel is {{ user_panel_theme }} — click to switch">
           {% if user_panel_theme == 'dark' %}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -544,25 +545,100 @@
           title.textContent = meta.dataset.tplName + ' · Editor';
           count.textContent = meta.dataset.tplItems + ' items';
         }
-        // Wire up save-all form
-        var saveAllForm = body.querySelector('#tpl-save-all-form');
-        if (saveAllForm) {
-          saveAllForm.addEventListener('submit', function(e) {
-            var form = this;
-            body.querySelectorAll('tr[data-item-id]').forEach(function(r) {
-              var iid    = r.dataset.itemId;
-              var sno    = r.querySelector('input[name="sno"]').value;
-              var text   = r.querySelector('input[name="text"]').value;
-              var ref    = r.querySelector('input[name="reference"]').value;
-              var prompt = r.querySelector('input[name="prompt"]').value;
-              [['item_id',iid],['sno',sno],['text',text],['reference',ref],['prompt',prompt]].forEach(function(p){
-                var inp = document.createElement('input');
-                inp.type = 'hidden'; inp.name = p[0]; inp.value = p[1];
-                form.appendChild(inp);
+        // Intercept all form submissions inside the editor
+        body.querySelectorAll('form').forEach(function(form) {
+          form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var submitter = e.submitter;
+            var action = (submitter && submitter.hasAttribute('formaction')) ? submitter.getAttribute('formaction') : form.getAttribute('action');
+            var method = form.getAttribute('method') || 'post';
+
+            // if it's save-all, inject the hidden inputs
+            if (form.id === 'tpl-save-all-form') {
+              body.querySelectorAll('tr[data-item-id]').forEach(function(r) {
+                var iid    = r.dataset.itemId;
+                var sno    = r.querySelector('input[name="sno"]').value;
+                var text   = r.querySelector('input[name="text"]').value;
+                var ref    = r.querySelector('input[name="reference"]').value;
+                var prompt = r.querySelector('input[name="prompt"]').value;
+                [['item_id',iid],['sno',sno],['text',text],['reference',ref],['prompt',prompt]].forEach(function(p){
+                  var inp = document.createElement('input');
+                  inp.type = 'hidden'; inp.name = p[0]; inp.value = p[1];
+                  form.appendChild(inp);
+                });
               });
+            }
+
+            var formData = new FormData(form);
+            if (submitter && submitter.name) {
+              formData.append(submitter.name, submitter.value);
+            }
+
+            if (submitter) submitter.disabled = true;
+
+            fetch(action, {
+              method: method,
+              body: formData
+            }).then(function() {
+              // On success, reload the editor fragment
+              loadTplEditor(id, document.querySelector('.tpl-row-active'));
+            }).catch(function(err) {
+              console.error('Action failed', err);
+              if (submitter) submitter.disabled = false;
+              alert('An error occurred. Please try again.');
             });
           });
-        }
+        });
+
+        // Setup Drag and Drop for reordering rows
+        var draggedRow = null;
+        body.querySelectorAll('tr[data-item-id]').forEach(function(row) {
+          row.style.cursor = 'grab';
+          
+          row.addEventListener('mousedown', function(e) {
+            if (['INPUT', 'BUTTON', 'A', 'TEXTAREA', 'SELECT'].indexOf(e.target.tagName) !== -1) {
+              this.removeAttribute('draggable');
+            } else {
+              this.setAttribute('draggable', true);
+            }
+          });
+
+          row.addEventListener('dragstart', function(e) {
+            draggedRow = this;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', this.dataset.itemId);
+            setTimeout(function() { row.style.opacity = '0.5'; }, 0);
+          });
+          
+          row.addEventListener('dragend', function(e) {
+            this.style.opacity = '1';
+            draggedRow = null;
+          });
+          
+          row.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (draggedRow !== this && this.parentNode === draggedRow.parentNode) {
+              var bounding = this.getBoundingClientRect();
+              var offset = e.clientY - bounding.top;
+              if (offset > bounding.height / 2) {
+                this.parentNode.insertBefore(draggedRow, this.nextSibling);
+              } else {
+                this.parentNode.insertBefore(draggedRow, this);
+              }
+            }
+          });
+          
+          row.addEventListener('drop', function(e) {
+            e.preventDefault();
+            var newOrder = Array.from(body.querySelectorAll('tr[data-item-id]')).map(function(r) { return r.dataset.itemId; });
+            var fd = new FormData();
+            newOrder.forEach(function(iid) { fd.append('item_id', iid); });
+            fetch('/templates/' + id + '/reorder', { method: 'POST', body: fd })
+              .then(function() { loadTplEditor(id, document.querySelector('.tpl-row-active')); })
+              .catch(function(err) { console.error('Reorder failed', err); });
+          });
+        });
       })
       .catch(function(){ body.innerHTML = '<div style="padding:20px;color:var(--err);">Failed to load template editor.</div>'; });
   }

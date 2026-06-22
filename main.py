@@ -581,10 +581,11 @@ def admin_delete_user(user_id: int, request: Request, user=Depends(require_admin
 
 
 @app.post("/admin/settings/theme")
-def admin_set_theme(request: Request, theme: str = Form(...), user=Depends(require_admin)):
+def admin_set_theme(request: Request, theme: str = Form(...), hash: str = Form(""), user=Depends(require_admin)):
     if theme in ("dark", "light"):
         adb.set_setting("user_panel_theme", theme)
-    return RedirectResponse(url="/admin#settings", status_code=303)
+    dest = f"/admin{hash}" if hash else "/admin"
+    return RedirectResponse(url=dest, status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -937,6 +938,15 @@ def item_move(template_id: int, item_id: int, direction: str = Form(...),
             ids[i], ids[j] = ids[j], ids[i]
             tdb.reorder_items(template_id, ids)
     return RedirectResponse(url="/admin#templates", status_code=303)
+
+
+@app.post("/templates/{template_id}/reorder")
+async def item_reorder(template_id: int, request: Request, user=Depends(require_admin)):
+    form = await request.form()
+    item_ids = form.getlist("item_id")
+    if item_ids:
+        tdb.reorder_items(template_id, [int(i) for i in item_ids])
+    return Response(status_code=204)
 
 
 @app.get("/admin/templates/{template_id}/fragment", response_class=HTMLResponse)
