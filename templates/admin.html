@@ -66,6 +66,15 @@
         </span>
         Templates
       </a>
+      <a href="#database" class="nav-item" data-section="database" onclick="showSection('database');event.preventDefault();">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+          </svg>
+        </span>
+        Database
+      </a>
     </nav>
 
     <div class="sidebar-footer">
@@ -263,7 +272,7 @@
           {% if records %}
           <table class="dash-table">
             <thead>
-              <tr><th>ID</th><th>Quote</th><th>Customer</th><th>Email</th><th>Total</th><th>Install Date</th></tr>
+              <tr><th>ID</th><th>Quote</th><th>Customer</th><th>Email</th><th>Total</th><th>Install Date</th><th style="text-align:right;">Actions</th></tr>
             </thead>
             <tbody>
               {% for r in records %}
@@ -274,6 +283,12 @@
                 <td class="muted">{{ r['email'] }}</td>
                 <td>{{ r['total_price'] }}</td>
                 <td class="muted">{{ r['install_date'] }}</td>
+                <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
+                  <form action="/admin/records/{{ r['id'] }}/delete" method="post" style="display:inline;"
+                        onsubmit="return confirm('Delete this customer record? This cannot be undone.');">
+                    <button type="submit" class="link-btn danger">Delete</button>
+                  </form>
+                </td>
               </tr>
               {% endfor %}
             </tbody>
@@ -367,6 +382,59 @@
 
       </div>
 
+      <!-- SECTION: Database -->
+      <div id="view-database" style="display:none;">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <div class="dash-card-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              Database Backup &amp; Restore
+            </div>
+          </div>
+          <div class="dash-card-body" style="padding:28px 24px;">
+
+            <!-- Download -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 22px;background:var(--surface2);border:1px solid var(--line2);border-radius:12px;margin-bottom:16px;">
+              <div>
+                <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px;">Download Database</div>
+                <div style="font-size:12.5px;color:var(--muted);">Save a full backup of all records, templates and users to your computer.</div>
+              </div>
+              <a href="/db/download" class="link-btn" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;margin-left:24px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download .db
+              </a>
+            </div>
+
+            <!-- Restore -->
+            <div style="padding:20px 22px;background:var(--surface2);border:1px solid var(--line2);border-radius:12px;">
+              <div style="margin-bottom:14px;">
+                <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px;">Restore Database</div>
+                <div style="font-size:12.5px;color:var(--muted);">Upload a previously downloaded <code>.db</code> file to replace the current database. <strong style="color:var(--err);">This cannot be undone.</strong></div>
+              </div>
+              <form action="/db/restore" method="post" enctype="multipart/form-data"
+                    onsubmit="return confirm('WARNING: This will replace ALL current data with the uploaded backup. Are you sure?');">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                  <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+                                background:var(--surface3);border:1px solid var(--line2);padding:8px 14px;
+                                border-radius:8px;font-size:13px;font-weight:600;color:var(--ink2);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span id="db-restore-label">Choose .db file…</span>
+                    <input type="file" name="file" accept=".db,.sqlite,.sqlite3" required style="display:none;"
+                           onchange="document.getElementById('db-restore-label').textContent=this.files[0]?this.files[0].name:'Choose .db file…';document.getElementById('db-restore-submit').style.display='inline-flex';">
+                  </label>
+                  <button type="submit" id="db-restore-submit" class="link-btn danger"
+                          style="display:none;align-items:center;gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
+                    Restore Now
+                  </button>
+                </div>
+              </form>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
     </div>
   </main>
 
@@ -378,6 +446,7 @@
     users:     { view: 'view-users',     title: 'Users',            crumb: 'Manage Users' },
     records:   { view: 'view-records',   title: 'Customer Records', crumb: 'All Extractions' },
     templates: { view: 'view-templates', title: 'Templates',        crumb: 'QC Checklist Templates' },
+    database:  { view: 'view-database',  title: 'Database',         crumb: 'Backup & Restore' },
   };
 
   function showSection(key, updateHash) {

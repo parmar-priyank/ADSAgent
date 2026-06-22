@@ -4,6 +4,7 @@ import json
 import base64
 import mimetypes
 import secrets
+import sqlite3
 import urllib.request
 import urllib.parse
 import zipfile as zipmod
@@ -183,6 +184,8 @@ def require_login(request: Request):
     user = _get_session(request)
     if not user:
         raise _AuthRedirect("/login")
+    if user.get("role") == "admin":
+        raise _AuthRedirect("/admin")
     return user
 
 def require_admin(request: Request):
@@ -383,6 +386,8 @@ def login_user_page(request: Request):
     user = _get_session(request)
     if user and user.get("role") == "user":
         return RedirectResponse(url="/home", status_code=302)
+    if user and user.get("role") == "admin":
+        return RedirectResponse(url="/admin", status_code=302)
     response = templates.TemplateResponse(request, "login_user.html", _login_ctx())
     response.headers.update(_NO_CACHE)
     return response
@@ -577,7 +582,13 @@ def admin_delete_user(user_id: int, request: Request, user=Depends(require_admin
     if user_id == user["id"]:
         raise HTTPException(400, "Cannot delete your own account.")
     adb.delete_user(user_id)
-    return RedirectResponse(url="/admin", status_code=303)
+    return RedirectResponse(url="/admin#users", status_code=303)
+
+
+@app.post("/admin/records/{record_id}/delete")
+def admin_delete_record(record_id: int, request: Request, user=Depends(require_admin)):
+    db.delete_quote(record_id)
+    return RedirectResponse(url="/admin#records", status_code=303)
 
 
 @app.post("/admin/settings/theme")
@@ -589,10 +600,52 @@ def admin_set_theme(request: Request, theme: str = Form(...), hash: str = Form("
 
 
 # ---------------------------------------------------------------------------
+# Database backup / restore (admin only)
+# ---------------------------------------------------------------------------
+@app.get("/db/download")
+def db_download(user=Depends(require_admin)):
+    from database import DB_PATH
+    import shutil, tempfile
+    # Use SQLite backup API for a consistent snapshot (safe even while live)
+    src = sqlite3.connect(DB_PATH)
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    dst = sqlite3.connect(tmp.name)
+    src.backup(dst)
+    dst.close()
+    src.close()
+    filename = os.path.basename(DB_PATH).replace(".db", "") + "_backup.db"
+    return Response(
+        content=open(tmp.name, "rb").read(),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/db/restore")
+async def db_restore(request: Request, file: UploadFile = File(...), user=Depends(require_admin)):
+    from database import DB_PATH
+    import shutil, tempfile
+    data = await file.read()
+    # Validate it's a SQLite file
+    if not data.startswith(b"SQLite format 3"):
+        raise HTTPException(400, "Invalid file — must be a SQLite database.")
+    # Write to a temp file then atomically replace the live DB
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.write(data)
+    tmp.close()
+    shutil.move(tmp.name, DB_PATH)
+    return RedirectResponse(url="/Excel?restored=1", status_code=303)
+
+
+# ---------------------------------------------------------------------------
 # App routes (require login)
 # ---------------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
-def root_redirect():
+def root_redirect(request: Request):
+    user = _get_session(request)
+    if user and user.get("role") == "admin":
+        return RedirectResponse(url="/admin", status_code=302)
     return RedirectResponse(url="/home", status_code=302)
 
 

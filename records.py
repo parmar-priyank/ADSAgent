@@ -163,4 +163,10 @@ def get_recent(limit: int = 20):
     return quotes
 
 
+def delete_quote(quote_id: int):
+    """Delete a quote and its line items (cascade handles line_items)."""
+    with get_db() as conn:
+        conn.execute("DELETE FROM quotes WHERE id = ?", (quote_id,))
+
+
 init_db()

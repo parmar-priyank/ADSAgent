@@ -98,6 +98,39 @@
       {% endif %}
     </div>
 
+    <!-- Database Backup / Restore -->
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;">
+        <div>
+          <h2 style="margin:0 0 4px;">Database Backup</h2>
+          <p style="margin:0;font-size:13px;color:var(--muted);">Download the full database or restore from a previous backup.</p>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <!-- Download -->
+          <a href="/db/download" class="link-btn" style="display:inline-flex;align-items:center;gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download DB
+          </a>
+          <!-- Upload / Restore -->
+          <form action="/db/restore" method="post" enctype="multipart/form-data"
+                onsubmit="return confirm('This will REPLACE the current database with the uploaded file. Are you sure?');"
+                style="display:inline-flex;align-items:center;gap:8px;">
+            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+                          background:var(--surface3);border:1px solid var(--line2);padding:6px 12px;
+                          border-radius:8px;font-size:12.5px;font-weight:600;color:var(--ink2);
+                          transition:background .12s;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span id="db-file-label">Choose .db file…</span>
+              <input type="file" name="file" accept=".db,.sqlite,.sqlite3" required
+                     style="display:none;" onchange="document.getElementById('db-file-label').textContent = this.files[0]?.name || 'Choose .db file…'; document.getElementById('db-restore-btn').style.display='inline-block';">
+            </label>
+            <button type="submit" id="db-restore-btn" class="link-btn danger"
+                    style="display:none;">Restore</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
     {% if selected %}
     <div class="card" id="editor-card">
       <h2>{{ selected["name"] }} &middot; {{ items|length }} items</h2>
@@ -210,7 +243,7 @@
             var sno    = row.querySelector('input[name="sno"]').value;
             var text   = row.querySelector('input[name="text"]').value;
             var ref    = row.querySelector('input[name="reference"]').value;
-            var prompt = row.querySelector('input[name="prompt"]').value;
+            var prompt = row.querySelector('[name="prompt"]').value;
             [['item_id', id], ['sno', sno], ['text', text], ['reference', ref], ['prompt', prompt]].forEach(function(pair) {
               var inp = document.createElement('input');
               inp.type = 'hidden'; inp.name = pair[0]; inp.value = pair[1];
