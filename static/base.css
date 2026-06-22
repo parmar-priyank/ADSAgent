@@ -1,0 +1,260 @@
+/* ==========================================================================
+   SOLAR EXTRACTOR — Dark Premium Theme (Windore-inspired) — base.css
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+:root {
+  /* Brand */
+  --brand:       #f5a623;
+  --brand-dark:  #d48a10;
+  --brand-glow:  rgba(245,166,35,.18);
+  --brand-glow2: rgba(245,166,35,.08);
+
+  /* Dark surface palette */
+  --bg:          #0b0e14;
+  --surface:     #111520;
+  --surface2:    #161b27;
+  --surface3:    #1c2235;
+  --line:        rgba(255,255,255,.07);
+  --line2:       rgba(255,255,255,.12);
+
+  /* Text */
+  --ink:         #f0f2f7;
+  --ink2:        #b8bfcc;
+  --muted:       #6b7385;
+  --card:        #161b27;
+
+  /* Status */
+  --ok:          #34d399;
+  --ok-bg:       rgba(52,211,153,.12);
+  --err:         #f87171;
+  --err-bg:      rgba(248,113,113,.12);
+
+  /* Shadows / glows */
+  --shadow:      0 2px 8px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.04);
+  --shadow-card: 0 4px 24px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.06);
+  --glow-brand:  0 0 32px rgba(245,166,35,.20), 0 0 8px rgba(245,166,35,.10);
+}
+
+/* --------------------------------------------------------------------------
+   Reset & Base
+   -------------------------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', ui-sans-serif, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: var(--brand); text-decoration: none; }
+a:hover { color: var(--brand-dark); }
+
+/* --------------------------------------------------------------------------
+   Cards
+   -------------------------------------------------------------------------- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: 20px;
+  padding: 28px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-card);
+}
+.card h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--muted); margin: 0 0 18px; font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   Buttons
+   -------------------------------------------------------------------------- */
+button {
+  background: linear-gradient(135deg, var(--brand) 0%, #e88c10 100%);
+  color: #000; border: none;
+  padding: 11px 24px; border-radius: 10px; cursor: pointer;
+  font-size: 14px; font-weight: 700; letter-spacing: -.01em;
+  transition: opacity .15s, transform .1s, box-shadow .2s;
+  box-shadow: 0 4px 16px rgba(245,166,35,.25);
+}
+button:hover  { opacity: .92; box-shadow: 0 6px 24px rgba(245,166,35,.40); transform: translateY(-1px); }
+button:active { transform: translateY(1px); opacity: 1; box-shadow: none; }
+
+.btn-link-primary {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--brand) 0%, #e88c10 100%);
+  color: #000; padding: 11px 22px;
+  border-radius: 10px; font-size: 14px; font-weight: 700; text-decoration: none;
+  box-shadow: 0 4px 16px rgba(245,166,35,.25);
+  transition: opacity .15s, transform .1s, box-shadow .2s;
+}
+.btn-link-primary:hover { opacity: .9; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(245,166,35,.35); color: #000; }
+
+.link-btn {
+  display: inline-block; background: var(--surface3); color: var(--ink2);
+  border: 1px solid var(--line2); padding: 6px 12px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 600; cursor: pointer; text-decoration: none;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.link-btn:hover { background: var(--surface3); border-color: var(--line2); color: #fff; }
+.link-btn.danger { color: var(--err); border-color: rgba(248,113,113,.25); background: rgba(248,113,113,.08); }
+.link-btn.danger:hover { background: rgba(248,113,113,.15); color: var(--err); }
+
+.muted { color: var(--muted); font-size: 13px; }
+
+/* --------------------------------------------------------------------------
+   Form inputs (shared)
+   -------------------------------------------------------------------------- */
+input[type=text], input[type=password], input[type=email], select, textarea {
+  background: var(--surface3);
+  border: 1px solid var(--line2);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color .15s, box-shadow .15s;
+  width: 100%;
+}
+input::placeholder, textarea::placeholder { color: var(--muted); }
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(245,166,35,.15);
+}
+
+/* --------------------------------------------------------------------------
+   Tables
+   -------------------------------------------------------------------------- */
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted); padding: 0 14px 12px; border-bottom: 1px solid var(--line2); font-weight: 600;
+}
+tbody td { padding: 13px 14px; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--ink2); }
+tbody tr { transition: background .12s; }
+tbody tr:hover { background: var(--surface2); }
+tbody tr:last-child td { border-bottom: none; }
+.id-pill {
+  display: inline-block; background: var(--brand-glow); color: var(--brand);
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+}
+.empty-state { text-align: center; color: var(--muted); padding: 36px 0; font-size: 14px; }
+
+/* --------------------------------------------------------------------------
+   Form fields (checklist / template editor)
+   -------------------------------------------------------------------------- */
+.form-field { margin-bottom: 14px; }
+.form-field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
+.form-field input[type=file] { font-size: 13px; color: var(--ink2); }
+
+/* --------------------------------------------------------------------------
+   Badges
+   -------------------------------------------------------------------------- */
+.badge       { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.badge-admin { background: var(--brand-glow); color: var(--brand); }
+.badge-user  { background: var(--surface3); color: var(--ink2); border: 1px solid var(--line2); }
+
+/* --------------------------------------------------------------------------
+   Alerts
+   -------------------------------------------------------------------------- */
+.alert-success { background: var(--ok-bg); border: 1px solid rgba(52,211,153,.25); color: var(--ok); border-radius: 10px; padding: 10px 14px; font-size: 0.88rem; margin-bottom: 18px; }
+.alert-error   { background: var(--err-bg); border: 1px solid rgba(248,113,113,.25); color: var(--err); border-radius: 10px; padding: 10px 14px; font-size: 0.88rem; margin-bottom: 18px; }
+
+/* ── Theme toggle — works as <a> or <button> ── */
+.theme-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px;
+  background: var(--surface3);
+  border: 1px solid var(--line2);
+  border-radius: 8px; cursor: pointer;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0; /* suppress any accidental text */
+  padding: 0;
+  box-shadow: none;
+  letter-spacing: 0;
+  font-weight: normal;
+  transition: background .15s, color .15s, box-shadow .15s;
+  flex: none;
+}
+.theme-toggle:hover {
+  background: var(--surface2); color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+  opacity: 1; transform: none;
+}
+
+/* --------------------------------------------------------------------------
+   Spinners / Loading
+   -------------------------------------------------------------------------- */
+@keyframes check-spin { to { transform: rotate(360deg); } }
+@keyframes ray-spin   { to { transform: rotate(360deg); } }
+@keyframes glow-pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes float-y    { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+.check-spinner {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid var(--line2); border-top-color: var(--brand);
+  animation: check-spin .7s linear infinite; margin: 0 auto 8px;
+}
+
+/* --------------------------------------------------------------------------
+   LIGHT THEME OVERRIDES  [data-theme="light"]
+   -------------------------------------------------------------------------- */
+[data-theme="light"] {
+  --bg:       #f7f5f1;
+  --surface:  #ffffff;
+  --surface2: #f3f1ed;
+  --surface3: #ece8e1;
+  --line:     rgba(28,26,23,.07);
+  --line2:    rgba(28,26,23,.12);
+  --ink:      #1c1a17;
+  --ink2:     #3d3a35;
+  --muted:    #7a746b;
+  --card:     #ffffff;
+  --shadow:      0 1px 2px rgba(28,26,23,.04), 0 6px 20px rgba(28,26,23,.04);
+  --shadow-card: 0 2px 8px rgba(28,26,23,.06), 0 0 0 1px rgba(28,26,23,.06);
+  --glow-brand:  0 0 20px rgba(222,93,24,.15);
+  --brand:       #de5d18;
+  --brand-dark:  #b94a0e;
+  --brand-glow:  rgba(222,93,24,.10);
+  --brand-glow2: rgba(222,93,24,.05);
+  --ok-bg:    rgba(47,125,79,.10);
+  --err-bg:   rgba(180,50,31,.08);
+  --err:      #b4321f;
+}
+
+[data-theme="light"] body { background: var(--bg); color: var(--ink); }
+
+/* Light theme-toggle */
+[data-theme="light"] .theme-toggle {
+  background: #f3f1ed; border-color: rgba(28,26,23,.14); color: var(--muted);
+}
+[data-theme="light"] .theme-toggle:hover { background: #ece8e1; color: var(--ink); }
+
+/* Light cards / tables */
+[data-theme="light"] .card {
+  background: #fff; border-color: rgba(28,26,23,.10);
+}
+[data-theme="light"] tbody td { color: var(--ink); }
+[data-theme="light"] tbody tr:hover { background: #faf8f4; }
+[data-theme="light"] .id-pill { background: rgba(222,93,24,.10); color: #b94a0e; }
+[data-theme="light"] .banner { background: #f0f9f3; color: #2f7d4f; border-color: #cde9d6; }
+
+/* Light button and link button styles */
+[data-theme="light"] button {
+  background: linear-gradient(135deg, #de5d18 0%, #b94a0e 100%);
+  box-shadow: 0 4px 16px rgba(222,93,24,.22);
+}
+[data-theme="light"] button:hover { box-shadow: 0 6px 24px rgba(222,93,24,.32); }
+[data-theme="light"] .link-btn { background: #f3f1ed; color: var(--ink); border-color: rgba(28,26,23,.12); }
+[data-theme="light"] .link-btn:hover { background: #ece8e1; color: var(--ink); }
+
+[data-theme="light"] input[type=text],
+[data-theme="light"] input[type=password],
+[data-theme="light"] select { background: #fff; border-color: rgba(28,26,23,.14); color: var(--ink); }

@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
   <title>Dashboard — PDF Agreement Extractor</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/base.css">
+  <link rel="stylesheet" href="/static/admin.css">
   <style>body { margin: 0; }</style>
 </head>
 <body>
@@ -22,7 +25,7 @@
 
     <nav class="sidebar-nav">
       <div class="nav-section-label">Overview</div>
-      <a href="#" class="nav-item active" data-section="dashboard" onclick="showSection('dashboard');return false;">
+      <a href="#dashboard" class="nav-item active" data-section="dashboard" onclick="showSection('dashboard');event.preventDefault();">
         <span class="nav-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
@@ -32,7 +35,7 @@
         Dashboard
       </a>
       <div class="nav-section-label">Management</div>
-      <a href="#" class="nav-item" data-section="users" onclick="showSection('users');return false;">
+      <a href="#users" class="nav-item" data-section="users" onclick="showSection('users');event.preventDefault();">
         <span class="nav-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -43,7 +46,7 @@
         </span>
         Users
       </a>
-      <a href="#" class="nav-item" data-section="records" onclick="showSection('records');return false;">
+      <a href="#records" class="nav-item" data-section="records" onclick="showSection('records');event.preventDefault();">
         <span class="nav-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -52,7 +55,7 @@
         </span>
         Customer Records
       </a>
-      <a href="/Excel" class="nav-item">
+      <a href="#templates" class="nav-item" data-section="templates" onclick="showSection('templates');event.preventDefault();">
         <span class="nav-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
@@ -131,7 +134,7 @@
               <div class="metric-label">Customer Records</div>
             </div>
           </div>
-          <div class="metric-card" style="cursor:pointer;" onclick="window.location='/Excel'">
+          <div class="metric-card" style="cursor:pointer;" onclick="showSection('templates')">
             <div class="metric-icon-wrap green">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             </div>
@@ -143,7 +146,7 @@
         </div>
 
         <!-- Installation Calendar -->
-        <div class="dash-card" style="margin-top:8px;">
+        <div class="dash-card">
           <div class="dash-card-header">
             <div class="dash-card-title">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -151,10 +154,10 @@
             </div>
             <span class="dash-card-count" id="cal-approved-count">0 approved</span>
           </div>
-          <div class="dash-card-body" style="padding:20px 22px;">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+          <div class="dash-card-body">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
               <button class="link-btn" id="cal-prev" onclick="calNav(-1)">&#8249; Prev</button>
-              <span id="cal-month-label" style="font-size:14px;font-weight:700;color:#fff;flex:1;text-align:center;"></span>
+              <span id="cal-month-label" style="font-size:14px;font-weight:700;color:var(--ink);flex:1;text-align:center;"></span>
               <button class="link-btn" id="cal-next" onclick="calNav(1)">Next &#8250;</button>
             </div>
             <div class="cal-grid">
@@ -255,7 +258,6 @@
         <div class="dash-card">
           <div class="dash-card-header">
             <div class="dash-card-title">Customer Records</div>
-            <span class="dash-card-count">{{ records|length }}</span>
           </div>
           {% if records %}
           <table class="dash-table">
@@ -265,7 +267,7 @@
             <tbody>
               {% for r in records %}
               <tr class="clickable" data-href="/pdf?id={{ r['id'] }}">
-                <td><span class="id-pill">#{{ r['display_num'] }}</span></td>
+                <td><span class="id-pill">{{ r['display_num'] }}</span></td>
                 <td>{{ r['quote_number'] }}</td>
                 <td><strong>{{ r['customer_name'] }}</strong></td>
                 <td class="muted">{{ r['email'] }}</td>
@@ -283,7 +285,86 @@
         </div>
       </div>
 
+      <!-- SECTION: Templates -->
+      <div id="view-templates" style="display:none;">
 
+        <!-- Saved Templates list -->
+        <div class="dash-card" style="margin-bottom:20px;">
+          <div class="dash-card-header">
+            <div class="dash-card-title">QC Checklist Templates</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="dash-card-count">{{ templates|length }}</span>
+              <button type="button" class="link-btn" onclick="toggleTplUpload()" id="tpl-upload-toggle-btn">+ Upload New</button>
+            </div>
+          </div>
+
+          <!-- Upload form (hidden by default) -->
+          <div id="tpl-upload-form-wrap" style="display:none;padding:18px 22px;border-bottom:1px solid var(--line);">
+            <form action="/templates/upload" method="post" enctype="multipart/form-data">
+              <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+                <div class="form-field" style="flex:1;min-width:180px;margin-bottom:0;">
+                  <label>Template Name</label>
+                  <input type="text" name="name" required placeholder="e.g. ADS Standard QC"
+                         style="width:100%;padding:9px 10px;border:1px solid var(--line2);border-radius:8px;font-size:14px;background:var(--surface3);color:var(--ink);">
+                </div>
+                <div class="form-field" style="flex:1;min-width:220px;margin-bottom:0;">
+                  <label>Excel File (.xlsx)</label>
+                  <input type="file" name="file" accept=".xlsx" required
+                         style="width:100%;padding:7px 10px;border:1px solid var(--line2);border-radius:8px;font-size:13px;background:var(--surface3);color:var(--ink);">
+                </div>
+                <div style="display:flex;gap:8px;padding-bottom:1px;">
+                  <button type="submit">Upload</button>
+                  <button type="button" class="link-btn" onclick="toggleTplUpload()">Cancel</button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {% if templates %}
+          <table class="dash-table">
+            <thead>
+              <tr><th>ID</th><th>Name</th><th>Created</th><th style="text-align:right;">Actions</th></tr>
+            </thead>
+            <tbody>
+              {% for t in templates %}
+              <tr class="tpl-admin-row{% if selected_template and selected_template['id'] == t['id'] %} tpl-row-active{% endif %}"
+                  style="cursor:pointer;" onclick="loadTplEditor({{ t['id'] }}, this)">
+                <td><span class="id-pill">{{ t["display_num"] }}</span></td>
+                <td><strong>{{ t["name"] }}</strong></td>
+                <td class="muted">{{ t["created_at"] }}</td>
+                <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
+                  <a href="/templates/{{ t['id'] }}/download" class="link-btn">Download</a>
+                  <form action="/templates/{{ t['id'] }}/delete" method="post" style="display:inline;"
+                        onsubmit="return confirm('Delete this template?');">
+                    <button type="submit" class="link-btn danger">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div class="dash-card-body">
+            <div class="empty-state">No templates yet — upload your first checklist using the button above.</div>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Template Editor (shown when a template row is clicked) -->
+        <div class="dash-card" id="tpl-editor-card" style="display:none;">
+          <div class="dash-card-header">
+            <div class="dash-card-title" id="tpl-editor-title">Template Editor</div>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <span class="dash-card-count" id="tpl-editor-count"></span>
+              <button type="button" class="link-btn" onclick="closeTplEditor()">✕ Close</button>
+            </div>
+          </div>
+          <div class="dash-card-body" id="tpl-editor-body">
+            <div style="text-align:center;padding:40px;color:var(--muted);">Loading…</div>
+          </div>
+        </div>
+
+      </div>
 
     </div>
   </main>
@@ -295,6 +376,7 @@
     dashboard: { view: 'view-dashboard', title: 'Dashboard',        crumb: 'Overview' },
     users:     { view: 'view-users',     title: 'Users',            crumb: 'Manage Users' },
     records:   { view: 'view-records',   title: 'Customer Records', crumb: 'All Extractions' },
+    templates: { view: 'view-templates', title: 'Templates',        crumb: 'QC Checklist Templates' },
   };
 
   function showSection(key, updateHash) {
@@ -311,7 +393,7 @@
     // show target
     var s = sections[key];
     var el = document.getElementById(s.view);
-    if (el) el.style.display = '';
+    if (el) el.style.display = 'block';
     document.getElementById('topbar-title').textContent = s.title;
     document.getElementById('topbar-breadcrumb').textContent = s.crumb;
     var navEl = document.querySelector('.nav-item[data-section="' + key + '"]');
@@ -338,29 +420,7 @@
   // ── Installation Calendar ──────────────────────────────────────────────────
   // Build install-date map from server-rendered records data.
   var _installMap = {};
-  {% for r in records %}{% if r.install_date %}
-  (function() {
-    var raw = "{{ r.install_date | replace('"','') }}".trim();
-    if (!raw) return;
-    // Normalise: try parsing as-is, then dd/mm/yyyy, then mm/dd/yyyy
-    var d = new Date(raw);
-    if (isNaN(d.getTime())) {
-      var p = raw.split(/[\/\-]/);
-      if (p.length === 3) {
-        // try dd/mm/yyyy
-        d = new Date(p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0'));
-      }
-    }
-    if (isNaN(d.getTime())) return;
-    var key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-    if (!_installMap[key]) _installMap[key] = [];
-    _installMap[key].push({
-      customer: "{{ r.customer_name | replace('"','\\\"') }}",
-      quote:    "{{ r.quote_number  | replace('"','\\\"') }}",
-      address:  "{{ r.delivery_address | replace('"','\\\"') }}"
-    });
-  })();
-  {% endif %}{% endfor %}
+  try { _installMap = {{ install_map_json | safe }}; } catch(e) {}
 
   var _calYear, _calMonth;
   (function() {
@@ -446,6 +506,66 @@
   }
 
   renderCal();
+
+  // ── Template editor (inline AJAX) ─────────────────────────────────────────
+  function toggleTplUpload() {
+    var wrap = document.getElementById('tpl-upload-form-wrap');
+    var btn  = document.getElementById('tpl-upload-toggle-btn');
+    var open = wrap.style.display === 'none';
+    wrap.style.display = open ? '' : 'none';
+    btn.textContent    = open ? '✕ Cancel' : '+ Upload New';
+  }
+
+  function closeTplEditor() {
+    document.getElementById('tpl-editor-card').style.display = 'none';
+    document.querySelectorAll('.tpl-admin-row').forEach(function(r){ r.classList.remove('tpl-row-active'); });
+  }
+
+  function loadTplEditor(id, row) {
+    // Highlight the selected row
+    document.querySelectorAll('.tpl-admin-row').forEach(function(r){ r.classList.remove('tpl-row-active'); });
+    if (row) row.classList.add('tpl-row-active');
+
+    var card  = document.getElementById('tpl-editor-card');
+    var body  = document.getElementById('tpl-editor-body');
+    var title = document.getElementById('tpl-editor-title');
+    var count = document.getElementById('tpl-editor-count');
+    card.style.display = '';
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Loading…</div>';
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    fetch('/admin/templates/' + id + '/fragment')
+      .then(function(r){ return r.text(); })
+      .then(function(html){
+        body.innerHTML = html;
+        // Read title & count from data attrs injected by the fragment
+        var meta = body.querySelector('[data-tpl-name]');
+        if (meta) {
+          title.textContent = meta.dataset.tplName + ' · Editor';
+          count.textContent = meta.dataset.tplItems + ' items';
+        }
+        // Wire up save-all form
+        var saveAllForm = body.querySelector('#tpl-save-all-form');
+        if (saveAllForm) {
+          saveAllForm.addEventListener('submit', function(e) {
+            var form = this;
+            body.querySelectorAll('tr[data-item-id]').forEach(function(r) {
+              var iid    = r.dataset.itemId;
+              var sno    = r.querySelector('input[name="sno"]').value;
+              var text   = r.querySelector('input[name="text"]').value;
+              var ref    = r.querySelector('input[name="reference"]').value;
+              var prompt = r.querySelector('input[name="prompt"]').value;
+              [['item_id',iid],['sno',sno],['text',text],['reference',ref],['prompt',prompt]].forEach(function(p){
+                var inp = document.createElement('input');
+                inp.type = 'hidden'; inp.name = p[0]; inp.value = p[1];
+                form.appendChild(inp);
+              });
+            });
+          });
+        }
+      })
+      .catch(function(){ body.innerHTML = '<div style="padding:20px;color:var(--err);">Failed to load template editor.</div>'; });
+  }
 </script>
 </body>
 </html>

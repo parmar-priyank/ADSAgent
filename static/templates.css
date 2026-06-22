@@ -1,0 +1,43 @@
+/* ==========================================================================
+   SOLAR EXTRACTOR — templates.css
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Template upload card
+   -------------------------------------------------------------------------- */
+.tpl-upload-card { padding: 28px; }
+.tpl-upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: stretch; }
+@media (max-width: 720px) { .tpl-upload-grid { grid-template-columns: 1fr; } }
+.tpl-name { display: flex; flex-direction: column; }
+.tpl-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 8px; }
+.tpl-input {
+  width: 100%; padding: 13px 14px;
+  border: 1px solid var(--line2); border-radius: 10px;
+  background: var(--surface3); font-size: 14px; color: var(--ink);
+  transition: border-color .15s, box-shadow .15s;
+}
+.tpl-input::placeholder { color: var(--muted); }
+.tpl-input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(245,166,35,.15); }
+.tpl-help { font-size: 12px; color: var(--muted); margin: 8px 2px 0; }
+
+.tpl-dropzone {
+  position: relative; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px;
+  padding: 28px 18px; min-height: 138px;
+  border-radius: 12px; cursor: pointer; text-align: center;
+  background: var(--surface2);
+  background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='12' ry='12' stroke='rgba(255,255,255,0.12)' stroke-width='1.5' stroke-dasharray='7 7'/%3e%3c/svg%3e");
+  transition: background-color .18s;
+}
+.tpl-dropzone:hover, .tpl-dropzone.drag {
+  background-color: var(--surface3);
+  background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='12' ry='12' stroke='%23f5a623' stroke-width='1.5' stroke-dasharray='7 7'/%3e%3c/svg%3e");
+}
+.tpl-icon { width: 44px; height: 44px; border-radius: 11px; background: var(--brand-glow); color: var(--brand); display: grid; place-items: center; margin-bottom: 4px; }
+.tpl-drop-text { font-size: 14px; color: var(--ink2); }
+.tpl-drop-text strong { font-weight: 600; }
+.tpl-drop-text u { text-decoration: none; color: var(--brand); font-weight: 600; }
+.tpl-filename { font-size: 12px; color: var(--muted); font-weight: 600; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-dropzone input[type=file] { display: none; }
+.tpl-upload .actions { margin-top: 22px; justify-content: flex-end; }
+.btn-primary { padding: 11px 24px; font-size: 14px; }

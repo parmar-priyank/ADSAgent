@@ -1,0 +1,104 @@
+{# Bare HTML fragment — loaded via fetch() into the admin dashboard template editor card #}
+<div data-tpl-name="{{ tpl['name'] }}" data-tpl-items="{{ items|length }}" style="display:none;"></div>
+
+{# ── Add new item form ────────────────────────────────────────────────────── #}
+<form action="/templates/{{ tpl['id'] }}/items/add" method="post" style="margin-bottom:18px;">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+    <div class="form-field" style="flex:0 0 90px;margin-bottom:0;">
+      <label>Sno.</label>
+      <input type="text" name="sno" placeholder="35 or i"
+             style="width:100%;padding:8px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);">
+    </div>
+    <div class="form-field" style="flex:1;min-width:220px;margin-bottom:0;">
+      <label>New checklist text</label>
+      <input type="text" name="text" required placeholder="Add a new item"
+             style="width:100%;padding:8px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);">
+    </div>
+    <div class="form-field" style="flex:0 0 auto;margin-bottom:0;">
+      <label>&nbsp;</label>
+      <label style="font-weight:400;font-size:13px;color:var(--ink2);">
+        <input type="checkbox" name="is_section" value="1"> Section header
+      </label>
+    </div>
+    <button type="submit">Add</button>
+  </div>
+</form>
+
+{# ── Items table ──────────────────────────────────────────────────────────── #}
+{% if items %}
+<div style="overflow-x:auto;">
+  <table id="checklist-table" style="width:100%;table-layout:fixed;border-collapse:collapse;">
+    <thead>
+      <tr>
+        <th style="width:70px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Sno.</th>
+        <th style="width:320px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Checklist Item</th>
+        <th style="width:240px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Reference</th>
+        <th style="width:320px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Prompt</th>
+        <th style="width:130px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Actions</th>
+        <th style="width:100px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Reorder</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      {# Form must live outside the table — browsers eject <form> from inside <tr> #}
+      <form id="frag-row-form-{{ it['id'] }}"
+            action="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/update"
+            method="post" style="display:none;"></form>
+      <tr data-item-id="{{ it['id'] }}" {% if it["is_section"] %}style="background:rgba(245,166,35,.06);"{% endif %}>
+          <td style="padding:6px 8px;">
+            <input type="text" name="sno" value="{{ it['sno'] }}"
+                   form="frag-row-form-{{ it['id'] }}"
+                   style="width:55px;padding:6px;border:1px solid var(--line2);border-radius:6px;text-align:center;background:var(--surface3);color:var(--ink);">
+          </td>
+          <td style="padding:6px 8px;">
+            <input type="text" name="text" value="{{ it['text'] }}"
+                   form="frag-row-form-{{ it['id'] }}"
+                   style="width:100%;padding:6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);
+                   {% if it['is_section'] %}font-weight:700;{% endif %}">
+          </td>
+          <td style="padding:6px 8px;">
+            <input type="text" name="reference" value="{{ it['reference'] or '' }}"
+                   form="frag-row-form-{{ it['id'] }}"
+                   placeholder="filename.pdf"
+                   style="width:100%;padding:6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);">
+          </td>
+          <td style="padding:6px 8px;">
+            <input type="text" name="prompt" value="{{ it['prompt'] or '' }}"
+                   form="frag-row-form-{{ it['id'] }}"
+                   placeholder="Write a prompt…"
+                   style="width:100%;padding:6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);">
+          </td>
+          <td style="text-align:center;white-space:nowrap;padding:6px 8px;">
+            <button type="submit" form="frag-row-form-{{ it['id'] }}" class="link-btn">Save</button>
+            <button type="submit"
+                    form="frag-row-form-{{ it['id'] }}"
+                    formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/delete"
+                    class="link-btn danger"
+                    onclick="return confirm('Delete this item?');">Del</button>
+          </td>
+          <td style="text-align:center;padding:6px 8px;">
+            <button type="submit"
+                    form="frag-row-form-{{ it['id'] }}"
+                    formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/move"
+                    name="direction" value="up" class="link-btn">&uarr;</button>
+            <button type="submit"
+                    form="frag-row-form-{{ it['id'] }}"
+                    formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/move"
+                    name="direction" value="down" class="link-btn">&darr;</button>
+          </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state" style="padding:30px 0;">No items in this template — add one above.</div>
+{% endif %}
+
+{# ── Footer actions ────────────────────────────────────────────────────────── #}
+<div style="display:flex;justify-content:space-between;margin-top:18px;padding-top:14px;border-top:1px solid var(--line);">
+  <a href="/templates/{{ tpl['id'] }}/download" class="link-btn">&#8595; Download Excel</a>
+  <form action="/templates/{{ tpl['id'] }}/save-all" method="post" id="tpl-save-all-form">
+    <button type="submit">Save All</button>
+  </form>
+</div>

@@ -106,7 +106,7 @@ templates = Jinja2Templates(directory="templates")
 # ---------------------------------------------------------------------------
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; "
+    "script-src 'self' 'unsafe-inline' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; "
     "frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; "
     "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data:; "
@@ -477,14 +477,42 @@ def toggle_theme(request: Request, user=Depends(require_login)):
 # ---------------------------------------------------------------------------
 # Admin routes
 # ---------------------------------------------------------------------------
+def _build_install_map(records: list) -> str:
+    from datetime import datetime
+    install_map: dict = {}
+    for r in records:
+        raw = (r.get("install_date") or "").strip()
+        if not raw:
+            continue
+        dt = None
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+            try:
+                dt = datetime.strptime(raw, fmt)
+                break
+            except ValueError:
+                continue
+        if dt is None:
+            continue
+        key = dt.strftime("%Y-%m-%d")
+        install_map.setdefault(key, []).append({
+            "customer": r.get("customer_name") or "",
+            "quote":    r.get("quote_number")  or "",
+            "address":  r.get("delivery_address") or "",
+        })
+    return json.dumps(install_map)
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_dashboard(request: Request, user=Depends(require_admin)):
+    records = db.get_recent()
     response = templates.TemplateResponse(request, "admin.html", {
         "current_user": user,
         "users": adb.list_users(),
-        "records": db.get_recent(),
+        "records": records,
+        "install_map_json": _build_install_map(records),
         "templates": tdb.list_templates(),
         "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
+        "theme": _resolve_theme(user),
         "error": None,
         "success": None,
     })
@@ -505,19 +533,25 @@ def admin_create_user(
     if role not in {"user", "admin"}:
         role = "user"
     ok = adb.create_user(username, password, role)
+    records = db.get_recent()
     ctx = {
         "current_user": user,
         "users": adb.list_users(),
-        "records": db.get_recent(),
+        "records": records,
+        "install_map_json": _build_install_map(records),
         "templates": tdb.list_templates(),
         "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
+        "theme": _resolve_theme(user),
         "error": (
             f"Username '{username}' already exists, is invalid, or password is too short (min. 8 characters)."
             if not ok else None
         ),
         "success": f"User '{username}' created successfully." if ok else None,
     }
-    return templates.TemplateResponse(request, "admin.html", ctx)
+    response = templates.TemplateResponse(request, "admin.html", ctx)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.get("/admin/users/{user_id}", response_class=HTMLResponse)
@@ -528,6 +562,7 @@ def admin_user_detail(user_id: int, request: Request, user=Depends(require_admin
     response = templates.TemplateResponse(request, "admin_user.html", {
         "current_user": user,
         "target": target,
+        "theme": _resolve_theme(user),
         "success": None,
         "error": None,
     })
@@ -699,8 +734,9 @@ async def upload_zip(
         "checklist_rows": checklist_rows,
         "dl_token": dl_token,
         "quote_id": quote_id,
+        "theme": _resolve_theme(user),
     })
-    resp.headers.update(_no_cache)
+    resp.headers.update(_NO_CACHE)
     return resp
 
 
@@ -740,7 +776,7 @@ def quote_detail(request: Request, id: int = None, user=Depends(require_login)):
     )
     response = templates.TemplateResponse(
         request, "quote_detail.html",
-        {"record": record, "display_num": display_num, "current_user": user},
+        {"record": record, "display_num": display_num, "current_user": user, "theme": _resolve_theme(user), "user_panel_theme": adb.get_setting("user_panel_theme", "dark")},
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
@@ -849,7 +885,7 @@ async def templates_upload(
     blob = await file.read()
     items, headers, note = cx.parse_xlsx(blob)
     tdb.create_template(name, blob, items, note)
-    return RedirectResponse(url="/Excel", status_code=303)
+    return RedirectResponse(url="/admin#templates", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/add")
@@ -858,7 +894,7 @@ def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
              user=Depends(require_admin)):  # M4 — admin only
     tdb.add_item(template_id, text=text, sno=sno,
                  is_section=bool(is_section), reference=reference)
-    return RedirectResponse(url="/Excel", status_code=303)
+    return RedirectResponse(url="/admin#templates", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/update")
@@ -867,7 +903,7 @@ def item_update(template_id: int, item_id: int,
                 reference: str = Form(""), prompt: str = Form(""),
                 user=Depends(require_admin)):  # M4 — admin only
     tdb.update_item(item_id, text=text, sno=sno, reference=reference, prompt=prompt)
-    return RedirectResponse(url="/Excel", status_code=303)
+    return RedirectResponse(url="/admin#templates", status_code=303)
 
 
 @app.post("/templates/{template_id}/save-all")
@@ -880,13 +916,13 @@ async def items_save_all(template_id: int, request: Request, user=Depends(requir
     prompts = form.getlist("prompt")
     for item_id, sno, text, ref, prompt in zip(item_ids, snos, texts, refs, prompts):
         tdb.update_item(int(item_id), text=text, sno=sno, reference=ref, prompt=prompt)
-    return RedirectResponse(url="/Excel", status_code=303)
+    return RedirectResponse(url="/admin#templates", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/delete")
 def item_delete(template_id: int, item_id: int, user=Depends(require_admin)):  # M4
     tdb.delete_item(item_id)
-    return RedirectResponse(url="/Excel", status_code=303)
+    return RedirectResponse(url="/admin#templates", status_code=303)
 
 
 @app.post("/templates/{template_id}/items/{item_id}/move")
@@ -900,15 +936,29 @@ def item_move(template_id: int, item_id: int, direction: str = Form(...),
         if 0 <= j < len(ids):
             ids[i], ids[j] = ids[j], ids[i]
             tdb.reorder_items(template_id, ids)
-    return RedirectResponse(url="/Excel", status_code=303)
+    return RedirectResponse(url="/admin#templates", status_code=303)
+
+
+@app.get("/admin/templates/{template_id}/fragment", response_class=HTMLResponse)
+def admin_template_fragment(template_id: int, request: Request, user=Depends(require_admin)):
+    """Return a bare HTML fragment for the inline template editor inside the admin dashboard."""
+    tpl = tdb.get_template(template_id)
+    if not tpl:
+        raise HTTPException(404, "Template not found.")
+    items = tdb.get_items(template_id)
+    response = templates.TemplateResponse(
+        request, "template_fragment.html",
+        {"tpl": tpl, "items": items, "current_user": user, "theme": _resolve_theme(user)},
+    )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.post("/templates/{template_id}/delete")
 def template_delete(template_id: int, user=Depends(require_admin)):  # M4
     tdb.delete_template(template_id)
-    remaining = tdb.list_templates()
-    dest = "/Excel" if remaining else "/home"
-    return RedirectResponse(url=dest, status_code=303)
+    return RedirectResponse(url="/admin#templates", status_code=303)
 
 
 @app.get("/templates/{template_id}/download")
