@@ -120,27 +120,33 @@
    Extraction success toast
    -------------------------------------------------------------------------- */
 .extraction-toast {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 10px;
   background: transparent;
   border: none;
-  border-left: 3px solid var(--ok);
-  border-radius: 0;
-  padding: 12px 0 12px 16px;
-  margin-bottom: 24px;
+  padding: 0;
+  margin-bottom: 20px;
 }
 .extraction-toast-icon { display: none; }
-.extraction-toast > div { flex: 1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.extraction-toast strong { font-size: 0.9rem; font-weight: 700; color: var(--ok); }
-.extraction-toast span   { font-size: 0.88rem; color: var(--muted); }
+.extraction-toast > div { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.extraction-toast strong {
+  font-size: 12px; font-weight: 700; color: var(--ok);
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.extraction-toast strong::before {
+  content: '';
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ok); flex: none;
+}
+.extraction-toast span { font-size: 12px; color: var(--muted); }
 .extraction-toast-btn {
   flex: none;
-  background: none; border: 1px solid var(--line2);
-  color: var(--ink2); padding: 6px 14px; border-radius: 8px;
-  font-size: 0.82rem; font-weight: 600; text-decoration: none;
-  transition: background .12s, color .12s;
+  background: none; border: none;
+  color: var(--brand); padding: 0;
+  font-size: 12px; font-weight: 600; text-decoration: none;
+  transition: opacity .12s;
   margin-left: auto;
 }
-.extraction-toast-btn:hover { background: var(--surface3); color: var(--ink); }
+.extraction-toast-btn:hover { opacity: .7; }
 
 /* --------------------------------------------------------------------------
    User-facing upload (centered, clean)
@@ -184,6 +190,12 @@
   background: #fff;
   border-color: rgba(28,26,23,.10);
   box-shadow: 0 4px 24px rgba(28,26,23,.08);
+}
+
+/* Step 2 result label — centred above result cards */
+.user-result-wrap {
+  display: flex; justify-content: center;
+  margin: 32px 0 20px;
 }
 
 /* --------------------------------------------------------------------------

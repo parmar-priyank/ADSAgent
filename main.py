@@ -884,7 +884,7 @@ def quote_detail_legacy(request: Request, quote_id: int, user=Depends(require_lo
     return RedirectResponse(url=f"/pdf?id={quote_id}", status_code=302)
 
 
-@app.post("/upload", response_class=HTMLResponse)
+@app.post("/user_upload", response_class=HTMLResponse)
 async def upload(request: Request, file: UploadFile = File(...), user=Depends(require_login)):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Please upload a PDF file.")

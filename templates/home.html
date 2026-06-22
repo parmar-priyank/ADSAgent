@@ -95,7 +95,7 @@
     <div class="upload-row">
       <div class="card upload-card">
         <div class="upload-card-title">Reference PDF</div>
-        <form action="/upload" method="post" enctype="multipart/form-data">
+        <form action="/user_upload" method="post" enctype="multipart/form-data">
           <label class="dropzone" id="dropzone">
             <div class="icon">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
@@ -163,7 +163,7 @@
         <h2 class="user-upload-title">Solar Agreement PDF</h2>
         <p class="user-upload-sub">Drop your signed agreement below to extract customer and quote details.</p>
 
-        <form action="/upload" method="post" enctype="multipart/form-data">
+        <form action="/user_upload" method="post" enctype="multipart/form-data">
           <label class="dropzone" id="dropzone">
             <div class="icon">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
@@ -195,6 +195,12 @@
     {% endif %}
 
     {% if result %}
+    <div class="user-result-wrap">
+      <div class="user-step-label">
+        <span class="user-step-num">2</span>
+        Customer Details
+      </div>
+    </div>
     <div class="extraction-toast">
       <span class="extraction-toast-icon">&#10003;</span>
       <div>
@@ -405,7 +411,7 @@
     wireDropzone('xlsxDropzone', 'xlsxFileInput', 'xlsxFilename', 'xlsxForm');
 
     // PDF upload: show full-page loading overlay on submit
-    document.querySelectorAll('form[action="/upload"]').forEach(function(form) {
+    document.querySelectorAll('form[action="/user_upload"]').forEach(function(form) {
       form.addEventListener('submit', function() {
         var fileInput = form.querySelector('input[type="file"]');
         if (fileInput && fileInput.files.length > 0) {
