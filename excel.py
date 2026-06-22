@@ -43,25 +43,38 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
     pos = 0
     last_numbered_pos = None
 
-    # Find where the checklist table starts (the Sno./CheckList header row).
+    # Find where the checklist table starts and map the columns.
     start_row = None
+    col_map = {"sno": 1, "text": 2, "yn": 3, "ref": 4, "prompt": 5}
+    
     for r in range(1, ws.max_row + 1):
-        a = str(ws.cell(r, 1).value or "").strip().lower()
-        b = str(ws.cell(r, 2).value or "").strip().lower()
-        if a.startswith("sno") and b.startswith("checklist"):
+        row_vals = [str(ws.cell(r, c).value or "").strip().lower() for c in range(1, 15)]
+        if any(v.startswith("sno") for v in row_vals) and any("checklist" in v for v in row_vals):
             start_row = r + 1
+            for c, v in enumerate(row_vals, start=1):
+                if v.startswith("sno"):
+                    col_map["sno"] = c
+                elif "checklist" in v:
+                    col_map["text"] = c
+                elif "yes" in v and "no" in v:
+                    col_map["yn"] = c
+                elif "remark" in v or "reference" in v:
+                    col_map["ref"] = c
+                elif "verify" in v or "prompt" in v or "agreement" in v:
+                    col_map["prompt"] = c
             break
+            
     if start_row is None:
         start_row = 9  # sensible default for this template
 
     # Note text (column D of the title row, if any).
-    note_cell = ws.cell(1, 4).value
+    note_cell = ws.cell(1, col_map["ref"]).value
     if note_cell and "note" not in str(note_cell).lower():
         note_text = str(note_cell)
 
     for r in range(start_row, ws.max_row + 1):
-        sno = ws.cell(r, 1).value
-        text = ws.cell(r, 2).value
+        sno = ws.cell(r, col_map["sno"]).value
+        text = ws.cell(r, col_map["text"]).value
         if text is None and sno is None:
             continue  # blank spacer row
         text = str(text).strip() if text is not None else ""
@@ -69,13 +82,17 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
         if not text:
             continue
 
-        # Reference text comes from column D (the Remarks column). Strip the
+        # Reference text comes from the Remarks column. Strip the
         # leading "Refer to " so the editor shows just the filename.
-        remark = ws.cell(r, 4).value
+        remark = ws.cell(r, col_map["ref"]).value
         reference = ""
         if remark is not None:
             reference = re.sub(r"^\s*Refer to\s+", "", str(remark).strip(),
                                flags=re.IGNORECASE).strip()
+
+        # Prompt text comes from the "What to verify" column
+        prompt_val = ws.cell(r, col_map["prompt"]).value
+        prompt_str = str(prompt_val).strip() if prompt_val is not None else ""
 
         pos += 1
         is_section = bool(text.isupper() and SECTION_HINT.search(text)) or \
@@ -91,6 +108,7 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
             "is_section": is_section,
             "text": text,
             "reference": reference,
+            "prompt": prompt_str,
             "active": 1,
         })
 
@@ -159,15 +177,12 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
         ws.cell(1, 4)  # note kept simple; title already merged across
 
     # Column headers (row 8)
-    headers = ["Sno.", "CheckList", "Yes/No", "Remarks"]
+    headers = ["Sno.", "Checklist Item", "Yes/No", "Remarks", "What to verify as per Agreement"]
     for ci, h in enumerate(headers, start=1):
         cell = ws.cell(8, ci, h)
         cell.font = bold
         cell.alignment = center
         cell.border = BORDER
-    ws.merge_cells("D8:E8")
-    ws.cell(8, 4).border = BORDER
-    ws.cell(8, 5).border = BORDER
 
     # Data rows
     r = 9
@@ -180,10 +195,10 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
         sno_cell = ws.cell(r, 1, it.get("sno", ""))
         text_cell = ws.cell(r, 2, it.get("text", ""))
         yn_cell = ws.cell(r, 3, "")
-        ws.merge_cells(start_row=r, start_column=4, end_row=r, end_column=5)
         remark_cell = ws.cell(r, 4, "")
+        prompt_cell = ws.cell(r, 5, it.get("prompt", ""))
 
-        for cell in (sno_cell, text_cell, yn_cell, remark_cell, ws.cell(r, 5)):
+        for cell in (sno_cell, text_cell, yn_cell, remark_cell, prompt_cell):
             cell.border = BORDER
 
         if is_section:
@@ -193,7 +208,7 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
             sno_cell.fill = section_fill
             yn_cell.fill = section_fill
             remark_cell.fill = section_fill
-            ws.cell(r, 5).fill = section_fill
+            prompt_cell.fill = section_fill
         else:
             sno_cell.font = bold
             text_cell.font = normal
@@ -202,6 +217,7 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
         text_cell.alignment = left
         yn_cell.alignment = center
         remark_cell.alignment = left
+        prompt_cell.alignment = left
 
         # populate Yes/No + remark if provided
         fv = filled.get(pos)

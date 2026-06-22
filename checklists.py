@@ -154,10 +154,11 @@ def add_item(template_id: int, text: str, sno: str = "",
             "WHERE template_id = ? AND position >= ?",
             (template_id, position),
         )
+        default_prompt = "" if is_section else f"Verify that the '{text}' document is present, valid, and matches the agreement details."
         _insert_items(conn, template_id, [{
             "position": position, "sno": sno, "parent_position": None,
             "is_section": is_section, "text": text, "reference": reference,
-            "active": 1,
+            "prompt": default_prompt, "active": 1,
         }])
 
 
@@ -265,6 +266,29 @@ def backfill_references():
                     )
 
 
+def backfill_prompts():
+    """
+    One-time migration: set a default prompt for every non-section item
+    that has an empty prompt, so the AI verifier has something to work with.
+    """
+    with get_db() as conn:
+        empty = conn.execute(
+            "SELECT 1 FROM checklist_items WHERE is_section = 0 AND (prompt IS NULL OR prompt = '') LIMIT 1"
+        ).fetchone()
+        if not empty:
+            return
+        rows = conn.execute(
+            "SELECT id, text FROM checklist_items WHERE is_section = 0 AND (prompt IS NULL OR prompt = '')"
+        ).fetchall()
+        for row in rows:
+            default_prompt = f"Verify that the '{row['text']}' document is present, valid, and matches the agreement details."
+            conn.execute(
+                "UPDATE checklist_items SET prompt = ? WHERE id = ?",
+                (default_prompt, row["id"]),
+            )
+
+
 # Create tables on import.
 init_templates_db()
 backfill_references()
+backfill_prompts()

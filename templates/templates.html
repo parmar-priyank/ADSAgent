@@ -132,7 +132,7 @@
             <th style="width:70px;">Sno.</th>
             <th style="width:340px;">Checklist Item</th>
             <th style="width:280px;">Reference</th>
-            <th style="width:340px;">Prompt</th>
+            <th style="width:420px;">Prompt</th>
             <th style="width:130px;text-align:center;">Actions</th>
             <th style="width:100px;text-align:center;">Reorder</th>
           </tr>
@@ -162,10 +162,11 @@
                        style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;">
               </td>
               <td>
-                <input type="text" name="prompt" value="{{ it['prompt'] or '' }}"
-                       form="row-form-{{ it['id'] }}"
-                       placeholder="Write a prompt…"
-                       style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;">
+                <textarea name="prompt"
+                          form="row-form-{{ it['id'] }}"
+                          placeholder="Write a prompt…"
+                          rows="3"
+                          style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;resize:vertical;font-size:13px;font-family:inherit;line-height:1.4;">{{ it['prompt'] or '' }}</textarea>
               </td>
               <td style="text-align:center;white-space:nowrap;">
                 <button type="submit" form="row-form-{{ it['id'] }}" class="link-btn">Save</button>
