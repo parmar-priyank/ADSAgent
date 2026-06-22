@@ -67,12 +67,15 @@
 /* --------------------------------------------------------------------------
    KV result rows
    -------------------------------------------------------------------------- */
-.kv { display: grid; gap: 0; }
+.kv { display: grid; gap: 8px; }
 .kv-row {
   display: grid; grid-template-columns: 210px 1fr;
-  padding: 13px 0; border-bottom: 1px solid var(--line); align-items: baseline;
+  padding: 12px 16px;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--surface2);
+  align-items: baseline;
 }
-.kv-row:last-child { border-bottom: none; }
 .kv-row .k { color: var(--muted); font-weight: 500; font-size: 12.5px; }
 .kv-row .v { font-size: 14px; word-break: break-word; color: var(--ink); }
 .kv-row .v.empty { color: var(--muted); font-style: italic; }
@@ -347,7 +350,7 @@
 }
 [data-theme="light"] .home-nav-btn.danger:hover { background: rgba(180,50,31,.12); color: #b4321f; }
 
-[data-theme="light"] .kv-row { border-bottom-color: rgba(28,26,23,.07); }
+[data-theme="light"] .kv-row { border-color: rgba(28,26,23,.10); background: #f9f8f6; }
 [data-theme="light"] .kv-row .k { color: var(--muted); }
 [data-theme="light"] .kv-row .v { color: var(--ink); }
 [data-theme="light"] .kv-row .v.empty { color: #c5c0b7; }

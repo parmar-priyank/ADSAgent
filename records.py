@@ -163,6 +163,18 @@ def get_recent(limit: int = 20):
     return quotes
 
 
+def find_by_filename(filename: str):
+    """Return the most recent quote saved from this filename, or None."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM quotes WHERE filename = ? ORDER BY id DESC LIMIT 1", (filename,)
+        ).fetchone()
+        if not row:
+            return None
+        quotes = [dict(row)]
+        return _attach_line_items(conn, quotes)[0]
+
+
 def delete_quote(quote_id: int):
     """Delete a quote and its line items (cascade handles line_items)."""
     with get_db() as conn:

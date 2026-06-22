@@ -279,78 +279,12 @@
       </div>
     </div>
 
-    <!-- Proceed / ZIP upload -->
+    <!-- Proceed to QC Cross-Check -->
     <div style="text-align:center;margin:8px 0 24px;">
-      <button type="button" id="proceed-btn"
-              onclick="document.getElementById('zip-upload-box').style.display='block';this.style.display='none';wireDropzone('zip-dropzone','zipInput','zip-filename');"
-              style="padding:13px 48px;font-size:1rem;">
+      <a href="/qc-check?quote_id={{ result.get('id','') }}"
+         style="display:inline-block;padding:13px 48px;font-size:1rem;background:var(--brand);color:#fff;border-radius:10px;font-weight:600;text-decoration:none;">
         Proceed &rarr;
-      </button>
-    </div>
-
-    <div id="zip-upload-box" style="display:none;">
-      <div style="text-align:center;margin-bottom:10px;">
-        <span style="display:inline-flex;align-items:center;gap:8px;background:var(--brand-glow);border:1px solid rgba(245,166,35,.25);color:var(--brand);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:5px 14px;border-radius:999px;">
-          <span style="width:18px;height:18px;border-radius:50%;background:var(--brand);color:#000;font-size:10px;font-weight:900;display:grid;place-items:center;flex:none;">2</span>
-          QC Cross-Check
-        </span>
-      </div>
-      <div class="card" style="border-color:rgba(245,166,35,.35);box-shadow:0 0 0 3px rgba(245,166,35,.06),var(--shadow-card);">
-        <h2>QC Cross-Check</h2>
-        <p style="font-size:14px;color:var(--muted);margin:0 0 20px;">
-          Select a checklist template, then upload the ZIP containing the supporting documents (images &amp; PDFs) referenced in that template.
-        </p>
-        <form action="/run-checklist" method="post" enctype="multipart/form-data" id="check-form">
-          <input type="hidden" name="quote_id" value="{{ result.get('id','') }}">
-
-          <!-- Template picker -->
-          {% if saved_templates %}
-          <div style="margin-bottom:18px;">
-            <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;">Checklist Template</label>
-            <select name="template_id" required
-                    style="width:100%;padding:10px 12px;border:1px solid var(--line2);border-radius:8px;font-size:14px;background:var(--surface3);color:var(--ink);">
-              {% for t in saved_templates %}
-              <option value="{{ t['id'] }}">{{ t['name'] }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          {% else %}
-          <div style="padding:12px;background:var(--err-bg);border:1px solid rgba(248,113,113,.25);border-radius:8px;font-size:13px;color:var(--err);margin-bottom:18px;">
-            No checklist templates found. <a href="/Excel" style="color:var(--brand);">Upload one first &rarr;</a>
-          </div>
-          {% endif %}
-
-          <!-- ZIP dropzone -->
-          <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;">Supporting Documents (.zip)</label>
-          <label class="dropzone" id="zip-dropzone" style="min-height:140px;">
-            <div class="icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-            </div>
-            <div class="prompt">Drop a <strong>.zip</strong> file here, or <strong>browse</strong></div>
-            <div class="hint">Must contain the files listed in the Reference column of the template</div>
-            <div class="filename" id="zip-filename"></div>
-            <input type="file" name="zip_file" id="zipInput" accept=".zip" required>
-          </label>
-
-          <div class="actions" style="margin-top:18px;justify-content:space-between;">
-            <button type="button" class="link-btn" id="check-cancel-btn"
-                    onclick="document.getElementById('zip-upload-box').style.display='none';
-                             document.getElementById('proceed-btn').style.display='';">
-              Cancel
-            </button>
-            <button type="submit" id="check-submit-btn">Run Checklist &rarr;</button>
-          </div>
-          <div id="check-loading" style="display:none;text-align:center;padding:20px 0;color:var(--muted);font-size:14px;">
-            <div class="check-spinner"></div>
-            Analysing documents with AI &mdash; this may take up to a minute&hellip;
-          </div>
-        </form>
-      </div>
+      </a>
     </div>
     {% endif %}
 

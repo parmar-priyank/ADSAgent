@@ -699,6 +699,20 @@ def home(request: Request, user=Depends(require_login)):
     return response
 
 
+@app.get("/qc-check", response_class=HTMLResponse)
+def qc_check_page(request: Request, quote_id: str = "", user=Depends(require_login)):
+    saved = tdb.list_templates()
+    resp = templates.TemplateResponse(request, "qc_check.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "quote_id": quote_id,
+        "saved_templates": saved,
+        "error": None,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
+
+
 @app.post("/run-checklist", response_class=HTMLResponse)
 async def upload_zip(
     request: Request,
@@ -716,11 +730,20 @@ async def upload_zip(
     # Extract ZIP into a flat dict: lowercase filename → bytes
     data = await zip_file.read()
 
-    if len(data) > MAX_UPLOAD_BYTES:
-        resp = templates.TemplateResponse(request, "home.html",
-            _index_context(user=user, error="ZIP file is too large. Maximum allowed size is 30 MB."))
+    def _qc_error(error: str):
+        saved = tdb.list_templates()
+        resp = templates.TemplateResponse(request, "qc_check.html", {
+            "current_user": user,
+            "theme": _resolve_theme(user),
+            "quote_id": quote_id,
+            "saved_templates": saved,
+            "error": error,
+        })
         resp.headers.update(_NO_CACHE)
         return resp
+
+    if len(data) > MAX_UPLOAD_BYTES:
+        return _qc_error("ZIP file is too large. Maximum allowed size is 30 MB.")
 
     zip_files: dict[str, bytes] = {}
     try:
@@ -731,10 +754,7 @@ async def upload_zip(
                 if basename:
                     zip_files[basename.lower()] = zf.read(name)
     except zipmod.BadZipFile:
-        resp = templates.TemplateResponse(request, "home.html",
-            _index_context(user=user, error="Uploaded file is not a valid ZIP archive."))
-        resp.headers.update(_NO_CACHE)
-        return resp
+        return _qc_error("Uploaded file is not a valid ZIP archive.")
 
     client = _get_groq()
     QC_SYSTEM = (
@@ -884,6 +904,20 @@ def quote_detail_legacy(request: Request, quote_id: int, user=Depends(require_lo
     return RedirectResponse(url=f"/pdf?id={quote_id}", status_code=302)
 
 
+@app.get("/user_upload", response_class=HTMLResponse)
+def upload_get(request: Request, id: int = None, user=Depends(require_login)):
+    result = None
+    if id is not None:
+        record = db.get_quote(id)
+        if record:
+            result = record.get("data") or record
+            result["id"] = id
+    response = templates.TemplateResponse(request, "home.html", _index_context(user=user, result=result))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 @app.post("/user_upload", response_class=HTMLResponse)
 async def upload(request: Request, file: UploadFile = File(...), user=Depends(require_login)):
     if not file.filename.lower().endswith(".pdf"):
@@ -897,8 +931,24 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
             request, "home.html",
             _index_context(user=user, error="PDF file is too large. Maximum allowed size is 30 MB."),
         )
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-        resp.headers["Pragma"] = "no-cache"
+        resp.headers.update(_NO_CACHE)
+        return resp
+
+    # Check if this filename was already extracted — skip Groq if user wants to reuse
+    existing = db.find_by_filename(file.filename)
+    if existing:
+        pdf_b64 = base64.b64encode(file_bytes).decode()
+        pdf_token = _signer.dumps({"pdf": pdf_b64, "filename": file.filename})
+        existing_data = existing.get("data") or existing
+        existing_data["id"] = existing["id"]
+        resp = templates.TemplateResponse(request, "upload_confirm.html", {
+            "current_user": user,
+            "theme": _resolve_theme(user),
+            "existing": existing_data,
+            "pdf_token": pdf_token,
+            "filename": file.filename,
+        })
+        resp.headers.update(_NO_CACHE)
         return resp
 
     text = extract_pdf_text(file_bytes)
@@ -911,25 +961,65 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
             _index_context(user=user, error="Invalid Groq API key. Check the GROQ_API_KEY value in your .env file "
                                  "(it should start with 'gsk_') and restart the server."),
         )
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-        resp.headers["Pragma"] = "no-cache"
+        resp.headers.update(_NO_CACHE)
         return resp
     except GroqError:
         resp = templates.TemplateResponse(
             request, "home.html",
             _index_context(user=user, error="AI service error. Please try again in a moment."),
         )
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-        resp.headers["Pragma"] = "no-cache"
+        resp.headers.update(_NO_CACHE)
         return resp
 
-    db.save_extraction(file.filename, data)
-    resp = templates.TemplateResponse(
-        request, "home.html", _index_context(user=user, result=data),
-    )
-    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-    resp.headers["Pragma"] = "no-cache"
-    return resp
+    quote_id = db.save_extraction(file.filename, data)
+    return RedirectResponse(url=f"/user_upload?id={quote_id}", status_code=303)
+
+
+@app.post("/user_upload/confirm", response_class=HTMLResponse)
+async def upload_confirm(
+    request: Request,
+    action: str = Form(...),
+    pdf_token: str = Form(...),
+    existing_id: int = Form(...),
+    user=Depends(require_login),
+):
+    if action == "keep":
+        return RedirectResponse(url=f"/user_upload?id={existing_id}", status_code=303)
+
+    # action == "reextract" — decode the stored PDF and run Groq
+    try:
+        payload = _signer.loads(pdf_token, max_age=3600)
+    except BadSignature:
+        resp = templates.TemplateResponse(
+            request, "home.html",
+            _index_context(user=user, error="Session expired. Please upload the PDF again."),
+        )
+        resp.headers.update(_NO_CACHE)
+        return resp
+
+    file_bytes = base64.b64decode(payload["pdf"])
+    filename = payload["filename"]
+    text = extract_pdf_text(file_bytes)
+
+    try:
+        data = extract_with_groq(text)
+    except AuthenticationError:
+        resp = templates.TemplateResponse(
+            request, "home.html",
+            _index_context(user=user, error="Invalid Groq API key."),
+        )
+        resp.headers.update(_NO_CACHE)
+        return resp
+    except GroqError:
+        resp = templates.TemplateResponse(
+            request, "home.html",
+            _index_context(user=user, error="AI service error. Please try again in a moment."),
+        )
+        resp.headers.update(_NO_CACHE)
+        return resp
+
+    quote_id = db.save_extraction(filename, data)
+    return RedirectResponse(url=f"/user_upload?id={quote_id}", status_code=303)
 
 
 # ===========================================================================
