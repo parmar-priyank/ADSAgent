@@ -18,7 +18,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeTimedSerializer, BadSignature
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -97,7 +97,14 @@ app = FastAPI(
     redoc_url=None,   # disable /redoc (H5)
 )
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+async def _on_rate_limit_exceeded(request: Request, exc: RateLimitExceeded):  # noqa: ARG001
+    referer = request.headers.get("referer", "")
+    origin = str(request.base_url).rstrip("/")
+    dest = referer if referer.startswith(origin) else "/qc-check"
+    return RedirectResponse(url=dest, status_code=303)
+
+app.add_exception_handler(RateLimitExceeded, _on_rate_limit_exceeded)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -174,9 +181,19 @@ class _AuthRedirect(Exception):
     def __init__(self, url: str):
         self.url = url
 
-async def _auth_redirect_handler(_request: Request, exc: _AuthRedirect):
+async def _auth_redirect_handler(request: Request, exc: _AuthRedirect):
     r = RedirectResponse(url=exc.url, status_code=303)
-    r.delete_cookie(COOKIE)
+    # Only clear the cookie if one exists but is invalid (stale server instance,
+    # bad signature). If there is no cookie at all, deleting it is a no-op but
+    # avoids accidentally logging out a valid session on an unrelated error.
+    if request.cookies.get(COOKIE):
+        token = request.cookies.get(COOKIE)
+        try:
+            data = _signer.loads(token, max_age=SESSION_MAX_AGE)
+            if data.get("sid") != _SERVER_INSTANCE_ID:
+                r.delete_cookie(COOKIE)
+        except BadSignature:
+            r.delete_cookie(COOKIE)
     return r
 
 app.add_exception_handler(_AuthRedirect, _auth_redirect_handler)
@@ -692,6 +709,7 @@ async def db_restore(request: Request, file: UploadFile = File(...), user=Depend
 # App routes (require login)
 # ---------------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
+@app.get("/home", response_class=HTMLResponse)
 def root_redirect(request: Request):
     user = _get_session(request)
     if user and user.get("role") == "admin":
@@ -780,54 +798,153 @@ async def upload_zip(
         r = json.loads(resp.choices[0].message.content)
         return {"status": r.get("status", "N/A"), "remark": r.get("remark", "")}
 
+    def _resolve_file(name: str):
+        """Return (actual_zip_filename, bytes) for a reference name, or (name, None) if not found.
+
+        Matching order:
+        1. Exact name (case-insensitive)
+        2. Exact name ignoring spaces
+        3. Same stem, any extension (e.g. template says Deposit.jpg, ZIP has Deposit.png)
+        4. Same stem ignoring spaces, any extension
+        """
+        key = name.lower()
+        # 1. Exact match
+        data = zip_files.get(key)
+        if data is not None:
+            return key, data
+
+        key_nospace = key.replace(" ", "")
+        stem = os.path.splitext(key)[0]
+        stem_nospace = stem.replace(" ", "")
+
+        best_name, best_data = None, None
+        for zname, zbytes in zip_files.items():
+            # 2. Exact match ignoring spaces
+            if zname.replace(" ", "") == key_nospace:
+                return zname, zbytes
+            # 3. Same stem, any extension
+            zstem = os.path.splitext(zname)[0]
+            if zstem == stem:
+                best_name, best_data = zname, zbytes
+            # 4. Same stem ignoring spaces, any extension
+            elif zstem.replace(" ", "") == stem_nospace and best_data is None:
+                best_name, best_data = zname, zbytes
+
+        if best_data is not None:
+            return best_name, best_data
+        return name, None
+
     def _analyse_item(item: dict) -> dict:
         ref = (item.get("reference") or "").strip()
         prompt_text = (item.get("prompt") or "").strip()
 
         if not ref:
             return {"status": "N/A", "remark": "No reference file specified."}
-        file_bytes = zip_files.get(ref.lower())
-        if file_bytes is None:
-            return {"status": "N/A", "remark": f"File not found in ZIP: {ref}"}
         if not prompt_text:
             return {"status": "N/A", "remark": "No prompt defined for this item."}
 
-        mime, _ = mimetypes.guess_type(ref)
-        mime = mime or "application/octet-stream"
+        # Support multiple files separated by "+" e.g. "Rates.pdf + DL.pdf"
+        ref_names = [r.strip() for r in ref.split("+") if r.strip()]
+        resolved = [_resolve_file(r) for r in ref_names]
+
+        missing = [name for name, data in resolved if data is None]
+        if missing:
+            return {"status": "N/A", "remark": f"File not found in ZIP: {', '.join(missing)}"}
+
         context = f"Checklist item: {item['text']}\nRequirement: {prompt_text}"
 
         try:
-            if mime == "application/pdf":
+            # Detect MIME from actual ZIP filename; fall back to magic-byte sniffing
+            def _mime_of(fname: str, fbytes: bytes) -> str:
+                mime, _ = mimetypes.guess_type(fname)
+                if mime:
+                    return mime
+                # sniff by magic bytes
+                if fbytes[:4] == b"%PDF":
+                    return "application/pdf"
+                if fbytes[:8] in (b"\x89PNG\r\n\x1a\n",):
+                    return "image/png"
+                if fbytes[:3] in (b"\xff\xd8\xff",):
+                    return "image/jpeg"
+                if fbytes[:6] in (b"GIF87a", b"GIF89a"):
+                    return "image/gif"
+                if fbytes[:4] == b"RIFF" and fbytes[8:12] == b"WEBP":
+                    return "image/webp"
+                if fbytes[:2] == b"BM":
+                    return "image/bmp"
+                return "application/octet-stream"
+
+            # Separate files by type using actual filename + magic bytes
+            pdf_parts, image_parts, unsupported = [], [], []
+            for fname, fdata in resolved:
+                mime = _mime_of(fname, fdata)
+                if mime == "application/pdf":
+                    pdf_parts.append((fname, fdata, mime))
+                elif mime.startswith("image/"):
+                    image_parts.append((fname, fdata, mime))
+                else:
+                    unsupported.append((fname, fdata, mime))
+
+            if unsupported:
+                return {"status": "N/A", "remark": f"Unsupported file type: {', '.join(n for n, _, _ in unsupported)}"}
+
+            # Extract text from PDFs; scanned PDFs (no text) are rendered as images instead
+            combined_pdf_text = ""
+            scanned_pdf_images = []  # (fname, page_image_bytes) for text-less PDFs
+            for fname, fdata, _ in pdf_parts:
                 try:
-                    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                        pdf_text = "\n".join(p.extract_text() or "" for p in pdf.pages)
-                except Exception:
-                    pdf_text = ""
-                if not pdf_text.strip():
-                    return {"status": "N/A", "remark": "Could not extract text from PDF."}
+                    with pdfplumber.open(io.BytesIO(fdata)) as pdf:
+                        pages_text = [p.extract_text() or "" for p in pdf.pages]
+                    text = "\n".join(pages_text)
+                except Exception as e:
+                    return {"status": "N/A", "remark": f"Could not open PDF '{fname}': {e}"}
+
+                if text.strip():
+                    combined_pdf_text += f"\n\n--- {fname} ---\n{text}"
+                else:
+                    # Scanned/image-only PDF — render each page as a PNG for the vision model
+                    try:
+                        import fitz  # PyMuPDF
+                        doc = fitz.open(stream=fdata, filetype="pdf")
+                        for page in doc:
+                            pix = page.get_pixmap(dpi=150)
+                            scanned_pdf_images.append((fname, pix.tobytes("png")))
+                        doc.close()
+                    except Exception:
+                        # PyMuPDF not available — report as unreadable
+                        return {"status": "N/A", "remark": f"PDF '{fname}' appears to be scanned (no text layer) and could not be rendered. Install PyMuPDF (pip install pymupdf) for scanned PDF support."}
+
+            needs_vision = bool(image_parts or scanned_pdf_images)
+
+            # If only text-based PDFs and no images, use the text model
+            if pdf_parts and not needs_vision:
+                if not combined_pdf_text.strip():
+                    return {"status": "N/A", "remark": "Could not extract text from PDF(s)."}
                 messages = [
                     {"role": "system", "content": QC_SYSTEM},
-                    {"role": "user", "content": f"{context}\n\nDocument content:\n{pdf_text[:6000]}"},
+                    {"role": "user", "content": f"{context}\n\nDocument content:{combined_pdf_text[:8000]}"},
                 ]
                 return _groq_check(GROQ_MODEL, messages)
 
-            elif mime.startswith("image/"):
-                b64 = base64.standard_b64encode(file_bytes).decode()
-                messages = [
-                    {"role": "system", "content": QC_SYSTEM},
-                    {"role": "user", "content": [
-                        {"type": "text", "text": context},
-                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                    ]},
-                ]
-                return _groq_check("meta-llama/llama-4-scout-17b-16e-instruct", messages)
+            # Vision path — combine text context + real images + scanned PDF pages
+            user_content = [{"type": "text", "text": context}]
+            if combined_pdf_text.strip():
+                user_content.append({"type": "text", "text": f"Document content:{combined_pdf_text[:4000]}"})
+            for fname, fdata, mime in image_parts:
+                b64 = base64.standard_b64encode(fdata).decode()
+                user_content.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+            for fname, page_png in scanned_pdf_images:
+                b64 = base64.standard_b64encode(page_png).decode()
+                user_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
 
-            else:
-                return {"status": "N/A", "remark": f"Unsupported file type: {mime}"}
+            messages = [
+                {"role": "system", "content": QC_SYSTEM},
+                {"role": "user", "content": user_content},
+            ]
+            return _groq_check("meta-llama/llama-4-scout-17b-16e-instruct", messages)
 
-        except Exception:
-            # M6 â€" never expose internal exception details to the user
-            return {"status": "N/A", "remark": "Error analysing file. Please check the file format and try again."}
+        except Exception as e:
+            return {"status": "N/A", "remark": f"Error analysing file: {e}"}
 
     # Run analysis concurrently — each Groq call is a blocking HTTP request so
     # we offload to threads to avoid freezing the event loop.
