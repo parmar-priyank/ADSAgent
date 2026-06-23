@@ -1074,13 +1074,14 @@ def upload_get(request: Request, id: int = None, user=Depends(require_login)):
 
 
 @app.post("/user_upload", response_class=HTMLResponse)
+@limiter.limit("10/minute")
 async def upload(request: Request, file: UploadFile = File(...), user=Depends(require_login)):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Please upload a PDF file.")
 
     file_bytes = await file.read()
 
-    # H1 â€" file size cap
+    # H1 — file size cap
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         resp = templates.TemplateResponse(
             request, "user_home.html",
@@ -1089,30 +1090,27 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
         resp.headers.update(_NO_CACHE)
         return resp
 
-    # Duplicate detection: extract the quote number from the PDF first (cheap text
-    # scan), then look it up by quote_number — not filename, which is not unique
-    # across different customers who both happen to save their file as "quote.pdf".
+    # Extract text once — reused for both duplicate detection and Groq extraction.
     import re as _re
-    _qn_text = extract_pdf_text(file_bytes)
-    _qn_match = _re.search(r'(?i)quote\s*(?:number|no\.?|#)?\s*[:\-]?\s*([A-Z0-9\-]{4,20})', _qn_text)
+    text = extract_pdf_text(file_bytes)
+    _qn_match = _re.search(r'(?i)quote\s*(?:number|no\.?|#)?\s*[:\-]?\s*([A-Z0-9\-]{4,20})', text)
     _detected_qn = _qn_match.group(1).strip() if _qn_match else None
     existing = db.find_by_quote_number(_detected_qn) if _detected_qn else None
     if existing:
-        pdf_b64 = base64.b64encode(file_bytes).decode()
-        pdf_token = _signer.dumps({"pdf": pdf_b64, "filename": file.filename})
+        # Store PDF bytes + already-extracted text in the DB so the browser
+        # never has to carry a multi-MB base64 blob in a form hidden field.
+        pending_token = db.store_pending_pdf(file.filename, file_bytes, text)
         existing_data = existing.get("data") or existing
         existing_data["id"] = existing["id"]
         resp = templates.TemplateResponse(request, "user_confirm.html", {
             "current_user": user,
             "theme": _resolve_theme(user),
             "existing": existing_data,
-            "pdf_token": pdf_token,
+            "pending_token": pending_token,
             "filename": file.filename,
         })
         resp.headers.update(_NO_CACHE)
         return resp
-
-    text = extract_pdf_text(file_bytes)
 
     try:
         data = extract_with_groq(text)
@@ -1140,17 +1138,18 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
 async def upload_confirm(
     request: Request,
     action: str = Form(...),
-    pdf_token: str = Form(...),
+    pending_token: str = Form(...),
     existing_id: int = Form(...),
     user=Depends(require_login),
 ):
     if action == "keep":
+        # Consume the pending row so it doesn't linger; ignore if already gone.
+        db.pop_pending_pdf(pending_token)
         return RedirectResponse(url=f"/user_upload?id={existing_id}", status_code=303)
 
-    # action == "reextract" â€" decode the stored PDF and run Groq
-    try:
-        payload = _signer.loads(pdf_token, max_age=3600)
-    except BadSignature:
+    # action == "reextract" — retrieve PDF + pre-extracted text from DB.
+    pending = db.pop_pending_pdf(pending_token)
+    if not pending:
         resp = templates.TemplateResponse(
             request, "user_home.html",
             _index_context(user=user, error="Session expired. Please upload the PDF again."),
@@ -1158,9 +1157,9 @@ async def upload_confirm(
         resp.headers.update(_NO_CACHE)
         return resp
 
-    file_bytes = base64.b64decode(payload["pdf"])
-    filename = payload["filename"]
-    text = extract_pdf_text(file_bytes)
+    # Reuse the text extracted during the initial upload — no second PDF parse.
+    filename = pending["filename"]
+    text = pending["pdf_text"]
 
     try:
         data = extract_with_groq(text)

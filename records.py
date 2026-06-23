@@ -63,6 +63,26 @@ def init_db():
             )
             """
         )
+        # Temporary store for PDFs awaiting duplicate-confirmation.
+        # Keeps PDF bytes + already-extracted text server-side so the browser
+        # never has to carry a multi-MB base64 blob in a form field.
+        # Rows are purged on next startup and after 1 h by store_pending_pdf.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_pdfs (
+                token      TEXT PRIMARY KEY,
+                filename   TEXT NOT NULL,
+                pdf_bytes  BLOB NOT NULL,
+                pdf_text   TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        # Purge stale pending rows (older than 1 hour) on every startup.
+        conn.execute(
+            "DELETE FROM pending_pdfs "
+            "WHERE created_at < datetime('now', '-1 hour')"
+        )
 
 
 def save_extraction(filename: str, data: dict) -> int:
@@ -194,6 +214,46 @@ def delete_quote(quote_id: int):
     """Delete a quote and its line items (cascade handles line_items)."""
     with get_db() as conn:
         conn.execute("DELETE FROM quotes WHERE id = ?", (quote_id,))
+
+
+# ---------------------------------------------------------------------------
+# Pending-PDF helpers (duplicate-confirmation flow)
+# ---------------------------------------------------------------------------
+import secrets as _secrets
+
+def store_pending_pdf(filename: str, pdf_bytes: bytes, pdf_text: str) -> str:
+    """
+    Save PDF bytes + pre-extracted text server-side and return a short opaque
+    token.  Rows older than 1 hour are pruned on each call so the table stays
+    small even without a background job.
+    """
+    token = _secrets.token_urlsafe(24)
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM pending_pdfs WHERE created_at < datetime('now', '-1 hour')"
+        )
+        conn.execute(
+            "INSERT INTO pending_pdfs (token, filename, pdf_bytes, pdf_text) "
+            "VALUES (?, ?, ?, ?)",
+            (token, filename, pdf_bytes, pdf_text),
+        )
+    return token
+
+
+def pop_pending_pdf(token: str) -> dict | None:
+    """
+    Retrieve and delete the pending PDF row for *token*.
+    Returns {"filename": ..., "pdf_bytes": ..., "pdf_text": ...} or None.
+    """
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT filename, pdf_bytes, pdf_text FROM pending_pdfs WHERE token = ?",
+            (token,),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute("DELETE FROM pending_pdfs WHERE token = ?", (token,))
+    return {"filename": row["filename"], "pdf_bytes": bytes(row["pdf_bytes"]), "pdf_text": row["pdf_text"]}
 
 
 init_db()

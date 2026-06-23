@@ -53,9 +53,9 @@
   <div style="display:flex;gap:14px;flex-wrap:wrap;">
 
     <form action="/user_upload/confirm" method="post" style="flex:1;min-width:200px;">
-      <input type="hidden" name="action"      value="keep">
-      <input type="hidden" name="pdf_token"   value="{{ pdf_token }}">
-      <input type="hidden" name="existing_id" value="{{ existing.get('id','') }}">
+      <input type="hidden" name="action"         value="keep">
+      <input type="hidden" name="pending_token"  value="{{ pending_token }}">
+      <input type="hidden" name="existing_id"    value="{{ existing.get('id','') }}">
       <button type="submit" style="width:100%;padding:14px;font-size:0.95rem;
               background:var(--surface2);border:1px solid var(--line2);color:var(--ink);
               border-radius:10px;font-weight:600;cursor:pointer;text-align:center;">
@@ -67,9 +67,9 @@
     </form>
 
     <form action="/user_upload/confirm" method="post" style="flex:1;min-width:200px;" id="reextract-form">
-      <input type="hidden" name="action"      value="reextract">
-      <input type="hidden" name="pdf_token"   value="{{ pdf_token }}">
-      <input type="hidden" name="existing_id" value="{{ existing.get('id','') }}">
+      <input type="hidden" name="action"         value="reextract">
+      <input type="hidden" name="pending_token"  value="{{ pending_token }}">
+      <input type="hidden" name="existing_id"    value="{{ existing.get('id','') }}">
       <button type="submit" id="reextract-btn" style="width:100%;padding:14px;font-size:0.95rem;
               background:var(--brand);color:#fff;border:none;
               border-radius:10px;font-weight:600;cursor:pointer;text-align:center;">
