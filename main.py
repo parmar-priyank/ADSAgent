@@ -88,7 +88,7 @@ def _get_groq_vision():
         raise HTTPException(500, "GROQ_API_KEY_VISION not set. Add it to your .env file.")
     return _groq_vision_client
 
-MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB hard cap for all uploads
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB hard cap for all uploads
 
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 
@@ -816,7 +816,7 @@ async def upload_zip(
         return resp
 
     if len(data) > MAX_UPLOAD_BYTES:
-        return _qc_error("ZIP file is too large. Maximum allowed size is 30 MB.")
+        return _qc_error("ZIP file is too large. Maximum allowed size is 200 MB.")
 
     zip_files: dict[str, bytes] = {}
     try:
@@ -1173,7 +1173,7 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         resp = templates.TemplateResponse(
             request, "user_home.html",
-            _index_context(user=user, error="PDF file is too large. Maximum allowed size is 30 MB."),
+            _index_context(user=user, error="PDF file is too large. Maximum allowed size is 200 MB."),
         )
         resp.headers.update(_NO_CACHE)
         return resp
