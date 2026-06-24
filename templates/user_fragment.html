@@ -57,11 +57,12 @@
                    {% if it['is_section'] %}font-weight:700;{% endif %}">
           </td>
           <td style="padding:6px 8px;">
-            <input type="text" name="reference" value="{{ it['reference'] or '' }}"
+            <input type="hidden" name="reference" id="ref-hidden-{{ it['id'] }}"
                    form="frag-row-form-{{ it['id'] }}"
-                   placeholder="file.pdf or file1.pdf + file2.jpg"
-                   title="Separate multiple files with +"
-                   style="width:100%;padding:6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);">
+                   value="{{ it['reference'] or '' }}">
+            <div id="ref-wrap-{{ it['id'] }}"
+                 data-ref="{{ it['reference'] or '' }}"
+                 style="display:flex;flex-direction:column;gap:4px;"></div>
           </td>
           <td style="padding:6px 8px;">
             <input type="text" name="prompt" value="{{ it['prompt'] or '' }}"
@@ -103,3 +104,68 @@
     <button type="submit">Save All</button>
   </form>
 </div>
+
+<script>
+(function () {
+  function buildRefWrap(wrap) {
+    var id    = wrap.id.replace('ref-wrap-', '');
+    var raw   = wrap.dataset.ref || '';
+    var parts = raw ? raw.split('+').map(function(s){ return s.trim(); }).filter(Boolean) : [];
+    if (!parts.length) parts = [''];
+
+    function sync() {
+      var vals = [];
+      wrap.querySelectorAll('input.ref-input').forEach(function(i) {
+        if (i.value.trim()) vals.push(i.value.trim());
+      });
+      var hidden = document.getElementById('ref-hidden-' + id);
+      if (hidden) hidden.value = vals.join(' + ');
+    }
+
+    var btnBase = 'border:none;background:none;cursor:pointer;padding:0 3px;font-size:13px;line-height:1;flex-shrink:0;';
+
+    function addBox(val) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:2px;margin-bottom:2px;';
+
+      var inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'ref-input';
+      inp.value = val || '';
+      inp.placeholder = 'filename.pdf';
+      inp.style.cssText = 'flex:1;padding:6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);font-size:13px;min-width:0;width:100%;';
+      inp.addEventListener('input', sync);
+
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.textContent = '+';
+      addBtn.title = 'Add another file';
+      addBtn.style.cssText = btnBase + 'color:var(--brand);font-size:15px;font-weight:700;';
+      addBtn.addEventListener('click', function() { addBox(''); sync(); });
+
+      var delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.textContent = '×';
+      delBtn.title = 'Remove';
+      delBtn.style.cssText = btnBase + 'color:var(--muted);font-size:15px;';
+      delBtn.addEventListener('click', function() {
+        if (wrap.querySelectorAll('.ref-input').length > 1) {
+          row.remove();
+        } else {
+          inp.value = '';
+        }
+        sync();
+      });
+
+      row.appendChild(inp);
+      row.appendChild(addBtn);
+      row.appendChild(delBtn);
+      wrap.appendChild(row);
+    }
+
+    parts.forEach(function(p) { addBox(p); });
+  }
+
+  document.querySelectorAll('[id^="ref-wrap-"]').forEach(buildRefWrap);
+})();
+</script>

@@ -115,6 +115,13 @@
       .then(function(r){ return r.text(); })
       .then(function(html){
         body.innerHTML = html;
+        // Re-execute scripts — innerHTML does not run them automatically.
+        body.querySelectorAll('script').forEach(function(s) {
+          var el = document.createElement('script');
+          el.textContent = s.textContent;
+          document.body.appendChild(el);
+          el.remove();
+        });
         var meta = body.querySelector('[data-tpl-name]');
         if (meta) {
           title.textContent = meta.dataset.tplName + ' · Editor';

@@ -37,7 +37,7 @@ import users as adb        # user accounts
 load_dotenv()
 
 GROQ_API_KEY          = os.environ.get("GROQ_API_KEY")
-GROQ_API_KEY_VISION   = os.environ.get("GROQ_API_KEY_VISION")
+GROQ_API_KEY_VISION   = os.environ.get("GROQ_API_KEY_VISION") or os.environ.get("GROQ_API_KEY")
 GROQ_MODEL            = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_VISION_MODEL     = os.environ.get("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 SECRET_KEY            = os.environ.get("SECRET_KEY")
@@ -70,15 +70,13 @@ def _verify_recaptcha(token: str) -> bool:
     except Exception:
         return False
 
-# Groq clients initialised once at module load -- no mutable global, no race condition.
+# Groq clients initialised once at module load.
 if not GROQ_API_KEY:
     _groq_client = None
 else:
     _groq_client = Groq(api_key=GROQ_API_KEY)
 
-# Vision client uses a separate key (different account = separate TPM pool).
-# Falls back to the main key if GROQ_API_KEY_VISION is not set.
-_groq_vision_client = Groq(api_key=GROQ_API_KEY_VISION or GROQ_API_KEY) if (GROQ_API_KEY_VISION or GROQ_API_KEY) else None
+_groq_vision_client = Groq(api_key=GROQ_API_KEY_VISION) if GROQ_API_KEY_VISION else None
 
 def _get_groq():
     if _groq_client is None:
@@ -87,7 +85,7 @@ def _get_groq():
 
 def _get_groq_vision():
     if _groq_vision_client is None:
-        raise HTTPException(500, "GROQ_API_KEY not set. Add it to your .env file.")
+        raise HTTPException(500, "GROQ_API_KEY_VISION not set. Add it to your .env file.")
     return _groq_vision_client
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB hard cap for all uploads
@@ -504,11 +502,12 @@ async def toggle_theme(request: Request, user=Depends(require_login)):
     form = await request.form()
     next_url = form.get("next", "")
     origin = str(request.base_url).rstrip("/")
-    if next_url and next_url.startswith(origin):
+    _post_only = ("/run-checklist", "/user_upload", "/checklist-confirm")
+    if next_url and next_url.startswith(origin) and not any(next_url.startswith(origin + p) for p in _post_only):
         dest = next_url
     else:
         referer = request.headers.get("referer", "")
-        dest = referer if referer.startswith(origin) else "/user_home"
+        dest = referer if (referer.startswith(origin) and not any(referer.startswith(origin + p) for p in _post_only)) else "/user_home"
     return RedirectResponse(url=dest, status_code=303)
 
 
@@ -596,6 +595,42 @@ def admin_templates_page(request: Request, user=Depends(require_admin)):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     return response
+
+
+@app.get("/admin/api-status")
+def admin_api_status(user=Depends(require_admin)):
+    """Ping both Groq models and return latency + status for the dashboard meter."""
+    import time
+
+    def _ping(client, model: str) -> dict:
+        t0 = time.monotonic()
+        try:
+            client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": "Hi"}],
+                max_tokens=1,
+                temperature=0,
+            )
+            ms = round((time.monotonic() - t0) * 1000)
+            return {"status": "ok", "ms": ms}
+        except Exception as e:
+            ms = round((time.monotonic() - t0) * 1000)
+            msg = str(e)
+            if "429" in msg or "rate_limit" in msg.lower():
+                return {"status": "rate_limited", "ms": ms, "detail": "Rate limit hit"}
+            if "401" in msg or "invalid_api_key" in msg.lower():
+                return {"status": "auth_error", "ms": ms, "detail": "Invalid API key"}
+            if "timeout" in msg.lower() or "timed out" in msg.lower():
+                return {"status": "timeout", "ms": ms, "detail": "Request timed out"}
+            return {"status": "error", "ms": ms, "detail": msg[:120]}
+
+    text   = _ping(_groq_client, GROQ_MODEL)        if _groq_client        else {"status": "not_configured", "ms": 0}
+    vision = _ping(_groq_vision_client, GROQ_VISION_MODEL) if _groq_vision_client else {"status": "not_configured", "ms": 0}
+
+    return {
+        "text":   {"model": GROQ_MODEL,        **text},
+        "vision": {"model": GROQ_VISION_MODEL, **vision},
+    }
 
 
 @app.get("/admin/database", response_class=HTMLResponse)
@@ -960,19 +995,12 @@ async def upload_zip(
         except Exception as e:
             return {"status": "N/A", "remark": f"Error analysing file: {e}"}
 
-    # Run analysis with limited concurrency — the Groq free tier has a tight
-    # tokens-per-minute cap; firing all requests at once causes 429 errors.
-    _groq_sem = asyncio.Semaphore(3)
-
-    async def _analyse_item_limited(item):
-        async with _groq_sem:
-            return await asyncio.to_thread(_analyse_item, item)
-
+    # Run all checklist items concurrently — no rate limit on the local LLM.
     non_section = [(i, item) for i, item in enumerate(items) if not item.get("is_section")]
     section_rows = {i: item for i, item in enumerate(items) if item.get("is_section")}
 
     results = await asyncio.gather(
-        *[_analyse_item_limited(item) for _, item in non_section]
+        *[asyncio.to_thread(_analyse_item, item) for _, item in non_section]
     )
 
     checklist_rows = []
@@ -1081,7 +1109,13 @@ def checklist_confirm(
             except ValueError:
                 continue
 
-    return RedirectResponse(url=f"/admin{cal_param}", status_code=303)
+    resp = templates.TemplateResponse(request, "user_thankyou.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "cal_param": cal_param,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
 
 
 @app.get("/pdf", response_class=HTMLResponse)
@@ -1144,15 +1178,16 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
         resp.headers.update(_NO_CACHE)
         return resp
 
-    # Extract text once — reused for both duplicate detection and Groq extraction.
+    # Extract text once — reused for both duplicate detection and local LLM extraction.
     import re as _re
     text = extract_pdf_text(file_bytes)
+    print(f"[DEBUG] PDF text extracted, length={len(text)}")
     _qn_match = _re.search(r'(?i)quote\s*(?:number|no\.?|#)?\s*[:\-]?\s*([A-Z0-9\-]{4,20})', text)
     _detected_qn = _qn_match.group(1).strip() if _qn_match else None
+    print(f"[DEBUG] Detected quote number: {_detected_qn!r}")
     existing = db.find_by_quote_number(_detected_qn) if _detected_qn else None
+    print(f"[DEBUG] Existing record: {existing is not None}")
     if existing:
-        # Store PDF bytes + already-extracted text in the DB so the browser
-        # never has to carry a multi-MB base64 blob in a form hidden field.
         pending_token = db.store_pending_pdf(file.filename, file_bytes, text)
         existing_data = existing.get("data") or existing
         existing_data["id"] = existing["id"]
@@ -1171,8 +1206,7 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
     except AuthenticationError:
         resp = templates.TemplateResponse(
             request, "user_home.html",
-            _index_context(user=user, error="Invalid Groq API key. Check the GROQ_API_KEY value in your .env file "
-                                 "(it should start with 'gsk_') and restart the server."),
+            _index_context(user=user, error="Invalid Groq API key. Check GROQ_API_KEY in your .env file and restart."),
         )
         resp.headers.update(_NO_CACHE)
         return resp
@@ -1220,7 +1254,7 @@ async def upload_confirm(
     except AuthenticationError:
         resp = templates.TemplateResponse(
             request, "user_home.html",
-            _index_context(user=user, error="Invalid Groq API key."),
+            _index_context(user=user, error="Invalid Groq API key. Check GROQ_API_KEY in your .env file and restart."),
         )
         resp.headers.update(_NO_CACHE)
         return resp

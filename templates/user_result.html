@@ -60,9 +60,14 @@
   <div class="card">
     <div class="dl-bar">
       <div class="summary-chips">
-        <span class="chip chip-yes">&#10003; {{ yes_count }} Yes</span>
-        <span class="chip chip-no">&#10007; {{ no_count }} No</span>
-        <span class="chip chip-na">— {{ na_count }} N/A</span>
+        <span class="chip chip-yes" onclick="setFilter('Yes')" id="filter-yes"
+              style="cursor:pointer;user-select:none;">&#10003; {{ yes_count }} Yes</span>
+        <span class="chip chip-no" onclick="setFilter('No')" id="filter-no"
+              style="cursor:pointer;user-select:none;">&#10007; {{ no_count }} No</span>
+        <span class="chip chip-na" onclick="setFilter('N/A')" id="filter-na"
+              style="cursor:pointer;user-select:none;">— {{ na_count }} N/A</span>
+        <span class="chip" onclick="setFilter('All')" id="filter-all"
+              style="cursor:pointer;user-select:none;background:var(--brand);color:#fff;">All</span>
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
         <button type="button" class="link-btn" onclick="toggleRerun()" id="rerun-toggle-btn"
@@ -87,14 +92,14 @@
             <th>Remark</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="checklist-tbody">
           {% for row in checklist_rows %}
           {% if row.is_section %}
-          <tr class="section-row">
+          <tr class="section-row" data-section="1">
             <td colspan="6">{{ row.text }}</td>
           </tr>
           {% else %}
-          <tr>
+          <tr data-status="{{ row.status }}">
             <td class="checklist-sno-cell">{{ row.sno }}</td>
             <td>{{ row.text }}</td>
             <td class="checklist-ref-cell">{{ row.reference or '—' }}</td>
@@ -161,6 +166,38 @@
     });
     dz.addEventListener('drop', function(ev) {
       if (ev.dataTransfer.files.length) { input.files = ev.dataTransfer.files; sync(); }
+    });
+  }
+
+  var _activeFilter = 'All';
+
+  function setFilter(val) {
+    _activeFilter = val;
+
+    // Update chip styles
+    var chips = { 'Yes': 'filter-yes', 'No': 'filter-no', 'N/A': 'filter-na', 'All': 'filter-all' };
+    Object.keys(chips).forEach(function(k) {
+      var el = document.getElementById(chips[k]);
+      if (!el) return;
+      if (k === val) {
+        el.style.opacity = '1';
+        el.style.outline = '2px solid currentColor';
+        el.style.outlineOffset = '2px';
+      } else {
+        el.style.opacity = '0.45';
+        el.style.outline = '';
+        el.style.outlineOffset = '';
+      }
+    });
+
+    // Show/hide rows
+    var rows = document.querySelectorAll('#checklist-tbody tr');
+    rows.forEach(function(tr) {
+      if (tr.dataset.section) {
+        tr.style.display = (val === 'All') ? '' : 'none';
+        return;
+      }
+      tr.style.display = (val === 'All' || tr.dataset.status === val) ? '' : 'none';
     });
   }
 

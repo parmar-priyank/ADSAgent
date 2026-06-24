@@ -103,9 +103,8 @@
 
   {% block scripts %}{% endblock %}
   <script>
-    document.getElementById('theme-toggle-form').addEventListener('submit', function() {
-      document.getElementById('theme-next-input').value = window.location.href;
-    });
+    // Set on page load so it always reflects the current GET URL, never a POST URL.
+    document.getElementById('theme-next-input').value = window.location.href;
   </script>
 </body>
 </html>
