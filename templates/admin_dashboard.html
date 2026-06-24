@@ -73,9 +73,16 @@
 
   var _calYear, _calMonth;
   (function() {
-    var now = new Date();
-    _calYear  = now.getFullYear();
-    _calMonth = now.getMonth();
+    var jump = "{{ cal_jump | default('') }}";
+    if (jump && /^\d{4}-\d{2}$/.test(jump)) {
+      var parts = jump.split('-');
+      _calYear  = parseInt(parts[0], 10);
+      _calMonth = parseInt(parts[1], 10) - 1;
+    } else {
+      var now = new Date();
+      _calYear  = now.getFullYear();
+      _calMonth = now.getMonth();
+    }
   })();
 
   function calNav(dir) {

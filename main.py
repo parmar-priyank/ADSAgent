@@ -37,7 +37,9 @@ import users as adb        # user accounts
 load_dotenv()
 
 GROQ_API_KEY          = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY_VISION   = os.environ.get("GROQ_API_KEY_VISION")
 GROQ_MODEL            = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_VISION_MODEL     = os.environ.get("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 SECRET_KEY            = os.environ.get("SECRET_KEY")
 RECAPTCHA_SITE_KEY    = os.environ.get("RECAPTCHA_SITE_KEY", "")
 RECAPTCHA_SECRET_KEY  = os.environ.get("RECAPTCHA_SECRET_KEY", "")
@@ -68,16 +70,25 @@ def _verify_recaptcha(token: str) -> bool:
     except Exception:
         return False
 
-# Groq client initialised once at module load -- no mutable global, no race condition.
+# Groq clients initialised once at module load -- no mutable global, no race condition.
 if not GROQ_API_KEY:
     _groq_client = None
 else:
     _groq_client = Groq(api_key=GROQ_API_KEY)
 
+# Vision client uses a separate key (different account = separate TPM pool).
+# Falls back to the main key if GROQ_API_KEY_VISION is not set.
+_groq_vision_client = Groq(api_key=GROQ_API_KEY_VISION or GROQ_API_KEY) if (GROQ_API_KEY_VISION or GROQ_API_KEY) else None
+
 def _get_groq():
     if _groq_client is None:
         raise HTTPException(500, "GROQ_API_KEY not set. Add it to your .env file.")
     return _groq_client
+
+def _get_groq_vision():
+    if _groq_vision_client is None:
+        raise HTTPException(500, "GROQ_API_KEY not set. Add it to your .env file.")
+    return _groq_vision_client
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB hard cap for all uploads
 
@@ -541,13 +552,14 @@ def _admin_ctx(user: dict, **extra) -> dict:
 
 
 @app.get("/admin", response_class=HTMLResponse)
-def admin_dashboard(request: Request, user=Depends(require_admin)):
+def admin_dashboard(request: Request, user=Depends(require_admin), cal: str = ""):
     records = db.get_recent()
     ctx = _admin_ctx(user,
         users_count=len(adb.list_users()),
         records_count=len(records),
         templates_count=len(tdb.list_templates()),
         install_map_json=_build_install_map(records),
+        cal_jump=cal,  # e.g. "2026-08" — tells the calendar JS which month to open
     )
     response = templates.TemplateResponse(request, "admin_dashboard.html", ctx)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -782,15 +794,17 @@ async def upload_zip(
     except zipmod.BadZipFile:
         return _qc_error("Uploaded file is not a valid ZIP archive.")
 
-    client = _get_groq()
+    _text_client   = _get_groq()
+    _vision_client = _get_groq_vision()
     QC_SYSTEM = (
         "You are a QC document checker. "
         "Determine if the requirement is met based on the provided content. "
         'Reply with JSON only: {"status": "Yes" or "No", "remark": "one sentence explanation"}'
     )
 
-    def _groq_check(model: str, messages: list) -> dict:
-        resp = client.chat.completions.create(
+    def _groq_check(model: str, messages: list, *, vision: bool = False) -> dict:
+        c = _vision_client if vision else _text_client
+        resp = c.chat.completions.create(
             model=model, messages=messages, temperature=0,
             max_tokens=300,
             response_format={"type": "json_object"},
@@ -941,18 +955,24 @@ async def upload_zip(
                 {"role": "system", "content": QC_SYSTEM},
                 {"role": "user", "content": user_content},
             ]
-            return _groq_check("meta-llama/llama-4-scout-17b-16e-instruct", messages)
+            return _groq_check(GROQ_VISION_MODEL, messages, vision=True)
 
         except Exception as e:
             return {"status": "N/A", "remark": f"Error analysing file: {e}"}
 
-    # Run analysis concurrently — each Groq call is a blocking HTTP request so
-    # we offload to threads to avoid freezing the event loop.
+    # Run analysis with limited concurrency — the Groq free tier has a tight
+    # tokens-per-minute cap; firing all requests at once causes 429 errors.
+    _groq_sem = asyncio.Semaphore(3)
+
+    async def _analyse_item_limited(item):
+        async with _groq_sem:
+            return await asyncio.to_thread(_analyse_item, item)
+
     non_section = [(i, item) for i, item in enumerate(items) if not item.get("is_section")]
     section_rows = {i: item for i, item in enumerate(items) if item.get("is_section")}
 
     results = await asyncio.gather(
-        *[asyncio.to_thread(_analyse_item, item) for _, item in non_section]
+        *[_analyse_item_limited(item) for _, item in non_section]
     )
 
     checklist_rows = []
@@ -1028,6 +1048,40 @@ def checklist_download(token: str, _auth=Depends(require_login)):
             "Pragma": "no-cache",
         },
     )
+
+
+@app.post("/checklist-confirm")
+def checklist_confirm(
+    request: Request,
+    quote_id: str = Form(""),
+    user=Depends(require_login),
+):
+    """
+    Called when the user clicks 'Confirm & Add to Calendar' on the result page.
+    Looks up the install_date from the saved quote record and redirects to the
+    admin calendar, jumping to the correct month so the entry is visible.
+    """
+    record = None
+    if quote_id:
+        try:
+            record = db.get_quote(int(quote_id))
+        except (ValueError, TypeError):
+            record = db.find_by_quote_number(quote_id)
+
+    # Build redirect target: admin calendar, jumping to the install month if known.
+    install_date = (record or {}).get("install_date", "").strip() if record else ""
+    cal_param = ""
+    if install_date:
+        from datetime import datetime
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+            try:
+                dt = datetime.strptime(install_date, fmt)
+                cal_param = f"?cal={dt.year}-{dt.month:02d}"
+                break
+            except ValueError:
+                continue
+
+    return RedirectResponse(url=f"/admin{cal_param}", status_code=303)
 
 
 @app.get("/pdf", response_class=HTMLResponse)
