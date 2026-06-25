@@ -1,0 +1,245 @@
+{% extends "admin_base.html" %}
+
+{% block title %}QC v{{ v.version }} — {{ v.customer_name }}{% endblock %}
+{% block nav_records %}active{% endblock %}
+{% block page_title %}QC Version {{ v.version }}{% endblock %}
+{% block page_crumb %}
+  <a href="/admin#records" style="color:var(--brand);text-decoration:none;">Records</a>
+  &rsaquo; <a href="/pdf?id={{ v.quote_id }}" style="color:var(--brand);text-decoration:none;">{{ v.customer_name }}</a>
+  &rsaquo; QC v{{ v.version }}
+{% endblock %}
+
+{% block content %}
+
+<!-- Header bar -->
+<div class="dash-card" style="margin-bottom:16px;">
+  <div class="dash-card-body" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="background:var(--brand);color:#fff;border-radius:6px;padding:4px 12px;font-size:13px;font-weight:700;letter-spacing:.5px;">v{{ v.version }}</span>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:var(--text);">{{ v.customer_name }} &mdash; {{ v.quote_number }}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px;">
+          {{ v.template_name or 'Unknown template' }}
+          {% if v.zip_filename %}&nbsp;&middot;&nbsp;{{ v.zip_filename }}{% endif %}
+          &nbsp;&middot;&nbsp;{{ v.confirmed_at[:16] if v.confirmed_at else '' }}
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <!-- Live count chips -->
+      <span id="chip-yes" style="background:#16a34a;color:#fff;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700;">&#10003; {{ v.yes_count }} Yes</span>
+      <span id="chip-no"  style="background:#dc2626;color:#fff;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700;">&#10007; {{ v.no_count }} No</span>
+      <span id="chip-na"  style="background:var(--line2);color:var(--text2);border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;">&#8212; {{ v.na_count }} N/A</span>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <a href="/admin/qc-version/{{ v.id }}/download"
+         style="font-size:13px;font-weight:600;color:var(--brand);text-decoration:none;border:1.5px solid var(--brand);border-radius:7px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download Excel
+      </a>
+      <button id="modify-btn" onclick="enterEditMode()"
+              style="background:var(--brand);color:#fff;border:none;border-radius:7px;padding:6px 16px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+        &#9998; Modify
+      </button>
+    </div>
+  </div>
+</div>
+
+{% if not rows %}
+<div class="dash-card">
+  <div class="dash-card-body" style="color:var(--text2);font-size:14px;">
+    No checklist rows stored for this version. This run was saved before the versioning update — download the Excel to view results.
+  </div>
+</div>
+{% else %}
+
+<!-- Edit mode save bar -->
+<div id="edit-bar" style="display:none;background:var(--brand);color:#fff;border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:12px;">
+  <span style="font-size:13px;font-weight:600;">&#9998; Edit mode — change Yes/No and remarks, then save.</span>
+  <div style="display:flex;gap:8px;">
+    <button type="button" onclick="cancelEditMode()"
+            style="background:transparent;border:1.5px solid rgba(255,255,255,.6);color:#fff;border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;">
+      Cancel
+    </button>
+    <button type="button" id="save-btn" onclick="saveEdits()"
+            style="background:#fff;color:var(--brand);border:none;border-radius:6px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;">
+      Save Changes
+    </button>
+  </div>
+</div>
+
+<!-- Checklist table -->
+<div class="dash-card">
+  <div style="overflow-x:auto;">
+    <table class="dash-table" style="width:100%;">
+      <thead>
+        <tr>
+          <th style="width:55px;">Sno.</th>
+          <th>Checklist Item</th>
+          <th style="width:80px;text-align:center;">Yes/No</th>
+          <th>Remark</th>
+        </tr>
+      </thead>
+      <tbody id="qc-tbody">
+        {% for row in rows %}
+        {% if row.is_section %}
+        <tr style="background:var(--brand);color:#fff;">
+          <td colspan="4" style="font-weight:700;font-size:13px;padding:8px 12px;">{{ row.text }}</td>
+        </tr>
+        {% else %}
+        <tr data-position="{{ row.position }}"
+            data-status="{{ row.status }}"
+            data-remark="{{ row.remark or '' | e }}"
+            data-sno="{{ row.sno }}"
+            data-text="{{ row.text | e }}"
+            data-reference="{{ row.reference or '' }}"
+            data-prompt="{{ row.prompt or '' }}">
+          <td style="font-weight:700;font-size:13px;text-align:center;">{{ row.sno }}</td>
+          <td style="font-size:13px;">{{ row.text }}</td>
+          <td style="text-align:center;">
+            <span class="status-view">
+              {% if row.status == 'Yes' %}
+                <span style="background:#16a34a;color:#fff;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;">Yes</span>
+              {% elif row.status == 'No' %}
+                <span style="background:#dc2626;color:#fff;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;">No</span>
+              {% else %}
+                <span style="background:var(--line2);color:var(--text2);border-radius:4px;padding:2px 8px;font-size:12px;font-weight:600;">N/A</span>
+              {% endif %}
+            </span>
+            <select class="status-edit" style="display:none;font-size:13px;padding:3px 6px;border-radius:5px;border:1.5px solid var(--brand);background:var(--bg);color:var(--text);cursor:pointer;">
+              <option value="Yes" {% if row.status == 'Yes' %}selected{% endif %}>Yes</option>
+              <option value="No"  {% if row.status == 'No'  %}selected{% endif %}>No</option>
+              <option value="N/A" {% if row.status == 'N/A' %}selected{% endif %}>N/A</option>
+            </select>
+          </td>
+          <td>
+            <span class="remark-view" style="font-size:13px;color:var(--text2);">{{ row.remark or '' }}</span>
+            <input class="remark-edit" type="text" value="{{ row.remark or '' | e }}"
+                   style="display:none;width:100%;font-size:13px;padding:4px 7px;border-radius:5px;border:1.5px solid var(--brand);background:var(--bg);color:var(--text);box-sizing:border-box;">
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var _editMode = false;
+
+  function enterEditMode() {
+    _editMode = true;
+    document.getElementById('edit-bar').style.display = 'flex';
+    document.getElementById('modify-btn').style.display = 'none';
+    document.querySelectorAll('#qc-tbody tr[data-position]').forEach(function(tr) {
+      tr.querySelector('.status-view').style.display = 'none';
+      tr.querySelector('.status-edit').style.display = '';
+      tr.querySelector('.remark-view').style.display = 'none';
+      tr.querySelector('.remark-edit').style.display = '';
+    });
+    document.querySelectorAll('.status-edit').forEach(function(sel) {
+      sel.addEventListener('change', function() {
+        sel.closest('tr').dataset.status = sel.value;
+      });
+    });
+  }
+
+  function cancelEditMode() {
+    _editMode = false;
+    document.getElementById('edit-bar').style.display = 'none';
+    document.getElementById('modify-btn').style.display = '';
+    document.querySelectorAll('#qc-tbody tr[data-position]').forEach(function(tr) {
+      tr.querySelector('.status-edit').value = tr.dataset.status;
+      tr.querySelector('.remark-edit').value = tr.dataset.remark || '';
+      tr.querySelector('.status-view').style.display = '';
+      tr.querySelector('.status-edit').style.display = 'none';
+      tr.querySelector('.remark-view').style.display = '';
+      tr.querySelector('.remark-edit').style.display = 'none';
+    });
+  }
+
+  function saveEdits() {
+    var rows = [];
+    document.querySelectorAll('#qc-tbody tr').forEach(function(tr) {
+      if (!tr.dataset.position) {
+        // section row — reconstruct from td text
+        var td = tr.querySelector('td');
+        if (td) rows.push({ is_section: true, text: td.textContent.trim() });
+        return;
+      }
+      var newStatus = tr.querySelector('.status-edit').value;
+      var newRemark = tr.querySelector('.remark-edit').value;
+      rows.push({
+        position:  parseInt(tr.dataset.position),
+        sno:       tr.dataset.sno || '',
+        text:      tr.dataset.text || '',
+        reference: tr.dataset.reference || '',
+        prompt:    tr.dataset.prompt || '',
+        status:    newStatus,
+        remark:    newRemark,
+        is_section: false,
+      });
+    });
+
+    var saveBtn = document.getElementById('save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    fetch('/admin/qc-version/{{ v.id }}/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: rows }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      // Commit to view
+      document.querySelectorAll('#qc-tbody tr[data-position]').forEach(function(tr) {
+        var sel = tr.querySelector('.status-edit');
+        var inp = tr.querySelector('.remark-edit');
+        var newStatus = sel.value;
+        var newRemark = inp.value;
+        tr.dataset.status = newStatus;
+        tr.dataset.remark = newRemark;
+
+        var color = newStatus === 'Yes' ? '#16a34a' : (newStatus === 'No' ? '#dc2626' : '');
+        var bg    = newStatus === 'Yes' ? '#16a34a' : (newStatus === 'No' ? '#dc2626' : 'var(--line2)');
+        var txtC  = (newStatus === 'N/A') ? 'var(--text2)' : '#fff';
+        tr.querySelector('.status-view').innerHTML =
+          '<span style="background:' + bg + ';color:' + txtC + ';border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700;">' + newStatus + '</span>';
+        tr.querySelector('.remark-view').textContent = newRemark;
+      });
+
+      // Update count chips
+      document.getElementById('chip-yes').textContent = '✓ ' + data.yes_count + ' Yes';
+      document.getElementById('chip-no').textContent  = '✗ ' + data.no_count  + ' No';
+      document.getElementById('chip-na').textContent  = '— ' + data.na_count  + ' N/A';
+
+      // Exit edit mode
+      _editMode = false;
+      document.getElementById('edit-bar').style.display = 'none';
+      document.getElementById('modify-btn').style.display = '';
+      document.querySelectorAll('#qc-tbody tr[data-position]').forEach(function(tr) {
+        tr.querySelector('.status-view').style.display = '';
+        tr.querySelector('.status-edit').style.display = 'none';
+        tr.querySelector('.remark-view').style.display = '';
+        tr.querySelector('.remark-edit').style.display = 'none';
+      });
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Changes';
+    })
+    .catch(function() {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Changes';
+      alert('Failed to save. Please try again.');
+    });
+  }
+</script>
+{% endblock %}

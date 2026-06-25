@@ -41,7 +41,7 @@
   <div class="dash-card-header">
     <div class="dash-card-title">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-      Groq API Health
+      Claude API Health
     </div>
     <button onclick="refreshApiStatus()" id="api-refresh-btn"
             style="font-size:11px;padding:4px 10px;border:1px solid var(--line2);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;">
@@ -51,7 +51,7 @@
   <div class="dash-card-body">
     <div id="api-status-wrap" style="display:flex;gap:16px;flex-wrap:wrap;">
       <div style="flex:1;min-width:200px;padding:14px 16px;border-radius:10px;border:1px solid var(--line2);background:var(--surface2);">
-        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Text Model</div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Model</div>
         <div id="api-text-model"  style="font-size:12px;color:var(--ink2);margin-bottom:10px;">—</div>
         <div style="display:flex;align-items:center;gap:10px;">
           <span id="api-text-dot"    style="width:10px;height:10px;border-radius:50%;background:var(--line2);flex-shrink:0;"></span>
@@ -59,16 +59,6 @@
           <span id="api-text-ms"     style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
         </div>
         <div id="api-text-detail" style="font-size:11px;color:var(--err,#f87171);margin-top:6px;display:none;"></div>
-      </div>
-      <div style="flex:1;min-width:200px;padding:14px 16px;border-radius:10px;border:1px solid var(--line2);background:var(--surface2);">
-        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Vision Model</div>
-        <div id="api-vision-model"  style="font-size:12px;color:var(--ink2);margin-bottom:10px;">—</div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span id="api-vision-dot"    style="width:10px;height:10px;border-radius:50%;background:var(--line2);flex-shrink:0;"></span>
-          <span id="api-vision-status" style="font-size:13px;font-weight:700;color:var(--ink);">Checking…</span>
-          <span id="api-vision-ms"     style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
-        </div>
-        <div id="api-vision-detail" style="font-size:11px;color:var(--err,#f87171);margin-top:6px;display:none;"></div>
       </div>
     </div>
     <div id="api-last-checked" style="font-size:11px;color:var(--muted);margin-top:10px;text-align:right;"></div>
@@ -120,15 +110,19 @@
   };
 
   function _applyStatus(prefix, data) {
+    var el = document.getElementById('api-' + prefix + '-model');
+    if (!el) return; // panel not present in this layout
     var meta  = _statusMeta[data.status] || { color: '#6b7280', label: data.status };
-    document.getElementById('api-' + prefix + '-model').textContent  = data.model || '—';
+    el.textContent = data.model || '—';
     document.getElementById('api-' + prefix + '-dot').style.background = meta.color;
     document.getElementById('api-' + prefix + '-status').textContent = meta.label;
     document.getElementById('api-' + prefix + '-status').style.color = meta.color;
     document.getElementById('api-' + prefix + '-ms').textContent     = data.ms ? data.ms + ' ms' : '';
     var det = document.getElementById('api-' + prefix + '-detail');
-    if (data.detail) { det.textContent = data.detail; det.style.display = 'block'; }
-    else              { det.style.display = 'none'; }
+    if (det) {
+      if (data.detail) { det.textContent = data.detail; det.style.display = 'block'; }
+      else              { det.style.display = 'none'; }
+    }
   }
 
   function refreshApiStatus() {
@@ -137,17 +131,16 @@
     fetch('/admin/api-status')
       .then(function(r) { return r.json(); })
       .then(function(d) {
-        _applyStatus('text',   d.text);
-        _applyStatus('vision', d.vision);
+        _applyStatus('text', d.text);
         var now = new Date();
         document.getElementById('api-last-checked').textContent =
           'Last checked: ' + now.toLocaleTimeString();
       })
       .catch(function() {
-        ['text','vision'].forEach(function(p) {
-          document.getElementById('api-' + p + '-status').textContent = 'Unreachable';
-          document.getElementById('api-' + p + '-dot').style.background = '#f87171';
-        });
+        var dot = document.getElementById('api-text-dot');
+        var st  = document.getElementById('api-text-status');
+        if (dot) dot.style.background = '#f87171';
+        if (st)  st.textContent = 'Unreachable';
       })
       .finally(function() { if (btn) btn.disabled = false; });
   }

@@ -48,6 +48,33 @@ def init_db():
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_quote_number "
             "ON quotes(quote_number)"
         )
+        # Add qc_excel column if it doesn't exist yet (safe migration).
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(quotes)").fetchall()]
+        if "qc_excel" not in cols:
+            conn.execute("ALTER TABLE quotes ADD COLUMN qc_excel BLOB")
+        # Versioned QC history table.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS qc_versions (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_id      INTEGER NOT NULL,
+                version       INTEGER NOT NULL,
+                template_name TEXT,
+                zip_filename  TEXT,
+                yes_count     INTEGER DEFAULT 0,
+                no_count      INTEGER DEFAULT 0,
+                na_count      INTEGER DEFAULT 0,
+                excel_blob    BLOB,
+                rows_json     TEXT,
+                confirmed_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE CASCADE
+            )
+            """
+        )
+        # Migrate existing qc_versions rows if rows_json column is missing.
+        qcv_cols = [r[1] for r in conn.execute("PRAGMA table_info(qc_versions)").fetchall()]
+        if "rows_json" not in qcv_cols:
+            conn.execute("ALTER TABLE qc_versions ADD COLUMN rows_json TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS line_items (
@@ -169,7 +196,7 @@ def get_quote(quote_id: int):
 def get_recent(limit: int = 20):
     """
     Return the most recent quotes, each as a dict with all quote fields plus a
-    'line_items' list, so callers can render the full record.
+    'line_items' list and 'qc_version_count', so callers can render the full record.
     """
     with get_db() as conn:
         rows = conn.execute(
@@ -177,6 +204,17 @@ def get_recent(limit: int = 20):
         ).fetchall()
         quotes = [dict(r) for r in rows]
         quotes = _attach_line_items(conn, quotes)
+        # Attach QC version counts in a single query.
+        if quotes:
+            ids = [q["id"] for q in quotes]
+            placeholders = ",".join("?" * len(ids))
+            counts = conn.execute(
+                f"SELECT quote_id, COUNT(*) as cnt FROM qc_versions WHERE quote_id IN ({placeholders}) GROUP BY quote_id",
+                ids,
+            ).fetchall()
+            count_map = {r["quote_id"]: r["cnt"] for r in counts}
+            for q in quotes:
+                q["qc_version_count"] = count_map.get(q["id"], 0)
 
     for display_num, q in enumerate(quotes, start=1):
         q["display_num"] = display_num
@@ -208,6 +246,83 @@ def find_by_quote_number(quote_number: str):
             return None
         quotes = [dict(row)]
         return _attach_line_items(conn, quotes)[0]
+
+
+def save_qc_excel(quote_id: int, xlsx_bytes: bytes):
+    """Attach a QC Excel blob to an existing quote row (latest snapshot)."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE quotes SET qc_excel = ? WHERE id = ?",
+            (xlsx_bytes, quote_id),
+        )
+
+
+def add_qc_version(
+    quote_id: int,
+    xlsx_bytes: bytes,
+    template_name: str = "",
+    zip_filename: str = "",
+    yes_count: int = 0,
+    no_count: int = 0,
+    na_count: int = 0,
+    rows_json: str = "",
+) -> int:
+    """Append a new QC version for this quote and return the version number."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(version), 0) FROM qc_versions WHERE quote_id = ?",
+            (quote_id,),
+        ).fetchone()
+        next_version = (row[0] or 0) + 1
+        conn.execute(
+            """
+            INSERT INTO qc_versions
+                (quote_id, version, template_name, zip_filename,
+                 yes_count, no_count, na_count, excel_blob, rows_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (quote_id, next_version, template_name, zip_filename,
+             yes_count, no_count, na_count, xlsx_bytes, rows_json),
+        )
+    return next_version
+
+
+def update_qc_version(version_id: int, xlsx_bytes: bytes, rows_json: str,
+                      yes_count: int, no_count: int, na_count: int):
+    """Overwrite the Excel blob, rows, and counts for an existing QC version."""
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE qc_versions
+               SET excel_blob=?, rows_json=?, yes_count=?, no_count=?, na_count=?
+             WHERE id=?
+            """,
+            (xlsx_bytes, rows_json, yes_count, no_count, na_count, version_id),
+        )
+
+
+def get_qc_versions(quote_id: int) -> list:
+    """Return all QC versions for a quote, newest first."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, version, template_name, zip_filename,
+                   yes_count, no_count, na_count, confirmed_at
+            FROM qc_versions WHERE quote_id = ?
+            ORDER BY version DESC
+            """,
+            (quote_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_qc_version_excel(version_id: int) -> bytes | None:
+    """Return the Excel blob for a specific qc_versions row."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT excel_blob FROM qc_versions WHERE id = ?", (version_id,)
+        ).fetchone()
+    return bytes(row["excel_blob"]) if row and row["excel_blob"] else None
 
 
 def delete_quote(quote_id: int):

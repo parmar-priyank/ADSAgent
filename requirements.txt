@@ -3,7 +3,7 @@ uvicorn[standard]
 python-multipart
 jinja2
 pdfplumber
-groq
+anthropic
 python-dotenv
 pyyaml
 openpyxl

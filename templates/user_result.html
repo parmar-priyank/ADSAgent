@@ -74,9 +74,28 @@
                 style="font-weight:600;">
           &#8635; Upload Another ZIP
         </button>
-        <a href="/checklist-download?token={{ dl_token }}" class="link-btn" style="font-weight:600;">
+        <button type="button" class="link-btn" id="modify-btn" onclick="enterEditMode()"
+                style="font-weight:600;">
+          &#9998; Modify
+        </button>
+        <a href="/checklist-download?token={{ dl_token }}" class="link-btn" id="dl-link" style="font-weight:600;">
           &#8595; Download Excel
         </a>
+      </div>
+    </div>
+
+    <!-- Edit mode save bar (hidden until edit mode) -->
+    <div id="edit-bar" style="display:none;background:var(--brand);color:#fff;border-radius:8px;padding:10px 16px;margin-bottom:12px;display:none;align-items:center;justify-content:space-between;gap:12px;">
+      <span style="font-size:13px;font-weight:600;">&#9998; Edit mode — change Yes/No and remarks, then save.</span>
+      <div style="display:flex;gap:8px;">
+        <button type="button" onclick="cancelEditMode()"
+                style="background:transparent;border:1.5px solid rgba(255,255,255,.6);color:#fff;border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;">
+          Cancel
+        </button>
+        <button type="button" onclick="saveEdits()"
+                style="background:#fff;color:var(--brand);border:none;border-radius:6px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;">
+          Save Changes
+        </button>
       </div>
     </div>
 
@@ -99,21 +118,38 @@
             <td colspan="6">{{ row.text }}</td>
           </tr>
           {% else %}
-          <tr data-status="{{ row.status }}">
+          <tr data-status="{{ row.status }}"
+              data-position="{{ row.position }}"
+              data-sno="{{ row.sno }}"
+              data-text="{{ row.text | e }}"
+              data-reference="{{ row.reference or '' }}"
+              data-prompt="{{ row.prompt or '' }}"
+              data-remark="{{ row.remark or '' | e }}">
             <td class="checklist-sno-cell">{{ row.sno }}</td>
             <td>{{ row.text }}</td>
             <td class="checklist-ref-cell">{{ row.reference or '—' }}</td>
             <td style="font-size:12px;color:var(--muted);">{{ row.prompt or '—' }}</td>
-            <td class="checklist-status-cell">
-              {% if row.status == 'Yes' %}
-                <span class="badge-yes">Yes</span>
-              {% elif row.status == 'No' %}
-                <span class="badge-no">No</span>
-              {% else %}
-                <span class="badge-na">N/A</span>
-              {% endif %}
+            <td class="checklist-status-cell status-cell">
+              <span class="status-view">
+                {% if row.status == 'Yes' %}
+                  <span class="badge-yes">Yes</span>
+                {% elif row.status == 'No' %}
+                  <span class="badge-no">No</span>
+                {% else %}
+                  <span class="badge-na">N/A</span>
+                {% endif %}
+              </span>
+              <select class="status-edit" style="display:none;font-size:13px;padding:3px 6px;border-radius:5px;border:1.5px solid var(--brand);background:var(--bg);color:var(--text);cursor:pointer;">
+                <option value="Yes" {% if row.status == 'Yes' %}selected{% endif %}>Yes</option>
+                <option value="No"  {% if row.status == 'No'  %}selected{% endif %}>No</option>
+                <option value="N/A" {% if row.status == 'N/A' %}selected{% endif %}>N/A</option>
+              </select>
             </td>
-            <td>{{ row.remark or '' }}</td>
+            <td class="remark-cell">
+              <span class="remark-view">{{ row.remark or '' }}</span>
+              <input class="remark-edit" type="text" value="{{ row.remark or '' | e }}"
+                     style="display:none;width:100%;font-size:13px;padding:4px 7px;border-radius:5px;border:1.5px solid var(--brand);background:var(--bg);color:var(--text);box-sizing:border-box;">
+            </td>
           </tr>
           {% endif %}
           {% endfor %}
@@ -124,7 +160,14 @@
     {% if quote_id %}
     <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line2);display:flex;justify-content:flex-end;">
       <form method="post" action="/checklist-confirm">
-        <input type="hidden" name="quote_id" value="{{ quote_id }}">
+        <input type="hidden" name="quote_id"     value="{{ quote_id }}">
+        <input type="hidden" name="dl_token"     value="{{ dl_token }}">
+        <input type="hidden" name="zip_filename" value="{{ zip_filename }}">
+        <input type="hidden" name="tpl_name"     value="{{ tpl.name }}">
+        <input type="hidden" name="yes_count"    value="{{ yes_count }}">
+        <input type="hidden" name="no_count"     value="{{ no_count }}">
+        <input type="hidden" name="na_count"     value="{{ na_count }}">
+        <input type="hidden" name="rows_json"    id="confirm-rows-json" value="{{ checklist_rows | tojson | e }}">
         <button type="submit" style="background:var(--brand);color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           Confirm &amp; Add to Calendar
@@ -139,6 +182,7 @@
 
 {% block scripts %}
 <script>
+  // ── Rerun panel ──────────────────────────────────────────────────────────
   function toggleRerun() {
     var box  = document.getElementById('rerun-box');
     var btn  = document.getElementById('rerun-toggle-btn');
@@ -169,12 +213,22 @@
     });
   }
 
+  document.getElementById('rerun-form').addEventListener('submit', function(e) {
+    var input = document.getElementById('rerun-input');
+    if (!input || !input.files.length) {
+      e.preventDefault(); alert('Please select a ZIP file.'); return;
+    }
+    var btn = document.getElementById('rerun-submit-btn');
+    var loading = document.getElementById('rerun-loading');
+    if (btn)     { btn.disabled = true; btn.style.display = 'none'; }
+    if (loading) { loading.style.display = 'block'; }
+  });
+
+  // ── Filter chips ─────────────────────────────────────────────────────────
   var _activeFilter = 'All';
 
   function setFilter(val) {
     _activeFilter = val;
-
-    // Update chip styles
     var chips = { 'Yes': 'filter-yes', 'No': 'filter-no', 'N/A': 'filter-na', 'All': 'filter-all' };
     Object.keys(chips).forEach(function(k) {
       var el = document.getElementById(chips[k]);
@@ -189,8 +243,6 @@
         el.style.outlineOffset = '';
       }
     });
-
-    // Show/hide rows
     var rows = document.querySelectorAll('#checklist-tbody tr');
     rows.forEach(function(tr) {
       if (tr.dataset.section) {
@@ -201,15 +253,141 @@
     });
   }
 
-  document.getElementById('rerun-form').addEventListener('submit', function(e) {
-    var input = document.getElementById('rerun-input');
-    if (!input || !input.files.length) {
-      e.preventDefault(); alert('Please select a ZIP file.'); return;
-    }
-    var btn = document.getElementById('rerun-submit-btn');
-    var loading = document.getElementById('rerun-loading');
-    if (btn)     { btn.disabled = true; btn.style.display = 'none'; }
-    if (loading) { loading.style.display = 'block'; }
-  });
+  // ── Edit mode ─────────────────────────────────────────────────────────────
+  var _editMode = false;
+  var _currentDlToken = document.querySelector('input[name="dl_token"]')
+                        ? document.querySelector('input[name="dl_token"]').value : '';
+  var _tplData = {{ tpl | tojson }};
+
+  function enterEditMode() {
+    _editMode = true;
+    document.getElementById('edit-bar').style.display = 'flex';
+    document.getElementById('modify-btn').style.display = 'none';
+    // Show edit widgets, hide view spans
+    document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
+      tr.querySelector('.status-view').style.display = 'none';
+      tr.querySelector('.status-edit').style.display = '';
+      tr.querySelector('.remark-view').style.display = 'none';
+      tr.querySelector('.remark-edit').style.display = '';
+    });
+    // Live-update data-status so filters still work
+    document.querySelectorAll('.status-edit').forEach(function(sel) {
+      sel.addEventListener('change', function() {
+        sel.closest('tr').dataset.status = sel.value;
+      });
+    });
+  }
+
+  function cancelEditMode() {
+    _editMode = false;
+    document.getElementById('edit-bar').style.display = 'none';
+    document.getElementById('modify-btn').style.display = '';
+    // Restore original values and switch back to view mode
+    document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
+      var origStatus = tr.dataset.status;
+      var origRemark = tr.dataset.remark || '';
+      tr.querySelector('.status-edit').value = origStatus;
+      tr.querySelector('.remark-edit').value = origRemark;
+      tr.querySelector('.status-view').style.display = '';
+      tr.querySelector('.status-edit').style.display = 'none';
+      tr.querySelector('.remark-view').style.display = '';
+      tr.querySelector('.remark-edit').style.display = 'none';
+    });
+  }
+
+  function saveEdits() {
+    // Collect current edited rows
+    var rows = [];
+    document.querySelectorAll('#checklist-tbody tr').forEach(function(tr) {
+      if (tr.dataset.section) {
+        rows.push({ is_section: true, text: tr.querySelector('td').textContent.trim() });
+        return;
+      }
+      if (tr.dataset.position === undefined) return;
+      var newStatus = tr.querySelector('.status-edit').value;
+      var newRemark = tr.querySelector('.remark-edit').value;
+      rows.push({
+        position:  parseInt(tr.dataset.position),
+        sno:       tr.dataset.sno || '',
+        text:      tr.dataset.text || '',
+        reference: tr.dataset.reference || '',
+        prompt:    tr.dataset.prompt || '',
+        status:    newStatus,
+        remark:    newRemark,
+        is_section: false,
+      });
+    });
+
+    var saveBtn = document.querySelector('#edit-bar button:last-child');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    fetch('/checklist-save-edits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: rows, tpl: _tplData, dl_token: _currentDlToken }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _currentDlToken = data.dl_token;
+
+      // Update all hidden dl_token inputs and the download link
+      document.querySelectorAll('input[name="dl_token"]').forEach(function(inp) {
+        inp.value = data.dl_token;
+      });
+      var dlLink = document.getElementById('dl-link');
+      if (dlLink) dlLink.href = '/checklist-download?token=' + encodeURIComponent(data.dl_token);
+
+      // Commit edits to view — update badges, remark text, data-remark, data-status
+      document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
+        var sel    = tr.querySelector('.status-edit');
+        var inp    = tr.querySelector('.remark-edit');
+        var newStatus = sel.value;
+        var newRemark = inp.value;
+
+        tr.dataset.status = newStatus;
+        tr.dataset.remark = newRemark;
+
+        // Rebuild badge
+        var badgeClass = newStatus === 'Yes' ? 'badge-yes' : (newStatus === 'No' ? 'badge-no' : 'badge-na');
+        tr.querySelector('.status-view').innerHTML = '<span class="' + badgeClass + '">' + newStatus + '</span>';
+        tr.querySelector('.remark-view').textContent = newRemark;
+      });
+
+      // Recalculate counts and update chips + hidden inputs
+      var yes = 0, no = 0, na = 0;
+      document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
+        var s = tr.dataset.status;
+        if (s === 'Yes') yes++; else if (s === 'No') no++; else na++;
+      });
+      document.getElementById('filter-yes').textContent = '✓ ' + yes + ' Yes';
+      document.getElementById('filter-no').textContent  = '✗ ' + no + ' No';
+      document.getElementById('filter-na').textContent  = '— ' + na + ' N/A';
+      document.querySelectorAll('input[name="yes_count"]').forEach(function(i) { i.value = yes; });
+      document.querySelectorAll('input[name="no_count"]').forEach(function(i)  { i.value = no; });
+      document.querySelectorAll('input[name="na_count"]').forEach(function(i)  { i.value = na; });
+      // Keep rows_json in sync so confirm saves the edited version
+      var rj = document.getElementById('confirm-rows-json');
+      if (rj) rj.value = JSON.stringify(rows);
+
+      // Exit edit mode cleanly
+      _editMode = false;
+      document.getElementById('edit-bar').style.display = 'none';
+      document.getElementById('modify-btn').style.display = '';
+      document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
+        tr.querySelector('.status-view').style.display = '';
+        tr.querySelector('.status-edit').style.display = 'none';
+        tr.querySelector('.remark-view').style.display = '';
+        tr.querySelector('.remark-edit').style.display = 'none';
+      });
+      // Re-apply active filter
+      setFilter(_activeFilter);
+    })
+    .catch(function() {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Changes';
+      alert('Failed to save edits. Please try again.');
+    });
+  }
 </script>
 {% endblock %}

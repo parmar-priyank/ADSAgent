@@ -23,8 +23,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 import pdfplumber
-from groq import Groq
-from groq import AuthenticationError, GroqError
+import anthropic
 
 import records as db      # quote/extraction storage
 import checklists as tdb  # checklist template storage
@@ -36,10 +35,8 @@ import users as adb        # user accounts
 # ---------------------------------------------------------------------------
 load_dotenv()
 
-GROQ_API_KEY          = os.environ.get("GROQ_API_KEY")
-GROQ_API_KEY_VISION   = os.environ.get("GROQ_API_KEY_VISION") or os.environ.get("GROQ_API_KEY")
-GROQ_MODEL            = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-GROQ_VISION_MODEL     = os.environ.get("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+ANTHROPIC_API_KEY     = os.environ.get("ANTHROPIC_API_KEY")
+CLAUDE_MODEL          = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
 SECRET_KEY            = os.environ.get("SECRET_KEY")
 RECAPTCHA_SITE_KEY    = os.environ.get("RECAPTCHA_SITE_KEY", "")
 RECAPTCHA_SECRET_KEY  = os.environ.get("RECAPTCHA_SECRET_KEY", "")
@@ -70,23 +67,13 @@ def _verify_recaptcha(token: str) -> bool:
     except Exception:
         return False
 
-# Groq clients initialised once at module load.
-if not GROQ_API_KEY:
-    _groq_client = None
-else:
-    _groq_client = Groq(api_key=GROQ_API_KEY)
+# Anthropic client initialised once at module load.
+_anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
-_groq_vision_client = Groq(api_key=GROQ_API_KEY_VISION) if GROQ_API_KEY_VISION else None
-
-def _get_groq():
-    if _groq_client is None:
-        raise HTTPException(500, "GROQ_API_KEY not set. Add it to your .env file.")
-    return _groq_client
-
-def _get_groq_vision():
-    if _groq_vision_client is None:
-        raise HTTPException(500, "GROQ_API_KEY_VISION not set. Add it to your .env file.")
-    return _groq_vision_client
+def _get_claude():
+    if _anthropic_client is None:
+        raise HTTPException(500, "ANTHROPIC_API_KEY not set. Add it to your .env file.")
+    return _anthropic_client
 
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB hard cap for all uploads
 
@@ -275,7 +262,7 @@ def extract_pdf_text(file_bytes: bytes) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Groq extraction
+# Claude extraction
 # ---------------------------------------------------------------------------
 EXTRACTION_SCHEMA = {
     "quote_number": "string",
@@ -326,8 +313,8 @@ EXTRACTION_SCHEMA = {
 }
 
 
-def extract_with_groq(text: str) -> dict:
-    client = _get_groq()
+def extract_with_claude(text: str) -> dict:
+    client = _get_claude()
 
     system_prompt = (
         "You are a precise data extraction engine for solar agreements. "
@@ -358,17 +345,21 @@ def extract_with_groq(text: str) -> dict:
         f'Agreement text:\n"""\n{text}\n"""'
     )
 
-    resp = client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0,
-        response_format={"type": "json_object"},
+    resp = client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=4096,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
     )
 
-    return json.loads(resp.choices[0].message.content)
+    raw = resp.content[0].text.strip()
+    # Strip markdown code fences if Claude wrapped the JSON
+    if raw.startswith("```"):
+        raw = raw.split("```", 2)[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.rsplit("```", 1)[0].strip()
+    return json.loads(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -599,17 +590,16 @@ def admin_templates_page(request: Request, user=Depends(require_admin)):
 
 @app.get("/admin/api-status")
 def admin_api_status(user=Depends(require_admin)):
-    """Ping both Groq models and return latency + status for the dashboard meter."""
+    """Ping Claude and return latency + status for the dashboard meter."""
     import time
 
     def _ping(client, model: str) -> dict:
         t0 = time.monotonic()
         try:
-            client.chat.completions.create(
+            client.messages.create(
                 model=model,
-                messages=[{"role": "user", "content": "Hi"}],
                 max_tokens=1,
-                temperature=0,
+                messages=[{"role": "user", "content": "Hi"}],
             )
             ms = round((time.monotonic() - t0) * 1000)
             return {"status": "ok", "ms": ms}
@@ -624,12 +614,11 @@ def admin_api_status(user=Depends(require_admin)):
                 return {"status": "timeout", "ms": ms, "detail": "Request timed out"}
             return {"status": "error", "ms": ms, "detail": msg[:120]}
 
-    text   = _ping(_groq_client, GROQ_MODEL)        if _groq_client        else {"status": "not_configured", "ms": 0}
-    vision = _ping(_groq_vision_client, GROQ_VISION_MODEL) if _groq_vision_client else {"status": "not_configured", "ms": 0}
+    result = _ping(_anthropic_client, CLAUDE_MODEL) if _anthropic_client else {"status": "not_configured", "ms": 0}
 
     return {
-        "text":   {"model": GROQ_MODEL,        **text},
-        "vision": {"model": GROQ_VISION_MODEL, **vision},
+        "text":   {"model": CLAUDE_MODEL, **result},
+        "vision": {"model": CLAUDE_MODEL, **result},
     }
 
 
@@ -829,22 +818,30 @@ async def upload_zip(
     except zipmod.BadZipFile:
         return _qc_error("Uploaded file is not a valid ZIP archive.")
 
-    _text_client   = _get_groq()
-    _vision_client = _get_groq_vision()
+    _claude_client = _get_claude()
     QC_SYSTEM = (
         "You are a QC document checker. "
         "Determine if the requirement is met based on the provided content. "
         'Reply with JSON only: {"status": "Yes" or "No", "remark": "one sentence explanation"}'
     )
 
-    def _groq_check(model: str, messages: list, *, vision: bool = False) -> dict:
-        c = _vision_client if vision else _text_client
-        resp = c.chat.completions.create(
-            model=model, messages=messages, temperature=0,
+    def _claude_check(user_content) -> dict:
+        resp = _claude_client.messages.create(
+            model=CLAUDE_MODEL,
             max_tokens=300,
-            response_format={"type": "json_object"},
+            system=QC_SYSTEM,
+            messages=[{"role": "user", "content": user_content}],
         )
-        r = json.loads(resp.choices[0].message.content)
+        raw = resp.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.rsplit("```", 1)[0].strip()
+        try:
+            r = json.loads(raw)
+        except Exception:
+            return {"status": "N/A", "remark": "AI returned an unreadable response."}
         return {"status": r.get("status", "N/A"), "remark": r.get("remark", "")}
 
     def _resolve_file(name: str):
@@ -965,15 +962,12 @@ async def upload_zip(
 
             needs_vision = bool(image_parts or scanned_pdf_images)
 
-            # If only text-based PDFs and no images, use the text model
+            # If only text-based PDFs and no images, use text path
             if pdf_parts and not needs_vision:
                 if not combined_pdf_text.strip():
                     return {"status": "N/A", "remark": "Could not extract text from PDF(s)."}
-                messages = [
-                    {"role": "system", "content": QC_SYSTEM},
-                    {"role": "user", "content": f"{context}\n\nDocument content:{combined_pdf_text[:8000]}"},
-                ]
-                return _groq_check(GROQ_MODEL, messages)
+                user_content = f"{context}\n\nDocument content:{combined_pdf_text[:8000]}"
+                return _claude_check(user_content)
 
             # Vision path — combine text context + real images + scanned PDF pages
             user_content = [{"type": "text", "text": context}]
@@ -981,16 +975,12 @@ async def upload_zip(
                 user_content.append({"type": "text", "text": f"Document content:{combined_pdf_text[:4000]}"})
             for fname, fdata, mime in image_parts:
                 b64 = base64.standard_b64encode(fdata).decode()
-                user_content.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+                user_content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
             for fname, page_png in scanned_pdf_images:
                 b64 = base64.standard_b64encode(page_png).decode()
-                user_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+                user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
 
-            messages = [
-                {"role": "system", "content": QC_SYSTEM},
-                {"role": "user", "content": user_content},
-            ]
-            return _groq_check(GROQ_VISION_MODEL, messages, vision=True)
+            return _claude_check(user_content)
 
         except Exception as e:
             return {"status": "N/A", "remark": f"Error analysing file: {e}"}
@@ -1031,11 +1021,18 @@ async def upload_zip(
     dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]})
     # Strip the raw Excel blob from tpl — it is bytes and not JSON-serialisable.
     tpl_safe = {k: v for k, v in tpl.items() if not isinstance(v, (bytes, bytearray))}
+    yes_count = sum(1 for r in checklist_rows if r.get("status") == "Yes")
+    no_count  = sum(1 for r in checklist_rows if r.get("status") == "No")
+    na_count  = sum(1 for r in checklist_rows if r.get("status") == "N/A")
     result_token = _signer.dumps({
         "tpl": tpl_safe,
         "rows": checklist_rows,
         "quote_id": quote_id,
         "dl_token": dl_token,
+        "zip_filename": zip_file.filename or "",
+        "yes_count": yes_count,
+        "no_count": no_count,
+        "na_count": na_count,
     })
     rt_enc = urllib.parse.quote(result_token, safe="")
     return RedirectResponse(url=f"/checklist-result?token={rt_enc}", status_code=303)
@@ -1053,10 +1050,55 @@ def checklist_result(request: Request, token: str, user=Depends(require_login)):
         "checklist_rows": payload["rows"],
         "dl_token": payload["dl_token"],
         "quote_id": payload["quote_id"],
+        "zip_filename": payload.get("zip_filename", ""),
+        "yes_count": payload.get("yes_count", 0),
+        "no_count": payload.get("no_count", 0),
+        "na_count": payload.get("na_count", 0),
         "theme": _resolve_theme(user),
     })
     resp.headers.update(_NO_CACHE)
     return resp
+
+
+@app.post("/checklist-save-edits")
+async def checklist_save_edits(request: Request, _auth=Depends(require_login)):
+    """
+    Accepts modified checklist rows as JSON, rebuilds the Excel, and returns
+    a new signed dl_token so the confirm flow can save the corrected version.
+    """
+    body = await request.json()
+    rows        = body.get("rows", [])       # [{sno, text, status, remark, position, is_section, ...}]
+    tpl         = body.get("tpl", {})
+    orig_token  = body.get("dl_token", "")
+
+    # Decode original token just to get template name (no need to validate Excel)
+    tpl_name = tpl.get("name", "checklist")
+    try:
+        orig_payload = _signer.loads(orig_token, max_age=7200)
+        tpl_name = orig_payload.get("name", tpl_name)
+    except Exception:
+        pass
+
+    headers = {
+        "customer_label": tpl.get("customer_label"),
+        "address_label":  tpl.get("address_label"),
+        "job_label":      tpl.get("job_label"),
+    }
+    note_text = tpl.get("note_text", "")
+
+    # Build filled dict from edited rows
+    filled = {}
+    for row in rows:
+        if not row.get("is_section") and row.get("position") is not None:
+            filled[row["position"]] = {
+                "status": row.get("status", "N/A"),
+                "remark": row.get("remark", ""),
+            }
+
+    xlsx_blob = cx.build_xlsx(rows, headers, note_text, filled=filled)
+    xlsx_b64  = base64.b64encode(xlsx_blob).decode()
+    new_dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl_name})
+    return {"dl_token": new_dl_token}
 
 
 @app.get("/checklist-download", response_class=Response)
@@ -1082,12 +1124,18 @@ def checklist_download(token: str, _auth=Depends(require_login)):
 def checklist_confirm(
     request: Request,
     quote_id: str = Form(""),
+    dl_token: str = Form(""),
+    zip_filename: str = Form(""),
+    tpl_name: str = Form(""),
+    yes_count: int = Form(0),
+    no_count: int = Form(0),
+    na_count: int = Form(0),
+    rows_json: str = Form(""),
     user=Depends(require_login),
 ):
     """
     Called when the user clicks 'Confirm & Add to Calendar' on the result page.
-    Looks up the install_date from the saved quote record and redirects to the
-    admin calendar, jumping to the correct month so the entry is visible.
+    Saves the QC Excel as a new version and updates the latest snapshot on the quote.
     """
     record = None
     if quote_id:
@@ -1095,6 +1143,25 @@ def checklist_confirm(
             record = db.get_quote(int(quote_id))
         except (ValueError, TypeError):
             record = db.find_by_quote_number(quote_id)
+
+    # Persist the QC Excel as a new version and update the latest snapshot.
+    if dl_token and record:
+        try:
+            payload = _signer.loads(dl_token, max_age=7200)
+            xlsx_bytes = base64.b64decode(payload["xlsx"])
+            db.save_qc_excel(record["id"], xlsx_bytes)
+            db.add_qc_version(
+                quote_id=record["id"],
+                xlsx_bytes=xlsx_bytes,
+                template_name=tpl_name,
+                zip_filename=zip_filename,
+                yes_count=yes_count,
+                no_count=no_count,
+                na_count=na_count,
+                rows_json=rows_json,
+            )
+        except Exception:
+            pass
 
     # Build redirect target: admin calendar, jumping to the install month if known.
     install_date = (record or {}).get("install_date", "").strip() if record else ""
@@ -1133,13 +1200,108 @@ def quote_detail(request: Request, id: int = None, user=Depends(require_login)):
         (r["display_num"] for r in all_records if r["id"] == record["id"]),
         record["id"],
     )
+    qc_versions = db.get_qc_versions(record["id"]) if record else []
     response = templates.TemplateResponse(
         request, "user_pdf.html",
-        {"record": record, "display_num": display_num, "current_user": user, "theme": _resolve_theme(user), "user_panel_theme": adb.get_setting("user_panel_theme", "dark")},
+        {
+            "record": record,
+            "display_num": display_num,
+            "current_user": user,
+            "theme": _resolve_theme(user),
+            "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
+            "has_qc_excel": bool(record.get("qc_excel")),
+            "qc_versions": qc_versions,
+        },
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     return response
+
+
+@app.get("/admin/qc-download/{quote_id}", response_class=Response)
+def admin_qc_download(quote_id: int, user=Depends(require_admin)):
+    """Download the latest QC Excel for a quote (admin only)."""
+    record = db.get_quote(quote_id)
+    if not record or not record.get("qc_excel"):
+        raise HTTPException(404, "No QC report found for this record.")
+    safe_name = (record.get("customer_name") or f"quote_{quote_id}").replace(" ", "_")
+    return Response(
+        content=bytes(record["qc_excel"]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}_QC.xlsx"',
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+    )
+
+
+@app.get("/admin/qc-version/{version_id}/download", response_class=Response)
+def admin_qc_version_download(version_id: int, user=Depends(require_admin)):
+    """Download a specific QC version Excel (admin only)."""
+    xlsx = db.get_qc_version_excel(version_id)
+    if not xlsx:
+        raise HTTPException(404, "QC version not found.")
+    return Response(
+        content=xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="QC_v{version_id}.xlsx"',
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+    )
+
+
+@app.get("/admin/qc-version/{version_id}", response_class=HTMLResponse)
+def admin_qc_version_view(request: Request, version_id: int, user=Depends(require_admin)):
+    """Admin view of a specific QC version with inline edit capability."""
+    with __import__("database").get_db() as conn:
+        row = conn.execute(
+            """SELECT qv.*, q.customer_name, q.quote_number
+               FROM qc_versions qv JOIN quotes q ON q.id = qv.quote_id
+               WHERE qv.id = ?""",
+            (version_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "QC version not found.")
+    v = dict(row)
+    rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
+    resp = templates.TemplateResponse(request, "admin_qc_version.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
+        "v": v,
+        "rows": rows,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
+
+
+@app.post("/admin/qc-version/{version_id}/save")
+async def admin_qc_version_save(request: Request, version_id: int, user=Depends(require_admin)):
+    """Save admin edits to a QC version — rebuilds Excel and updates DB."""
+    body = await request.json()
+    rows = body.get("rows", [])
+
+    # Rebuild Excel from edited rows
+    filled = {}
+    for row in rows:
+        if not row.get("is_section") and row.get("position") is not None:
+            filled[row["position"]] = {"status": row.get("status", "N/A"), "remark": row.get("remark", "")}
+
+    xlsx_blob = cx.build_xlsx(rows, filled=filled)
+    yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
+    no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
+    na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
+
+    db.update_qc_version(
+        version_id=version_id,
+        xlsx_bytes=xlsx_blob,
+        rows_json=json.dumps(rows),
+        yes_count=yes_count,
+        no_count=no_count,
+        na_count=na_count,
+    )
+    return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}
 
 
 @app.get("/quotes/{quote_id}", response_class=HTMLResponse)
@@ -1202,15 +1364,15 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
         return resp
 
     try:
-        data = extract_with_groq(text)
-    except AuthenticationError:
+        data = extract_with_claude(text)
+    except anthropic.AuthenticationError:
         resp = templates.TemplateResponse(
             request, "user_home.html",
-            _index_context(user=user, error="Invalid Groq API key. Check GROQ_API_KEY in your .env file and restart."),
+            _index_context(user=user, error="Invalid Anthropic API key. Check ANTHROPIC_API_KEY in your .env file and restart."),
         )
         resp.headers.update(_NO_CACHE)
         return resp
-    except GroqError:
+    except anthropic.APIError:
         resp = templates.TemplateResponse(
             request, "user_home.html",
             _index_context(user=user, error="AI service error. Please try again in a moment."),
@@ -1250,15 +1412,15 @@ async def upload_confirm(
     text = pending["pdf_text"]
 
     try:
-        data = extract_with_groq(text)
-    except AuthenticationError:
+        data = extract_with_claude(text)
+    except anthropic.AuthenticationError:
         resp = templates.TemplateResponse(
             request, "user_home.html",
-            _index_context(user=user, error="Invalid Groq API key. Check GROQ_API_KEY in your .env file and restart."),
+            _index_context(user=user, error="Invalid Anthropic API key. Check ANTHROPIC_API_KEY in your .env file and restart."),
         )
         resp.headers.update(_NO_CACHE)
         return resp
-    except GroqError:
+    except anthropic.APIError:
         resp = templates.TemplateResponse(
             request, "user_home.html",
             _index_context(user=user, error="AI service error. Please try again in a moment."),

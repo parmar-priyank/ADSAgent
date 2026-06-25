@@ -208,6 +208,69 @@
     </div>
 
 {% if current_user and current_user.role == 'admin' %}
+      {% if qc_versions %}
+      <div class="dash-card" style="margin-top:8px;">
+        <div class="dash-card-header" style="display:flex;align-items:center;justify-content:space-between;">
+          <h2 class="dash-card-title">QC History</h2>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;color:var(--text2);">{{ qc_versions|length }} run{{ 's' if qc_versions|length != 1 }}</span>
+            <a href="/admin/qc-download/{{ record['id'] }}"
+               style="background:var(--brand);color:#fff;border-radius:7px;padding:6px 16px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Latest
+            </a>
+          </div>
+        </div>
+        <table class="dash-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th style="width:80px;">Version</th>
+              <th>ZIP File</th>
+              <th>Template</th>
+              <th style="text-align:center;">Results</th>
+              <th>Confirmed</th>
+              <th style="text-align:right;">Download</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in qc_versions %}
+            <tr class="clickable" data-href="/admin/qc-version/{{ v.id }}" style="cursor:pointer;" title="View & edit this QC run">
+              <td>
+                <span style="display:inline-flex;align-items:center;gap:5px;font-weight:700;font-size:13px;">
+                  <span style="background:var(--brand);color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;letter-spacing:.5px;">v{{ v.version }}</span>
+                  {% if loop.first %}<span style="font-size:10px;color:var(--text2);font-weight:400;">latest</span>{% endif %}
+                </span>
+              </td>
+              <td style="font-size:13px;color:var(--text2);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ v.zip_filename }}">
+                {{ v.zip_filename or '—' }}
+              </td>
+              <td style="font-size:13px;">{{ v.template_name or '—' }}</td>
+              <td style="text-align:center;">
+                <span style="display:inline-flex;gap:5px;align-items:center;">
+                  <span style="background:#16a34a;color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">✓ {{ v.yes_count }}</span>
+                  <span style="background:#dc2626;color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">✗ {{ v.no_count }}</span>
+                  {% if v.na_count %}<span style="background:var(--line2);color:var(--text2);border-radius:4px;padding:1px 7px;font-size:11px;font-weight:600;">— {{ v.na_count }}</span>{% endif %}
+                </span>
+              </td>
+              <td style="font-size:12px;color:var(--text2);white-space:nowrap;">{{ v.confirmed_at[:16] if v.confirmed_at else '—' }}</td>
+              <td style="text-align:right;" onclick="event.stopPropagation();">
+                <a href="/admin/qc-version/{{ v.id }}/download"
+                   style="font-size:12px;font-weight:600;color:var(--brand);text-decoration:none;display:inline-flex;align-items:center;gap:4px;"
+                   title="Download v{{ v.version }}">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  v{{ v.version }}.xlsx
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
       </div>
     </div>
   </main>
@@ -216,5 +279,12 @@
   </div>
 {% endif %}
 
+<script>
+  document.querySelectorAll('tr.clickable[data-href]').forEach(function(row) {
+    row.addEventListener('click', function() {
+      window.location.href = row.dataset.href;
+    });
+  });
+</script>
 </body>
 </html>
