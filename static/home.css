@@ -252,6 +252,25 @@
 .checklist-sno-cell    { width: 56px; text-align: center; font-weight: 700; color: var(--ink); }
 .checklist-ref-cell    { width: 180px; color: var(--muted); font-size: 12px; }
 .checklist-status-cell { width: 72px; text-align: center; }
+.remark-cell           { width: 200px; max-width: 200px; }
+.remark-cell .remark-view { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink2); max-width: 100%; }
+.remark-edit-btn       { display: none; width: 100%; padding: 4px 6px 4px 8px; border-radius: 5px; border: 1px solid var(--line2); background: var(--surface2); color: var(--ink2); font-size: 12px; cursor: pointer; font-family: inherit; box-sizing: border-box; align-items: center; gap: 5px; min-height: 28px; text-align: left; transition: border-color .15s; }
+.remark-edit-btn:hover { border-color: var(--brand); }
+
+/* Edit-mode driven entirely by .is-edit-mode on the result card — never inline styles */
+.result-card #edit-bar            { display: none; }
+.result-card.is-edit-mode #edit-bar  { display: flex; }
+.result-card #modify-btn          { display: inline-flex; }
+.result-card.is-edit-mode #modify-btn { display: none !important; }
+/* row cells */
+.result-card .status-view         { display: block; }
+.result-card .status-edit         { display: none; }
+.result-card .remark-view         { display: block; }
+.result-card .remark-edit-btn     { display: none; }
+.result-card.is-edit-mode .status-view     { display: none; }
+.result-card.is-edit-mode .status-edit     { display: block; }
+.result-card.is-edit-mode .remark-view     { display: none; }
+.result-card.is-edit-mode .remark-edit-btn { display: flex; }
 .dl-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
 .summary-chips  { display: flex; gap: 8px; flex-wrap: wrap; }
 .chip           { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }

@@ -254,6 +254,8 @@ tbody tr:last-child td { border-bottom: none; }
 [data-theme="light"] button:hover { box-shadow: 0 6px 24px rgba(222,93,24,.32); }
 [data-theme="light"] .link-btn { background: #f3f1ed; color: var(--ink); border-color: rgba(28,26,23,.12); }
 [data-theme="light"] .link-btn:hover { background: #ece8e1; color: var(--ink); }
+[data-theme="light"] .remark-edit-btn { background: #f3f1ed !important; border: 1px solid rgba(28,26,23,.15) !important; color: #3d3a35 !important; box-shadow: none !important; }
+[data-theme="light"] .remark-edit-btn:hover { background: #ece8e1 !important; }
 
 [data-theme="light"] input[type=text],
 [data-theme="light"] input[type=password],
