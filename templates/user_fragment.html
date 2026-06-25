@@ -26,69 +26,100 @@
 
 {# ── Items table ──────────────────────────────────────────────────────────── #}
 {% if items %}
+<style>
+  #checklist-table { width:100%; table-layout:fixed; border-collapse:collapse; }
+  #checklist-table tbody tr { border-bottom:1px solid var(--line2); }
+  #checklist-table tbody tr:last-child { border-bottom:none; }
+  #checklist-table td, #checklist-table th { overflow:hidden; }
+  /* override global button{} gradient inside the table */
+  #checklist-table button.link-btn {
+    background:var(--surface3) !important; color:var(--ink2) !important;
+    border:1px solid var(--line2) !important; padding:4px 8px !important;
+    border-radius:6px !important; font-size:12px !important; font-weight:600 !important;
+    cursor:pointer !important; box-shadow:none !important;
+    display:inline-block !important;
+  }
+  #checklist-table button.link-btn:hover { background:var(--surface3) !important; color:#fff !important; }
+  #checklist-table button.link-btn.danger { color:var(--err) !important; border-color:rgba(248,113,113,.25) !important; background:rgba(248,113,113,.08) !important; }
+  #checklist-table button.link-btn.danger:hover { background:rgba(248,113,113,.15) !important; }
+  .prompt-btn {
+    display:flex !important; align-items:center !important; gap:5px !important; width:100% !important;
+    padding:6px 8px !important; border:1px solid var(--line2) !important; border-radius:6px !important;
+    background:var(--surface3) !important; color:var(--ink2) !important; cursor:pointer !important;
+    font-size:12px !important; text-align:left !important; transition:border-color .12s !important;
+    white-space:nowrap !important; overflow:hidden !important;
+    box-shadow:none !important; font-weight:normal !important;
+  }
+  .prompt-btn:hover { border-color:var(--ink2) !important; background:var(--surface3) !important; }
+  .prompt-btn svg { flex-shrink:0; opacity:.4; }
+  .prompt-btn .prompt-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+  .prompt-btn .prompt-empty { color:var(--muted); font-style:italic; flex:1; }
+</style>
 <div style="overflow-x:auto;">
-  <table id="checklist-table" style="width:100%;table-layout:fixed;border-collapse:collapse;">
+  <table id="checklist-table">
     <thead>
       <tr>
-        <th style="width:70px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Sno.</th>
-        <th style="width:320px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Checklist Item</th>
-        <th style="width:240px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Reference</th>
-        <th style="width:320px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Prompt</th>
-        <th style="width:130px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Actions</th>
-        <th style="width:100px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 8px 10px;border-bottom:1px solid var(--line2);">Reorder</th>
+        <th style="width:46px;  text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Sno.</th>
+        <th style="width:200px; text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Checklist Item</th>
+        <th style="width:165px; text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Reference</th>
+        <th style="            text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Prompt</th>
+        <th style="width:162px; text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for it in items %}
-      {# Form must live outside the table — browsers eject <form> from inside <tr> #}
       <form id="frag-row-form-{{ it['id'] }}"
             action="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/update"
             method="post" style="display:none;"></form>
       <tr data-item-id="{{ it['id'] }}" {% if it["is_section"] %}style="background:rgba(245,166,35,.06);"{% endif %}>
-          <td style="padding:6px 8px;">
+          <td style="padding:5px 6px;">
             <input type="text" name="sno" value="{{ it['sno'] }}"
                    form="frag-row-form-{{ it['id'] }}"
-                   style="width:55px;padding:6px;border:1px solid var(--line2);border-radius:6px;text-align:center;background:var(--surface3);color:var(--ink);">
+                   style="width:38px;padding:5px 4px;border:1px solid var(--line2);border-radius:6px;text-align:center;background:var(--surface3);color:var(--ink);font-size:13px;">
           </td>
-          <td style="padding:6px 8px;">
+          <td style="padding:5px 6px;">
             <input type="text" name="text" value="{{ it['text'] }}"
                    form="frag-row-form-{{ it['id'] }}"
-                   style="width:100%;padding:6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);
-                   {% if it['is_section'] %}font-weight:700;{% endif %}">
+                   style="width:100%;padding:5px 6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;{% if it['is_section'] %}font-weight:700;{% endif %}">
           </td>
-          <td style="padding:6px 8px;">
+          <td style="padding:5px 6px;">
             <input type="hidden" name="reference" id="ref-hidden-{{ it['id'] }}"
                    form="frag-row-form-{{ it['id'] }}"
                    value="{{ it['reference'] or '' }}">
             <div id="ref-wrap-{{ it['id'] }}"
                  data-ref="{{ it['reference'] or '' }}"
-                 style="display:flex;flex-direction:column;gap:4px;"></div>
+                 style="display:flex;flex-direction:column;gap:3px;"></div>
           </td>
-          <td style="padding:6px 8px;">
-            <input type="text" name="prompt" value="{{ it['prompt'] or '' }}"
+          <td style="padding:5px 6px;">
+            <input type="hidden" name="prompt" id="prompt-hidden-{{ it['id'] }}"
                    form="frag-row-form-{{ it['id'] }}"
-                   placeholder="Write a prompt…"
-                   readonly
-                   onclick="openPromptModal(this)"
-                   style="width:100%;padding:6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);cursor:pointer;">
+                   value="{{ it['prompt'] or '' }}">
+            <button type="button" class="prompt-btn"
+                    onclick="openPromptModal(document.getElementById('prompt-hidden-{{ it['id'] }}'), this)"
+                    title="{{ it['prompt'] or 'Click to add prompt' }}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              {% if it['prompt'] %}
+              <span class="prompt-text">{{ it['prompt'] }}</span>
+              {% else %}
+              <span class="prompt-empty">Add prompt…</span>
+              {% endif %}
+            </button>
           </td>
-          <td style="text-align:center;white-space:nowrap;padding:6px 8px;">
+          <td style="text-align:center;white-space:nowrap;padding:5px 6px;">
             <button type="submit" form="frag-row-form-{{ it['id'] }}" class="link-btn">Save</button>
-            <button type="submit"
-                    form="frag-row-form-{{ it['id'] }}"
+            <button type="submit" form="frag-row-form-{{ it['id'] }}"
+                    formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/move"
+                    name="direction" value="up" class="link-btn">&uarr;</button>
+            <button type="submit" form="frag-row-form-{{ it['id'] }}"
+                    formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/move"
+                    name="direction" value="down" class="link-btn">&darr;</button>
+            <button type="submit" form="frag-row-form-{{ it['id'] }}"
                     formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/delete"
                     class="link-btn danger"
                     onclick="return confirm('Delete this item?');">Del</button>
-          </td>
-          <td style="text-align:center;padding:6px 8px;">
-            <button type="submit"
-                    form="frag-row-form-{{ it['id'] }}"
-                    formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/move"
-                    name="direction" value="up" class="link-btn">&uarr;</button>
-            <button type="submit"
-                    form="frag-row-form-{{ it['id'] }}"
-                    formaction="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/move"
-                    name="direction" value="down" class="link-btn">&darr;</button>
           </td>
       </tr>
       {% endfor %}
@@ -117,7 +148,9 @@
               style="background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:var(--muted,#888);padding:0 4px;">&times;</button>
     </div>
     <textarea id="prompt-modal-textarea" rows="6"
-              style="width:100%;padding:10px 12px;border:1.5px solid var(--brand,#e55d18);border-radius:8px;background:var(--surface3,#252535);color:var(--ink,#f0f0f0);font-size:14px;line-height:1.6;resize:vertical;box-sizing:border-box;font-family:inherit;"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--line2,#333);border-radius:8px;background:var(--surface3,#252535);color:var(--ink,#f0f0f0);font-size:14px;line-height:1.6;resize:vertical;box-sizing:border-box;font-family:inherit;outline:none;"
+              onfocus="this.style.borderColor='var(--brand,#c45010)'"
+              onblur="this.style.borderColor='var(--line2,#333)'"
               placeholder="Write the full prompt here…"></textarea>
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px;">
       <button type="button" onclick="closePromptModal(false)"
@@ -125,7 +158,7 @@
         Cancel
       </button>
       <button type="button" onclick="closePromptModal(true)"
-              style="padding:8px 22px;border:none;border-radius:7px;background:var(--brand,#e55d18);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
+              style="padding:8px 22px;border:none;border-radius:7px;background:var(--brand-dark,#b94a0e);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">
         Apply
       </button>
     </div>
@@ -134,24 +167,37 @@
 
 <script>
 (function () {
-  var _promptTarget = null;
+  var _promptHidden = null;
+  var _promptBtn    = null;
 
-  window.openPromptModal = function(inp) {
-    _promptTarget = inp;
+  window.openPromptModal = function(hiddenInp, btn) {
+    _promptHidden = hiddenInp;
+    _promptBtn    = btn || null;
     var overlay = document.getElementById('prompt-modal-overlay');
     var ta      = document.getElementById('prompt-modal-textarea');
-    ta.value = inp.value;
+    ta.value = hiddenInp.value;
     overlay.style.display = 'flex';
     setTimeout(function(){ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 50);
   };
 
   window.closePromptModal = function(save) {
     var overlay = document.getElementById('prompt-modal-overlay');
-    if (save && _promptTarget) {
-      _promptTarget.value = document.getElementById('prompt-modal-textarea').value;
+    if (save && _promptHidden) {
+      var val = document.getElementById('prompt-modal-textarea').value;
+      _promptHidden.value = val;
+      // Update the preview text inside the button
+      if (_promptBtn) {
+        var span = _promptBtn.querySelector('.prompt-text, .prompt-empty');
+        if (span) {
+          span.className = val ? 'prompt-text' : 'prompt-empty';
+          span.textContent = val || 'Add prompt…';
+        }
+        _promptBtn.title = val || 'Click to add prompt';
+      }
     }
     overlay.style.display = 'none';
-    _promptTarget = null;
+    _promptHidden = null;
+    _promptBtn    = null;
   };
 
   // Close on backdrop click
