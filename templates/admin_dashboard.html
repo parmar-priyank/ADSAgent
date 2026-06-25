@@ -6,80 +6,30 @@
 {% block page_crumb %}Overview{% endblock %}
 
 {% block content %}
-<div class="metric-row">
-  <div class="metric-card" style="cursor:pointer;" onclick="window.location='/admin/users'">
-    <div class="metric-icon-wrap orange">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-    </div>
-    <div>
-      <div class="metric-num">{{ users_count }}</div>
-      <div class="metric-label">Total Users</div>
-    </div>
-  </div>
-  <div class="metric-card" style="cursor:pointer;" onclick="window.location='/admin/records'">
-    <div class="metric-icon-wrap blue">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-    </div>
-    <div>
-      <div class="metric-num">{{ records_count }}</div>
-      <div class="metric-label">Customer Records</div>
-    </div>
-  </div>
-  <div class="metric-card" style="cursor:pointer;" onclick="window.location='/admin/templates'">
-    <div class="metric-icon-wrap green">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-    </div>
-    <div>
-      <div class="metric-num">{{ templates_count }}</div>
-      <div class="metric-label">QC Templates</div>
-    </div>
-  </div>
-</div>
 
-<!-- API Health Meter -->
+<!-- ① Solar Installation Calendar — full width, top priority -->
 <div class="dash-card" style="margin-bottom:20px;">
   <div class="dash-card-header">
-    <div class="dash-card-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-      Claude API Health
-    </div>
-    <button onclick="refreshApiStatus()" id="api-refresh-btn"
-            style="font-size:11px;padding:4px 10px;border:1px solid var(--line2);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;">
-      &#8635; Refresh
-    </button>
-  </div>
-  <div class="dash-card-body">
-    <div id="api-status-wrap" style="display:flex;gap:16px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:200px;padding:14px 16px;border-radius:10px;border:1px solid var(--line2);background:var(--surface2);">
-        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Model</div>
-        <div id="api-text-model"  style="font-size:12px;color:var(--ink2);margin-bottom:10px;">—</div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span id="api-text-dot"    style="width:10px;height:10px;border-radius:50%;background:var(--line2);flex-shrink:0;"></span>
-          <span id="api-text-status" style="font-size:13px;font-weight:700;color:var(--ink);">Checking…</span>
-          <span id="api-text-ms"     style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
-        </div>
-        <div id="api-text-detail" style="font-size:11px;color:var(--err,#f87171);margin-top:6px;display:none;"></div>
-      </div>
-    </div>
-    <div id="api-last-checked" style="font-size:11px;color:var(--muted);margin-top:10px;text-align:right;"></div>
-  </div>
-</div>
-
-<!-- Installation Calendar -->
-<div class="dash-card">
-  <div class="dash-card-header">
-    <div class="dash-card-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    <div class="dash-card-title" style="display:flex;align-items:center;gap:8px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
       Solar Installation Calendar
     </div>
-    <span class="dash-card-count" id="cal-approved-count">0 approved</span>
-  </div>
-  <div class="dash-card-body">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-      <button class="link-btn" onclick="calNav(-1)">&#8249; Prev</button>
-      <span id="cal-month-label" style="font-size:14px;font-weight:700;color:var(--ink);flex:1;text-align:center;"></span>
-      <button class="link-btn" onclick="calNav(1)">Next &#8250;</button>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span class="dash-card-count" id="cal-approved-count">0 approved</span>
     </div>
+  </div>
+  <div class="dash-card-body" style="padding-top:12px;">
+    <!-- Nav row -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <button class="link-btn" onclick="calNav(-1)" style="padding:5px 14px;">&#8249; Prev</button>
+      <span id="cal-month-label" style="font-size:15px;font-weight:800;color:var(--ink);flex:1;text-align:center;letter-spacing:-.02em;"></span>
+      <button class="link-btn" onclick="calNav(1)"  style="padding:5px 14px;">Next &#8250;</button>
+    </div>
+    <!-- Day headers -->
     <div class="cal-grid">
       <div class="cal-day-hdr">Sun</div><div class="cal-day-hdr">Mon</div>
       <div class="cal-day-hdr">Tue</div><div class="cal-day-hdr">Wed</div>
@@ -87,19 +37,109 @@
       <div class="cal-day-hdr">Sat</div>
     </div>
     <div class="cal-grid" id="cal-body"></div>
-    <div id="cal-tooltip" style="display:none;position:fixed;z-index:999;background:var(--surface3);border:1px solid var(--line2);border-radius:10px;padding:12px 16px;box-shadow:0 8px 24px rgba(0,0,0,.4);min-width:220px;max-width:300px;pointer-events:none;">
-      <div id="cal-tooltip-title" style="font-size:12px;font-weight:700;color:var(--brand);margin-bottom:6px;"></div>
-      <div id="cal-tooltip-body" style="font-size:12px;color:var(--ink2);line-height:1.5;"></div>
+    <!-- Legend -->
+    <div style="display:flex;gap:18px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);">
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">
+        <span style="width:10px;height:10px;border-radius:50%;background:var(--ok);flex-shrink:0;"></span>
+        Installation scheduled
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">
+        <span style="width:10px;height:10px;border-radius:3px;background:rgba(245,166,35,.25);border:1px solid rgba(245,166,35,.5);flex-shrink:0;"></span>
+        Today
+      </div>
     </div>
   </div>
 </div>
+
+<!-- Tooltip (fixed, pointer-events:none) -->
+<div id="cal-tooltip" style="display:none;position:fixed;z-index:999;background:var(--surface3);border:1px solid var(--line2);border-radius:10px;padding:12px 16px;box-shadow:0 8px 24px rgba(0,0,0,.4);min-width:220px;max-width:300px;pointer-events:none;">
+  <div id="cal-tooltip-title" style="font-size:12px;font-weight:700;color:var(--brand);margin-bottom:6px;"></div>
+  <div id="cal-tooltip-body"  style="font-size:12px;color:var(--ink2);line-height:1.6;"></div>
+</div>
+
+<!-- ② Bottom row: 3 metric cards + API health as 4th card -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;align-items:stretch;">
+
+  <div style="display:contents;">
+
+    <div class="metric-card" style="cursor:pointer;" onclick="window.location='/admin/users'">
+      <div class="metric-icon-wrap orange">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </div>
+      <div>
+        <div class="metric-num">{{ users_count }}</div>
+        <div class="metric-label">Total Users</div>
+      </div>
+    </div>
+
+    <div class="metric-card" style="cursor:pointer;" onclick="window.location='/admin/records'">
+      <div class="metric-icon-wrap blue">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </div>
+      <div>
+        <div class="metric-num">{{ records_count }}</div>
+        <div class="metric-label">Customer Records</div>
+      </div>
+    </div>
+
+    <div class="metric-card" style="cursor:pointer;" onclick="window.location='/admin/templates'">
+      <div class="metric-icon-wrap green">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+          <line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+          <line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+      </div>
+      <div>
+        <div class="metric-num">{{ templates_count }}</div>
+        <div class="metric-label">QC Templates</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Claude API Health — 4th metric card, same layout as the others -->
+  <div class="metric-card" style="cursor:default;" title="Claude API status">
+    <div class="metric-icon-wrap purple">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+      </svg>
+    </div>
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:7px;">
+        <span id="api-text-dot" style="width:10px;height:10px;border-radius:50%;background:var(--line2);flex-shrink:0;display:inline-block;"></span>
+        <span id="api-text-status" class="metric-num" style="font-size:1.9rem;line-height:1;">—</span>
+        <button onclick="refreshApiStatus()" id="api-refresh-btn"
+                style="margin-left:auto;font-size:12px;padding:2px 7px;border:1px solid var(--line2);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;box-shadow:none;flex-shrink:0;">
+          &#8635;
+        </button>
+      </div>
+      <div class="metric-label" style="margin-top:5px;">Claude API Health</div>
+      <div id="api-text-model" style="font-size:11px;color:var(--muted);font-family:monospace;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</div>
+      <div id="api-text-detail" style="font-size:11px;color:var(--err,#f87171);display:none;margin-top:2px;"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:2px;">
+        <span id="api-text-ms"      style="font-size:10px;color:var(--muted);"></span>
+        <span id="api-last-checked" style="font-size:10px;color:var(--muted);"></span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-  // --- API Health Meter ---
-  var _apiStatusTimer = null;
-
+  // ── API Health ──────────────────────────────────────────────────────────────
   var _statusMeta = {
     ok:             { color: '#22c55e', label: 'Online' },
     rate_limited:   { color: '#f59e0b', label: 'Rate Limited' },
@@ -111,18 +151,15 @@
 
   function _applyStatus(prefix, data) {
     var el = document.getElementById('api-' + prefix + '-model');
-    if (!el) return; // panel not present in this layout
-    var meta  = _statusMeta[data.status] || { color: '#6b7280', label: data.status };
+    if (!el) return;
+    var meta = _statusMeta[data.status] || { color: '#6b7280', label: data.status };
     el.textContent = data.model || '—';
-    document.getElementById('api-' + prefix + '-dot').style.background = meta.color;
-    document.getElementById('api-' + prefix + '-status').textContent = meta.label;
-    document.getElementById('api-' + prefix + '-status').style.color = meta.color;
-    document.getElementById('api-' + prefix + '-ms').textContent     = data.ms ? data.ms + ' ms' : '';
+    document.getElementById('api-' + prefix + '-dot').style.background    = meta.color;
+    document.getElementById('api-' + prefix + '-status').textContent      = meta.label;
+    document.getElementById('api-' + prefix + '-status').style.color      = meta.color;
+    document.getElementById('api-' + prefix + '-ms').textContent          = data.ms ? data.ms + ' ms' : '';
     var det = document.getElementById('api-' + prefix + '-detail');
-    if (det) {
-      if (data.detail) { det.textContent = data.detail; det.style.display = 'block'; }
-      else              { det.style.display = 'none'; }
-    }
+    if (det) { det.style.display = data.detail ? 'block' : 'none'; if (data.detail) det.textContent = data.detail; }
   }
 
   function refreshApiStatus() {
@@ -132,9 +169,8 @@
       .then(function(r) { return r.json(); })
       .then(function(d) {
         _applyStatus('text', d.text);
-        var now = new Date();
         document.getElementById('api-last-checked').textContent =
-          'Last checked: ' + now.toLocaleTimeString();
+          'Last checked: ' + new Date().toLocaleTimeString();
       })
       .catch(function() {
         var dot = document.getElementById('api-text-dot');
@@ -145,11 +181,10 @@
       .finally(function() { if (btn) btn.disabled = false; });
   }
 
-  // Initial check + auto-refresh every 30 s
   refreshApiStatus();
-  _apiStatusTimer = setInterval(refreshApiStatus, 30000);
-  // ---
+  setInterval(refreshApiStatus, 30000);
 
+  // ── Calendar ────────────────────────────────────────────────────────────────
   var _installMap = {};
   try { _installMap = {{ install_map_json | safe }}; } catch(e) {}
 
@@ -157,13 +192,10 @@
   (function() {
     var jump = "{{ cal_jump | default('') }}";
     if (jump && /^\d{4}-\d{2}$/.test(jump)) {
-      var parts = jump.split('-');
-      _calYear  = parseInt(parts[0], 10);
-      _calMonth = parseInt(parts[1], 10) - 1;
+      var p = jump.split('-');
+      _calYear = parseInt(p[0], 10); _calMonth = parseInt(p[1], 10) - 1;
     } else {
-      var now = new Date();
-      _calYear  = now.getFullYear();
-      _calMonth = now.getMonth();
+      var now = new Date(); _calYear = now.getFullYear(); _calMonth = now.getMonth();
     }
   })();
 
@@ -180,11 +212,12 @@
     document.getElementById('cal-month-label').textContent = MONTHS[_calMonth] + ' ' + _calYear;
     var body = document.getElementById('cal-body');
     body.innerHTML = '';
-    var firstDay = new Date(_calYear, _calMonth, 1).getDay();
+    var firstDay    = new Date(_calYear, _calMonth, 1).getDay();
     var daysInMonth = new Date(_calYear, _calMonth + 1, 0).getDate();
-    var monthKey = _calYear + '-' + String(_calMonth+1).padStart(2,'0') + '-';
+    var monthKey    = _calYear + '-' + String(_calMonth+1).padStart(2,'0') + '-';
     var approvedCount = Object.keys(_installMap).filter(function(k){ return k.startsWith(monthKey); }).length;
     document.getElementById('cal-approved-count').textContent = approvedCount + ' approved';
+
     for (var i = 0; i < firstDay; i++) {
       var blank = document.createElement('div');
       blank.className = 'cal-cell cal-blank';
@@ -193,7 +226,7 @@
     var today = new Date();
     for (var day = 1; day <= daysInMonth; day++) {
       var key = _calYear + '-' + String(_calMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
-      var isToday = (today.getFullYear()===_calYear && today.getMonth()===_calMonth && today.getDate()===day);
+      var isToday    = (today.getFullYear()===_calYear && today.getMonth()===_calMonth && today.getDate()===day);
       var hasInstall = !!_installMap[key];
       var cell = document.createElement('div');
       cell.className = 'cal-cell' + (isToday ? ' cal-today' : '') + (hasInstall ? ' cal-has-install' : '');
@@ -209,29 +242,26 @@
   }
 
   function showCalTip(key, cell, e) {
-    var tip   = document.getElementById('cal-tooltip');
-    var title = document.getElementById('cal-tooltip-title');
-    var body  = document.getElementById('cal-tooltip-body');
+    var tip     = document.getElementById('cal-tooltip');
     var entries = _installMap[key] || [];
-    var parts = key.split('-');
-    var d = new Date(parts[0], parts[1]-1, parts[2]);
-    title.textContent = d.toLocaleDateString('en-AU', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
-    body.innerHTML = entries.map(function(e) {
-      return '<div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--line2);">' +
+    var parts   = key.split('-');
+    var d       = new Date(parts[0], parts[1]-1, parts[2]);
+    document.getElementById('cal-tooltip-title').textContent =
+      d.toLocaleDateString('en-AU', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+    document.getElementById('cal-tooltip-body').innerHTML = entries.map(function(e, i) {
+      return '<div style="' + (i < entries.length-1 ? 'margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line2);' : '') + '">' +
              '<div style="font-weight:700;color:#fff;">' + (e.customer || 'Unknown') + '</div>' +
-             (e.quote ? '<div style="color:var(--muted);">Quote: ' + e.quote + '</div>' : '') +
+             (e.quote   ? '<div style="color:var(--muted);">Quote: '   + e.quote   + '</div>' : '') +
              (e.address ? '<div style="color:var(--muted);font-size:11px;">' + e.address + '</div>' : '') +
              '</div>';
-    }).join('').replace(/<div[^>]*>[\s\S]*?border-bottom[^>]*><\/div>\s*$/, function(m){ return m.replace('border-bottom:1px solid var(--line2);',''); });
+    }).join('');
     tip.style.display = 'block';
     var rect = cell.getBoundingClientRect();
     tip.style.top  = (rect.bottom + 8) + 'px';
     tip.style.left = Math.min(rect.left, window.innerWidth - 320) + 'px';
   }
 
-  function hideCalTip() {
-    document.getElementById('cal-tooltip').style.display = 'none';
-  }
+  function hideCalTip() { document.getElementById('cal-tooltip').style.display = 'none'; }
 
   renderCal();
 </script>

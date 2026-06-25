@@ -20,7 +20,9 @@
 
 .sidebar-brand {
   display: flex; align-items: center; gap: 14px;
-  padding: 28px 24px 24px;
+  padding: 0 24px;
+  height: 65px;
+  flex: none;
   border-bottom: 1px solid var(--line);
 }
 .sidebar-logo {
@@ -95,7 +97,8 @@
 
 .dash-topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 22px 40px;
+  padding: 0 40px;
+  height: 65px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 10;

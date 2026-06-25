@@ -105,6 +105,23 @@ def delete_user(user_id: int):
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
 
+def change_password(user_id: int, new_password: str) -> bool:
+    if len(new_password) < 8:
+        return False
+    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    with get_db() as conn:
+        conn.execute("UPDATE users SET password = ? WHERE id = ?", (hashed, user_id))
+    return True
+
+
+def change_role(user_id: int, new_role: str) -> bool:
+    if new_role not in {"user", "admin"}:
+        return False
+    with get_db() as conn:
+        conn.execute("UPDATE users SET role = ? WHERE id = ?", (new_role, user_id))
+    return True
+
+
 def get_user(user_id: int):
     with get_db() as conn:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()

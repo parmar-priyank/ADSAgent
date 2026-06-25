@@ -31,29 +31,21 @@
         </div>
       </div>
 
-      <!-- Page title (centre) -->
-      <div class="user-nav-page-title">
-        <span class="user-nav-page-crumb">{% block nav_crumb %}{% endblock %}</span>
-        <span class="user-nav-page-sep">{% if self.nav_crumb()|trim %}/{% endif %}</span>
-        <span class="user-nav-page-name">{% block nav_title %}{% endblock %}</span>
-      </div>
-
-      <!-- Right actions -->
+      <!-- Right actions only — no centre page title -->
       <div class="home-nav-actions">
+
+        {% block nav_back %}{% endblock %}
 
         {% if current_user and current_user.role == 'admin' %}
         <a href="/admin" class="home-nav-btn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5"/>
-            <path d="M2 12l10 5 10-5"/>
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
           </svg>
           Admin
         </a>
         {% endif %}
-
-        {% block nav_back %}{% endblock %}
 
         <!-- Theme toggle -->
         <form action="/toggle-theme" method="post" style="display:inline;margin:0;" id="theme-toggle-form">

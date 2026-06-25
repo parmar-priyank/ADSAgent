@@ -657,21 +657,51 @@ def admin_create_user(
 
 
 @app.get("/admin/users/{user_id}", response_class=HTMLResponse)
-def admin_user_detail(user_id: int, request: Request, user=Depends(require_admin)):
+def admin_user_detail(user_id: int, request: Request, user=Depends(require_admin),
+                      success: str = None, error: str = None):
     target = adb.get_user(user_id)
     if not target:
         raise HTTPException(404, "User not found.")
-    response = templates.TemplateResponse(request, "admin_user.html", {
-        "current_user": user,
-        "target": target,
-        "theme": _resolve_theme(user),
-        "success": None,
-        "error": None,
-    })
+    qc_history = db.get_qc_history_by_user(user_id)
+    ctx = _admin_ctx(user,
+        target=target,
+        success=success,
+        error=error,
+        qc_history=qc_history,
+    )
+    response = templates.TemplateResponse(request, "admin_user.html", ctx)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     return response
 
+
+@app.post("/admin/users/{user_id}/change-password")
+def admin_change_password(user_id: int, request: Request,
+                          new_password: str = Form(...),
+                          user=Depends(require_admin)):
+    target = adb.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "User not found.")
+    ok = adb.change_password(user_id, new_password)
+    if ok:
+        return RedirectResponse(url=f"/admin/users/{user_id}?success=Password+changed+successfully.", status_code=303)
+    return RedirectResponse(url=f"/admin/users/{user_id}?error=Password+must+be+at+least+8+characters.", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/change-role")
+def admin_change_role(user_id: int, request: Request,
+                      new_role: str = Form(...),
+                      user=Depends(require_admin)):
+    if user_id == user["id"]:
+        return RedirectResponse(url=f"/admin/users/{user_id}?error=Cannot+change+your+own+role.", status_code=303)
+    target = adb.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "User not found.")
+    ok = adb.change_role(user_id, new_role)
+    if ok:
+        label = "Admin" if new_role == "admin" else "User"
+        return RedirectResponse(url=f"/admin/users/{user_id}?success=Role+changed+to+{label}.", status_code=303)
+    return RedirectResponse(url=f"/admin/users/{user_id}?error=Invalid+role.", status_code=303)
 
 
 @app.post("/admin/users/{user_id}/delete")
@@ -1159,6 +1189,7 @@ def checklist_confirm(
                 no_count=no_count,
                 na_count=na_count,
                 rows_json=rows_json,
+                confirmed_by_user_id=user["id"],
             )
         except Exception:
             pass
