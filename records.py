@@ -77,6 +77,12 @@ def init_db():
             conn.execute("ALTER TABLE qc_versions ADD COLUMN rows_json TEXT")
         if "confirmed_by_user_id" not in qcv_cols:
             conn.execute("ALTER TABLE qc_versions ADD COLUMN confirmed_by_user_id INTEGER")
+        if "status" not in qcv_cols:
+            conn.execute("ALTER TABLE qc_versions ADD COLUMN status TEXT DEFAULT 'confirmed'")
+        if "saved_by_user_id" not in qcv_cols:
+            conn.execute("ALTER TABLE qc_versions ADD COLUMN saved_by_user_id INTEGER")
+        if "saved_at" not in qcv_cols:
+            conn.execute("ALTER TABLE qc_versions ADD COLUMN saved_at TIMESTAMP")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS line_items (
@@ -269,6 +275,8 @@ def add_qc_version(
     na_count: int = 0,
     rows_json: str = "",
     confirmed_by_user_id: int = None,
+    status: str = "confirmed",
+    saved_by_user_id: int = None,
 ) -> int:
     """Append a new QC version for this quote and return the version number."""
     with get_db() as conn:
@@ -281,17 +289,51 @@ def add_qc_version(
             """
             INSERT INTO qc_versions
                 (quote_id, version, template_name, zip_filename,
-                 yes_count, no_count, na_count, excel_blob, rows_json, confirmed_by_user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 yes_count, no_count, na_count, excel_blob, rows_json,
+                 confirmed_by_user_id, status, saved_by_user_id, saved_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (quote_id, next_version, template_name, zip_filename,
-             yes_count, no_count, na_count, xlsx_bytes, rows_json, confirmed_by_user_id),
+             yes_count, no_count, na_count, xlsx_bytes, rows_json,
+             confirmed_by_user_id, status, saved_by_user_id),
         )
-    return next_version
+        version_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return version_id, next_version
+
+
+def confirm_qc_version(version_id: int, user_id: int):
+    """Mark a saved draft as confirmed and stamp confirmed_at."""
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE qc_versions
+               SET status='confirmed', confirmed_by_user_id=?, confirmed_at=CURRENT_TIMESTAMP
+               WHERE id=?""",
+            (user_id, version_id),
+        )
+
+
+def get_qc_history_for_user(user_id: int) -> list:
+    """Return all QC versions saved or confirmed by a user, newest first."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT qv.id, qv.version, qv.template_name, qv.zip_filename,
+                   qv.yes_count, qv.no_count, qv.na_count,
+                   qv.confirmed_at, qv.saved_at, qv.status,
+                   q.id as quote_id, q.customer_name, q.quote_number,
+                   q.install_date, q.total_price
+            FROM qc_versions qv
+            JOIN quotes q ON q.id = qv.quote_id
+            WHERE qv.saved_by_user_id = ? OR qv.confirmed_by_user_id = ?
+            ORDER BY COALESCE(qv.confirmed_at, qv.saved_at) DESC
+            """,
+            (user_id, user_id),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_qc_history_by_user(user_id: int) -> list:
-    """Return all QC versions confirmed by a specific user, newest first."""
+    """Return all QC versions confirmed by a specific user, newest first (admin use)."""
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -328,7 +370,8 @@ def get_qc_versions(quote_id: int) -> list:
         rows = conn.execute(
             """
             SELECT id, version, template_name, zip_filename,
-                   yes_count, no_count, na_count, confirmed_at
+                   yes_count, no_count, na_count, confirmed_at, saved_at,
+                   COALESCE(status, 'confirmed') as status
             FROM qc_versions WHERE quote_id = ?
             ORDER BY version DESC
             """,

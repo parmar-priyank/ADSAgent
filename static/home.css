@@ -173,11 +173,60 @@
   box-shadow: 0 4px 24px rgba(28,26,23,.08);
 }
 
-/* Step 2 result label — centred above result cards */
-.user-result-wrap {
-  display: flex; justify-content: center;
-  margin: 32px 0 20px;
+/* --------------------------------------------------------------------------
+   Step tracker — shared across step 1, 2, 3 pages
+   -------------------------------------------------------------------------- */
+.step-tracker {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0; margin-bottom: 28px;
 }
+.step-item {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  position: relative;
+}
+.step-item + .step-item::before {
+  content: '';
+  position: absolute; top: 16px; right: calc(50% + 20px);
+  width: calc(100% - 40px);
+  height: 1px; background: var(--line2);
+}
+.step-item.done + .step-item::before,
+.step-item.active + .step-item::before { background: var(--brand); }
+.step-circle {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 800;
+  border: 2px solid var(--line2);
+  background: transparent; color: var(--muted);
+  transition: all .2s; position: relative; z-index: 1;
+}
+.step-item.done .step-circle {
+  background: var(--brand); border-color: var(--brand); color: #000;
+}
+.step-item.active .step-circle {
+  background: var(--brand); border-color: var(--brand); color: #000;
+  box-shadow: 0 0 0 4px rgba(222,93,24,.15);
+}
+.step-label {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .07em; white-space: nowrap;
+}
+.step-item.active .step-label { color: var(--brand); }
+.step-item.done .step-label   { color: var(--ink2); }
+.step-connector {
+  width: 60px; height: 1px; background: var(--line2);
+  margin: 0; flex-shrink: 0; margin-bottom: 18px;
+  align-self: flex-start; margin-top: 16px;
+}
+.step-connector.done { background: var(--brand); }
+
+[data-theme="light"] .step-item.done .step-circle,
+[data-theme="light"] .step-item.active .step-circle { color: #fff; }
+
+/* --------------------------------------------------------------------------
+   Result wrap (kept for spacing reference, no longer used for step pill)
+   -------------------------------------------------------------------------- */
+.user-result-wrap { margin: 0 0 24px; }
 
 /* --------------------------------------------------------------------------
    Checklist Result

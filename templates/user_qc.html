@@ -1,8 +1,6 @@
 {% extends "user_base.html" %}
 
 {% block title %}QC Cross-Check{% endblock %}
-{% block nav_crumb %}Upload Agreement{% endblock %}
-{% block nav_title %}QC Cross-Check{% endblock %}
 
 {% block nav_back %}
 <a href="/user_upload?id={{ quote_id }}" class="home-nav-btn">
@@ -17,15 +15,27 @@
 {% block content %}
 <div class="wrap" style="max-width:760px;padding-top:32px;">
 
-  <div class="user-result-wrap" style="margin-top:8px;">
-    <div class="user-step-label">
-      <span class="user-step-num">2</span>
-      QC Cross-Check
+  <!-- Step tracker -->
+  <div class="step-tracker">
+    <div class="step-item done">
+      <div class="step-circle">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="step-label">Upload PDF</div>
+    </div>
+    <div class="step-connector done"></div>
+    <div class="step-item active">
+      <div class="step-circle">2</div>
+      <div class="step-label">Upload ZIP</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item">
+      <div class="step-circle">3</div>
+      <div class="step-label">Confirm</div>
     </div>
   </div>
 
-  <div class="card" style="border-color:rgba(245,166,35,.35);box-shadow:0 0 0 3px rgba(245,166,35,.06),var(--shadow-card);margin-top:16px;">
-    <h2>QC Cross-Check</h2>
+  <div class="card" style="border-color:rgba(245,166,35,.35);box-shadow:0 0 0 3px rgba(245,166,35,.06),var(--shadow-card);margin-top:20px;">
     <p style="font-size:14px;color:var(--muted);margin:0 0 24px;">
       Select a checklist template, then upload the ZIP containing the supporting documents (images &amp; PDFs) referenced in that template.
     </p>

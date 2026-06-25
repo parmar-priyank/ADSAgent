@@ -79,10 +79,6 @@ MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB hard cap for all uploads
 
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 
-# A random ID generated fresh every time the server starts.
-# Embedding it in every session token means all existing sessions are
-# automatically invalidated on restart â€" users must log in again.
-_SERVER_INSTANCE_ID = secrets.token_hex(8)
 
 # Rate limiter (keyed by client IP)
 limiter = Limiter(key_func=get_remote_address)
@@ -149,7 +145,6 @@ def _set_session(response, user: dict):
         "id": user["id"],
         "username": user["username"],
         "role": user["role"],
-        "sid": _SERVER_INSTANCE_ID,
     })
     response.set_cookie(
         COOKIE, token,
@@ -167,9 +162,6 @@ def _get_session(request: Request):
         data = _signer.loads(token, max_age=SESSION_MAX_AGE)
     except BadSignature:
         return None
-    # Reject tokens issued before this server boot â€" forces re-login on restart.
-    if data.get("sid") != _SERVER_INSTANCE_ID:
-        return None
     return data
 
 class _AuthRedirect(Exception):
@@ -183,11 +175,8 @@ async def _auth_redirect_handler(request: Request, exc: _AuthRedirect):
     # bad signature). If there is no cookie at all, deleting it is a no-op but
     # avoids accidentally logging out a valid session on an unrelated error.
     if request.cookies.get(COOKIE):
-        token = request.cookies.get(COOKIE)
         try:
-            data = _signer.loads(token, max_age=SESSION_MAX_AGE)
-            if data.get("sid") != _SERVER_INSTANCE_ID:
-                r.delete_cookie(COOKIE)
+            _signer.loads(request.cookies.get(COOKIE), max_age=SESSION_MAX_AGE)
         except BadSignature:
             r.delete_cookie(COOKIE)
     return r
@@ -288,11 +277,15 @@ EXTRACTION_SCHEMA = {
         "VIC Interest free Loan, VIC Rebate, ACT Govt Next Gen Rebate, Battery Rebate, "
         "Total Price). Each object: {\"item\": string (the row label, e.g. 'Panels', "
         "'System Price', 'Less STC incentive', 'VIC Rebate', 'Total Price'), "
-        "\"quantity\": string (the number before the 'X' at the start of the specification, "
-        "e.g. '26' for '26.0 X JKM510N...', '1' for '1.0 X FOXESS...'; drop the trailing "
-        "'.0'; empty for summary/financial rows or rows with no quantity like 'Roof Type'), "
-        "\"specification\": string (the description/spec text WITHOUT the leading "
-        "'<number> X ' quantity prefix, or empty for summary rows that have none), "
+        "\"quantity\": string (if the specification text starts with a pattern like "
+        "'1.0 X', '26.0 X', etc., extract that number dropping the trailing '.0' — "
+        "e.g. '26' for '26.0 X JKM510N...', '1' for '1.0 X [Solar Vic Rebate]...', "
+        "'1' for '1.0 X [STC Battery Rebate]...'. This applies to ALL rows including "
+        "rebate and financial rows — if the spec starts with '<number> X', capture it. "
+        "Leave empty ONLY if the row has no specification text at all, e.g. 'Roof Type', "
+        "'System Price', 'Total Price'), "
+        "\"specification\": string (the full description/spec text WITHOUT the leading "
+        "'<number> X ' quantity prefix; empty if the row has no spec text at all), "
         "\"price\": string (the dollar amount shown on that row, e.g. "
         "'$ 31,742.62', '$ 3,142.62', '$ -1,400.00', '$ 21,100.00'; empty if the row has "
         "no price)}. IMPORTANT: read the prices from the 'FULL TEXT' section, where each "
@@ -1174,7 +1167,7 @@ def checklist_confirm(
         except (ValueError, TypeError):
             record = db.find_by_quote_number(quote_id)
 
-    # Persist the QC Excel as a new version and update the latest snapshot.
+    # Persist the QC Excel as a confirmed version and update the latest snapshot.
     if dl_token and record:
         try:
             payload = _signer.loads(dl_token, max_age=7200)
@@ -1190,6 +1183,8 @@ def checklist_confirm(
                 na_count=na_count,
                 rows_json=rows_json,
                 confirmed_by_user_id=user["id"],
+                saved_by_user_id=user["id"],
+                status="confirmed",
             )
         except Exception:
             pass
@@ -1211,6 +1206,113 @@ def checklist_confirm(
         "current_user": user,
         "theme": _resolve_theme(user),
         "cal_param": cal_param,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
+
+
+@app.post("/checklist-save-draft")
+def checklist_save_draft(
+    request: Request,
+    quote_id: str = Form(""),
+    dl_token: str = Form(""),
+    zip_filename: str = Form(""),
+    tpl_name: str = Form(""),
+    yes_count: int = Form(0),
+    no_count: int = Form(0),
+    na_count: int = Form(0),
+    rows_json: str = Form(""),
+    user=Depends(require_login),
+):
+    """Save QC results as a draft (no calendar entry). User can revisit later."""
+    record = None
+    if quote_id:
+        try:
+            record = db.get_quote(int(quote_id))
+        except (ValueError, TypeError):
+            record = db.find_by_quote_number(quote_id)
+
+    version_id = None
+    if dl_token and record:
+        try:
+            payload = _signer.loads(dl_token, max_age=7200)
+            xlsx_bytes = base64.b64decode(payload["xlsx"])
+            version_id, _ = db.add_qc_version(
+                quote_id=record["id"],
+                xlsx_bytes=xlsx_bytes,
+                template_name=tpl_name,
+                zip_filename=zip_filename,
+                yes_count=yes_count,
+                no_count=no_count,
+                na_count=na_count,
+                rows_json=rows_json,
+                saved_by_user_id=user["id"],
+                status="draft",
+            )
+        except Exception:
+            pass
+
+    return RedirectResponse(url="/user/history", status_code=303)
+
+
+@app.get("/user/history", response_class=HTMLResponse)
+def user_history(request: Request, user=Depends(require_login)):
+    history = db.get_qc_history_for_user(user["id"])
+    resp = templates.TemplateResponse(request, "user_history.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "history": history,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
+
+
+@app.get("/user/qc-version/{version_id}", response_class=HTMLResponse)
+def user_qc_version_revisit(request: Request, version_id: int, user=Depends(require_login)):
+    """Let a user revisit a saved/confirmed QC version."""
+    with __import__("database").get_db() as conn:
+        row = conn.execute(
+            """SELECT qv.*, q.customer_name, q.quote_number, q.install_date
+               FROM qc_versions qv JOIN quotes q ON q.id = qv.quote_id
+               WHERE qv.id = ?""",
+            (version_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "QC version not found.")
+    v = dict(row)
+    # Only the user who saved/confirmed it can revisit it (admins can too)
+    if (user.get("role") != "admin"
+            and v.get("saved_by_user_id") != user["id"]
+            and v.get("confirmed_by_user_id") != user["id"]):
+        raise HTTPException(403, "Access denied.")
+    try:
+        rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
+        if not isinstance(rows, list):
+            rows = []
+    except Exception:
+        rows = []
+    tpl = {"id": 0, "name": v.get("template_name", ""), "customer_label": "", "address_label": "", "job_label": "", "note_text": ""}
+
+    # Re-sign a dl_token so download still works
+    xlsx_b64 = base64.b64encode(bytes(v["excel_blob"])).decode() if v.get("excel_blob") else ""
+    dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]}) if xlsx_b64 else ""
+
+    yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
+    no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
+    na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
+
+    resp = templates.TemplateResponse(request, "user_result.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "tpl": tpl,
+        "checklist_rows": rows,
+        "dl_token": dl_token,
+        "quote_id": v["quote_id"],
+        "zip_filename": v.get("zip_filename", ""),
+        "yes_count": yes_count,
+        "no_count": no_count,
+        "na_count": na_count,
+        "revisit_version": v,
     })
     resp.headers.update(_NO_CACHE)
     return resp
