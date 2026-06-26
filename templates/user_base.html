@@ -44,16 +44,6 @@
           History
         </a>
 
-        {% if current_user and current_user.role == 'admin' %}
-        <a href="/admin" class="home-nav-btn">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-            <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-          </svg>
-          Admin
-        </a>
-        {% endif %}
 
         <!-- Theme toggle -->
         <form action="/toggle-theme" method="post" style="display:inline;margin:0;" id="theme-toggle-form">

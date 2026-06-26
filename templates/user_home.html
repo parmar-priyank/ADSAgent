@@ -23,8 +23,8 @@
     <div class="upload-loading-sub">Claude AI is reading your agreement &mdash; please wait</div>
   </div>
 
-  {% if not result and not (current_user and current_user.role == 'admin') %}
-  {# ── Step 1: Regular user upload ── #}
+  {% if not result %}
+  {# ── Step 1: Upload ── #}
   <div class="user-upload-wrap">
 
     <!-- Step tracker -->
@@ -84,64 +84,6 @@
     </div>
   </div>
 
-  {% elif not result and current_user and current_user.role == 'admin' %}
-  {# ── Admin: two-column upload row ── #}
-  <div class="wrap" style="padding-top:32px;">
-    <div class="upload-row">
-      <div class="card upload-card">
-        <div class="upload-card-title">Reference PDF</div>
-        <form action="/user_upload" method="post" enctype="multipart/form-data">
-          <label class="dropzone" id="dropzone">
-            <div class="icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="12" y1="18" x2="12" y2="12"/>
-                <polyline points="9 15 12 12 15 15"/>
-              </svg>
-            </div>
-            <div class="prompt">Drop a PDF here, or <strong>browse</strong></div>
-            <div class="hint">Page 1 is ignored automatically</div>
-            <div class="filename" id="filename"></div>
-            <input type="file" name="file" id="fileInput" accept="application/pdf" required>
-          </label>
-          <div class="actions">
-            <button type="submit">Upload &amp; Extract</button>
-          </div>
-        </form>
-      </div>
-      <div class="card upload-card">
-        <div class="upload-card-title">QC Checklist Template</div>
-        <form id="xlsxForm" action="/templates/upload" method="post" enctype="multipart/form-data">
-          <label class="dropzone" id="xlsxDropzone">
-            <div class="icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="8" y1="13" x2="16" y2="13"/>
-                <line x1="8" y1="17" x2="16" y2="17"/>
-                <line x1="10" y1="9" x2="14" y2="9"/>
-              </svg>
-            </div>
-            <div class="prompt">Drop an .xlsx here, or <strong>browse</strong></div>
-            <div class="hint">Parsed items open in the editor</div>
-            <div class="filename" id="xlsxFilename"></div>
-            <input type="file" name="file" id="xlsxFileInput" accept=".xlsx" required>
-          </label>
-          <input type="text" name="name" placeholder="Template name (e.g. ADS Standard QC)"
-                 class="tpl-inline-name" required>
-          <div class="actions">
-            <button type="submit">Upload</button>
-            {% if latest_template %}
-            <a href="/Excel" class="btn-link-primary">Open editor &rarr;</a>
-            {% endif %}
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
   {% endif %}
 
   {% if error %}
@@ -277,29 +219,7 @@
     });
   })();
 
-  (function() {
-    var dz = document.getElementById('xlsxDropzone');
-    var inp = document.getElementById('xlsxFileInput');
-    var lbl = document.getElementById('xlsxFilename');
-    var form = document.getElementById('xlsxForm');
-    if (!dz || !inp) return;
-    var sync = function() {
-      lbl.textContent = inp.files.length ? inp.files[0].name : '';
-      if (form) form.classList.toggle('has-file', inp.files.length > 0);
-    };
-    inp.addEventListener('change', sync);
-    ['dragenter','dragover'].forEach(function(e) {
-      dz.addEventListener(e, function(ev) { ev.preventDefault(); dz.classList.add('drag'); });
-    });
-    ['dragleave','drop'].forEach(function(e) {
-      dz.addEventListener(e, function(ev) { ev.preventDefault(); dz.classList.remove('drag'); });
-    });
-    dz.addEventListener('drop', function(ev) {
-      if (ev.dataTransfer.files.length) { inp.files = ev.dataTransfer.files; sync(); }
-    });
-  })();
-
-  document.querySelectorAll('form[action="/user_upload"]').forEach(function(form) {
+document.querySelectorAll('form[action="/user_upload"]').forEach(function(form) {
     form.addEventListener('submit', function() {
       if (form.querySelector('input[type="file"]').files.length > 0) {
         document.getElementById('upload-loading-overlay').classList.add('active');

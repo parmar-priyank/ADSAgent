@@ -958,14 +958,18 @@ async def upload_zip(
         resolved = [_resolve_file(r) for r in ref_names]
 
         missing = [name for name, data in resolved if data is None]
-        if missing:
+        found = [(name, data) for name, data in resolved if data is not None]
+        if not found:
             return {"status": "N/A", "remark": f"File not found in ZIP: {', '.join(missing)}"}
+        # Work with whatever files were found; note any missing ones in context
+        resolved = found
+        missing_note = f" (Note: {', '.join(missing)} not found in ZIP, working with available files only.)" if missing else ""
 
         ref_section = (
             f"\n\n--- MAIN REFERENCE PDF (Signed Agreement) ---\n{reference_pdf_text}"
             if reference_pdf_text else ""
         )
-        context = f"Checklist item: {item['text']}\nRequirement: {prompt_text}{ref_section}"
+        context = f"Checklist item: {item['text']}\nRequirement: {prompt_text}{ref_section}{missing_note}"
 
         try:
             # Detect MIME from actual ZIP filename; fall back to magic-byte sniffing
