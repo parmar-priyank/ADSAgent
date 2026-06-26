@@ -178,7 +178,8 @@
               {% endif %}
             </td>
             <td class="remark-cell">
-              <span class="remark-view" title="{{ row.remark or '' }}">{{ row.remark or '' }}</span>
+              <span class="remark-view" title="{{ row.remark or '' }}"
+                    {% if row.remark %}onclick="openRemarkView(this)" style="cursor:pointer;"{% endif %}>{{ row.remark or '' }}</span>
               {% if not is_readonly %}
               <input class="remark-edit" type="hidden" value="{{ row.remark or '' | e }}">
               <button type="button" class="remark-edit-btn"
@@ -257,6 +258,26 @@
 
 </div>
 
+<!-- Remark view modal (read-only, always rendered) -->
+<div id="remark-view-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface2);border:1px solid var(--line2);border-radius:14px;padding:28px 28px 22px;width:min(580px,92vw);box-shadow:0 24px 60px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <span style="font-size:14px;font-weight:700;color:var(--ink);">Remark</span>
+      <button type="button" onclick="closeRemarkView()"
+              style="background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
+    </div>
+    <div id="remark-view-text"
+         style="width:100%;padding:10px 12px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:14px;line-height:1.7;min-height:80px;white-space:pre-wrap;word-break:break-word;"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+      <button type="button" onclick="closeRemarkView()"
+              style="padding:8px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;background:var(--surface3);border:1px solid var(--line2);color:var(--ink2);">
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Remark edit modal (same design as prompt modal) -->
 {% if not is_readonly %}
 <div id="remark-modal-overlay"
@@ -294,6 +315,24 @@
   var _editMode     = false;
   var _tplData      = {{ tpl | tojson }};
   var _currentDlToken = (document.getElementById('confirm-dl-token') || {}).value || '';
+
+  // ── Remark view modal (read-only) ────────────────────────────────────────
+  function openRemarkView(span) {
+    document.getElementById('remark-view-text').textContent = span.textContent;
+    var ov = document.getElementById('remark-view-overlay');
+    ov.style.display = 'flex';
+  }
+  function closeRemarkView() {
+    document.getElementById('remark-view-overlay').style.display = 'none';
+  }
+  document.getElementById('remark-view-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeRemarkView();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('remark-view-overlay').style.display === 'flex') {
+      closeRemarkView();
+    }
+  });
 
   // Single source of truth: read current row state from the DOM
   function _collectRows() {

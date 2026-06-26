@@ -36,7 +36,7 @@ import users as adb        # user accounts
 load_dotenv()
 
 ANTHROPIC_API_KEY     = os.environ.get("ANTHROPIC_API_KEY")
-CLAUDE_MODEL          = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+CLAUDE_MODEL          = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 SECRET_KEY            = os.environ.get("SECRET_KEY")
 RECAPTCHA_SITE_KEY    = os.environ.get("RECAPTCHA_SITE_KEY", "")
 RECAPTCHA_SECRET_KEY  = os.environ.get("RECAPTCHA_SECRET_KEY", "")
@@ -268,7 +268,7 @@ EXTRACTION_SCHEMA = {
     "retailer_street_address": "string (single line; the retailer's street address, e.g. '104, 29-31 Solent Circuit, Baulkham Hills NSW 2153')",
     "retailer_phone": "string (the retailer's phone, e.g. the 1300 number)",
     "retailer_email": "string (the retailer's email, e.g. 'sales@adssolar.com.au')",
-    "roof_type": "string",
+    "roof_type": "string (the roof type, e.g. 'Tiled Roof', 'Colorbond', 'Metal' — look for the 'Roof Type' row in the system/pricing table and read its specification text)",
     "line_items": (
         "array of objects covering EVERY row of the System/pricing table in order, "
         "INCLUDING the equipment rows (Panels, Inverter, Inverter phase, Racking, "
@@ -282,7 +282,7 @@ EXTRACTION_SCHEMA = {
         "e.g. '26' for '26.0 X JKM510N...', '1' for '1.0 X [Solar Vic Rebate]...', "
         "'1' for '1.0 X [STC Battery Rebate]...'. This applies to ALL rows including "
         "rebate and financial rows — if the spec starts with '<number> X', capture it. "
-        "Leave empty ONLY if the row has no specification text at all, e.g. 'Roof Type', "
+        "Leave empty ONLY if the row has no specification text at all, e.g. "
         "'System Price', 'Total Price'), "
         "\"specification\": string (the full description/spec text WITHOUT the leading "
         "'<number> X ' quantity prefix; empty if the row has no spec text at all), "
@@ -841,6 +841,47 @@ async def upload_zip(
     except zipmod.BadZipFile:
         return _qc_error("Uploaded file is not a valid ZIP archive.")
 
+    # Load the main reference PDF text from the uploaded agreement (Step 1).
+    # This is injected into every checklist prompt so Claude can compare
+    # values in ZIP documents against the original signed agreement.
+    reference_pdf_text = ""
+    if quote_id:
+        try:
+            ref_record = db.get_quote(int(quote_id))
+        except (ValueError, TypeError):
+            ref_record = db.find_by_quote_number(quote_id)
+        if ref_record:
+            # Build structured summary from all extracted quote fields
+            fields = [
+                ("Quote Number",    ref_record.get("quote_number", "")),
+                ("Customer Name",   ref_record.get("customer_name", "")),
+                ("Install Date",    ref_record.get("install_date", "")),
+                ("System Price",    ref_record.get("system_price", "")),
+                ("STC Incentive",   ref_record.get("stc_incentive", "")),
+                ("VIC Rebate",      ref_record.get("vic_rebate", "")),
+                ("Battery Rebate",  ref_record.get("battery_rebate", "")),
+                ("Total Price",     ref_record.get("total_price", "")),
+                ("Deposit",         ref_record.get("deposit", "")),
+                ("Balance",         ref_record.get("balance", "")),
+                ("Payment Terms",   ref_record.get("payment_terms", "")),
+                ("Billing Address", ref_record.get("billing_address", "")),
+                ("Delivery Address",ref_record.get("delivery_address", "")),
+                ("Roof Type",       ref_record.get("roof_type", "")),
+                ("Email",           ref_record.get("email", "")),
+                ("Phone",           ref_record.get("phone", "")),
+                ("Notes",           ref_record.get("notes", "")),
+            ]
+            reference_pdf_text = "\n".join(
+                f"{k}: {v}" for k, v in fields if v
+            )
+            # Also include line items (panels, inverter, battery, roof type etc.)
+            line_items = ref_record.get("line_items") or []
+            if line_items:
+                reference_pdf_text += "\n\nSystem Components:\n" + "\n".join(
+                    f"- {li.get('item','')}: {li.get('specification','')}"
+                    for li in line_items if li.get("item")
+                )
+
     _claude_client = _get_claude()
     QC_SYSTEM = (
         "You are a QC document checker. "
@@ -920,7 +961,11 @@ async def upload_zip(
         if missing:
             return {"status": "N/A", "remark": f"File not found in ZIP: {', '.join(missing)}"}
 
-        context = f"Checklist item: {item['text']}\nRequirement: {prompt_text}"
+        ref_section = (
+            f"\n\n--- MAIN REFERENCE PDF (Signed Agreement) ---\n{reference_pdf_text}"
+            if reference_pdf_text else ""
+        )
+        context = f"Checklist item: {item['text']}\nRequirement: {prompt_text}{ref_section}"
 
         try:
             # Detect MIME from actual ZIP filename; fall back to magic-byte sniffing
@@ -957,51 +1002,50 @@ async def upload_zip(
             if unsupported:
                 return {"status": "N/A", "remark": f"Unsupported file type: {', '.join(n for n, _, _ in unsupported)}"}
 
-            # Extract text from PDFs; scanned PDFs (no text) are rendered as images instead
+            # Always render PDFs as images — text extraction alone misses handwritten
+            # signatures, stamps, checkbox ticks, and other visual elements.
             combined_pdf_text = ""
-            scanned_pdf_images = []  # (fname, page_image_bytes) for text-less PDFs
+            pdf_page_images = []  # (fname, page_png_bytes)
             for fname, fdata, _ in pdf_parts:
+                # Extract text as supplementary context (helps with typed content)
                 try:
                     with pdfplumber.open(io.BytesIO(fdata)) as pdf:
                         pages_text = [p.extract_text() or "" for p in pdf.pages]
                     text = "\n".join(pages_text)
-                except Exception as e:
-                    return {"status": "N/A", "remark": f"Could not open PDF '{fname}': {e}"}
+                    if text.strip():
+                        combined_pdf_text += f"\n\n--- {fname} ---\n{text}"
+                except Exception:
+                    pass  # text extraction optional; vision path handles it
 
-                if text.strip():
-                    combined_pdf_text += f"\n\n--- {fname} ---\n{text}"
-                else:
-                    # Scanned/image-only PDF — render each page as a PNG for the vision model
-                    try:
-                        import fitz  # PyMuPDF
-                        doc = fitz.open(stream=fdata, filetype="pdf")
-                        for page in doc:
-                            pix = page.get_pixmap(dpi=150)
-                            scanned_pdf_images.append((fname, pix.tobytes("png")))
-                        doc.close()
-                    except Exception:
-                        # PyMuPDF not available — report as unreadable
-                        return {"status": "N/A", "remark": f"PDF '{fname}' appears to be scanned (no text layer) and could not be rendered. Install PyMuPDF (pip install pymupdf) for scanned PDF support."}
+                # Render every page as PNG so Claude can see visual elements
+                try:
+                    import fitz  # PyMuPDF
+                    doc = fitz.open(stream=fdata, filetype="pdf")
+                    for page in doc:
+                        pix = page.get_pixmap(dpi=150)
+                        pdf_page_images.append((fname, pix.tobytes("png")))
+                    doc.close()
+                except Exception:
+                    # PyMuPDF unavailable — fall back to text-only for this PDF
+                    if not combined_pdf_text.strip():
+                        return {"status": "N/A", "remark": f"Could not render '{fname}' as image. Install PyMuPDF (pip install pymupdf)."}
 
-            needs_vision = bool(image_parts or scanned_pdf_images)
-
-            # If only text-based PDFs and no images, use text path
-            if pdf_parts and not needs_vision:
-                if not combined_pdf_text.strip():
-                    return {"status": "N/A", "remark": "Could not extract text from PDF(s)."}
-                user_content = f"{context}\n\nDocument content:{combined_pdf_text[:8000]}"
-                return _claude_check(user_content)
-
-            # Vision path — combine text context + real images + scanned PDF pages
+            # Build vision message: text context first, then all images
             user_content = [{"type": "text", "text": context}]
             if combined_pdf_text.strip():
-                user_content.append({"type": "text", "text": f"Document content:{combined_pdf_text[:4000]}"})
+                user_content.append({"type": "text", "text": f"Document text (for reference):{combined_pdf_text[:4000]}"})
+            for fname, page_png in pdf_page_images:
+                b64 = base64.standard_b64encode(page_png).decode()
+                user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
             for fname, fdata, mime in image_parts:
                 b64 = base64.standard_b64encode(fdata).decode()
                 user_content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
-            for fname, page_png in scanned_pdf_images:
-                b64 = base64.standard_b64encode(page_png).decode()
-                user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
+
+            # If nothing to send (no PDFs, no images), fall back to text-only
+            if len(user_content) == 1:
+                if combined_pdf_text.strip():
+                    return _claude_check(f"{context}\n\nDocument content:{combined_pdf_text[:8000]}")
+                return {"status": "N/A", "remark": "No readable content found in reference file(s)."}
 
             return _claude_check(user_content)
 
@@ -1389,7 +1433,9 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     """Admin view of a specific QC version with inline edit capability."""
     with __import__("database").get_db() as conn:
         row = conn.execute(
-            """SELECT qv.*, q.customer_name, q.quote_number
+            """SELECT qv.*, q.customer_name, q.quote_number, q.install_date,
+                      q.email, q.phone, q.total_price, q.system_price,
+                      q.deposit, q.balance, q.payment_terms, q.billing_address
                FROM qc_versions qv JOIN quotes q ON q.id = qv.quote_id
                WHERE qv.id = ?""",
             (version_id,),

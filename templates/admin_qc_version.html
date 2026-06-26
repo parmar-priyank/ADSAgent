@@ -11,6 +11,39 @@
 
 {% block content %}
 
+<!-- Customer info strip -->
+<div style="background:var(--surface);border:1px solid var(--line2);border-radius:12px;padding:14px 20px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:20px;align-items:center;">
+  <div style="flex:1;min-width:160px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px;">Customer</div>
+    <div style="font-size:14px;font-weight:700;color:var(--ink);">{{ v.customer_name or '—' }}</div>
+    {% if v.email %}<div style="font-size:12px;color:var(--muted);">{{ v.email }}</div>{% endif %}
+    {% if v.phone %}<div style="font-size:12px;color:var(--muted);">{{ v.phone }}</div>{% endif %}
+  </div>
+  <div style="flex:1;min-width:120px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px;">Quote</div>
+    <div style="font-size:13px;font-weight:600;color:var(--ink);">{{ v.quote_number or '—' }}</div>
+    {% if v.billing_address %}<div style="font-size:12px;color:var(--muted);">{{ v.billing_address }}</div>{% endif %}
+  </div>
+  <div style="flex:1;min-width:100px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px;">Install Date</div>
+    <div style="font-size:13px;font-weight:600;color:var(--ink);">{{ v.install_date or '—' }}</div>
+  </div>
+  <div style="flex:1;min-width:100px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px;">Total Price</div>
+    <div style="font-size:13px;font-weight:600;color:var(--ink);">{{ v.total_price or '—' }}</div>
+    {% if v.payment_terms %}<div style="font-size:12px;color:var(--muted);">{{ v.payment_terms }}</div>{% endif %}
+  </div>
+  <div style="flex:1;min-width:100px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px;">Deposit / Balance</div>
+    <div style="font-size:13px;font-weight:600;color:var(--ink);">{{ v.deposit or '—' }} / {{ v.balance or '—' }}</div>
+  </div>
+  <a href="/pdf?id={{ v.quote_id }}"
+     style="flex-shrink:0;font-size:12px;font-weight:600;color:var(--brand);text-decoration:none;border:1px solid var(--brand);border-radius:7px;padding:5px 12px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    Full Record
+  </a>
+</div>
+
 <!-- Header bar -->
 <div class="dash-card" style="margin-bottom:16px;">
   <div class="dash-card-body" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
@@ -31,7 +64,15 @@
       <span id="chip-no"  style="background:#dc2626;color:#fff;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700;">&#10007; {{ v.no_count }} No</span>
       <span id="chip-na"  style="background:var(--line2);color:var(--text2);border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;">&#8212; {{ v.na_count }} N/A</span>
     </div>
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <a href="/pdf?id={{ v.quote_id }}"
+         style="font-size:13px;font-weight:600;color:var(--ink2);text-decoration:none;border:1px solid var(--line2);border-radius:7px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;background:var(--surface3);">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        View PDF Record
+      </a>
       <a href="/admin/qc-version/{{ v.id }}/download"
          style="font-size:13px;font-weight:600;color:var(--brand);text-decoration:none;border:1.5px solid var(--brand);border-radius:7px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
