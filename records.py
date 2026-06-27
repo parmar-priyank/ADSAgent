@@ -229,17 +229,6 @@ def get_recent(limit: int = 20):
     return quotes
 
 
-def find_by_filename(filename: str):
-    """Return the most recent quote saved from this filename, or None."""
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT * FROM quotes WHERE filename = ? ORDER BY id DESC LIMIT 1", (filename,)
-        ).fetchone()
-        if not row:
-            return None
-        quotes = [dict(row)]
-        return _attach_line_items(conn, quotes)[0]
-
 
 def find_by_quote_number(quote_number: str):
     """Return the existing quote with this quote_number, or None."""
@@ -301,25 +290,15 @@ def add_qc_version(
     return version_id, next_version
 
 
-def confirm_qc_version(version_id: int, user_id: int):
-    """Mark a saved draft as confirmed and stamp confirmed_at."""
-    with get_db() as conn:
-        conn.execute(
-            """UPDATE qc_versions
-               SET status='confirmed', confirmed_by_user_id=?, confirmed_at=CURRENT_TIMESTAMP
-               WHERE id=?""",
-            (user_id, version_id),
-        )
 
-
-def get_qc_history_for_user(user_id: int) -> list:
+def get_qc_history_by_user(user_id: int) -> list:
     """Return all QC versions saved or confirmed by a user, newest first."""
     with get_db() as conn:
         rows = conn.execute(
             """
             SELECT qv.id, qv.version, qv.template_name, qv.zip_filename,
                    qv.yes_count, qv.no_count, qv.na_count,
-                   qv.confirmed_at, qv.saved_at, qv.status,
+                   qv.status, qv.confirmed_at, qv.saved_at,
                    q.id as quote_id, q.customer_name, q.quote_number,
                    q.install_date, q.total_price
             FROM qc_versions qv
@@ -332,23 +311,8 @@ def get_qc_history_for_user(user_id: int) -> list:
     return [dict(r) for r in rows]
 
 
-def get_qc_history_by_user(user_id: int) -> list:
-    """Return all QC versions saved or confirmed by a specific user, newest first (admin use)."""
-    with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT qv.id, qv.version, qv.template_name, qv.zip_filename,
-                   qv.yes_count, qv.no_count, qv.na_count,
-                   qv.status, qv.confirmed_at, qv.saved_at,
-                   q.id as quote_id, q.customer_name, q.quote_number
-            FROM qc_versions qv
-            JOIN quotes q ON q.id = qv.quote_id
-            WHERE qv.saved_by_user_id = ? OR qv.confirmed_by_user_id = ?
-            ORDER BY COALESCE(qv.confirmed_at, qv.saved_at) DESC
-            """,
-            (user_id, user_id),
-        ).fetchall()
-    return [dict(r) for r in rows]
+# Alias kept so user-side call in main.py resolves to the same function
+get_qc_history_for_user = get_qc_history_by_user
 
 
 def update_qc_version(version_id: int, xlsx_bytes: bytes, rows_json: str,

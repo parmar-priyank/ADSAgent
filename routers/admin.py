@@ -1,0 +1,380 @@
+"""
+routers/admin.py — admin-only routes.
+
+Routes:
+  GET  /admin
+  GET  /admin/users
+  GET  /admin/records
+  GET  /admin/templates
+  GET  /admin/api-status
+  GET  /admin/database
+  POST /admin/users/create
+  GET  /admin/users/{user_id}
+  POST /admin/users/{user_id}/change-password
+  POST /admin/users/{user_id}/change-role
+  POST /admin/users/{user_id}/delete
+  POST /admin/records/{record_id}/delete
+  POST /admin/settings/theme
+  GET  /admin/qc-download/{quote_id}
+  GET  /admin/qc-version/{version_id}/download
+  GET  /admin/qc-version/{version_id}
+  POST /admin/qc-version/{version_id}/save
+  GET  /db/download
+  POST /db/restore
+"""
+import json
+import os
+import shutil
+import sqlite3
+import tempfile
+import time
+
+import users as adb
+import records as db
+import checklists as tdb
+import excel as cx
+from database import get_db
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+
+from core import (
+    CLAUDE_MODEL,
+    _NO_CACHE,
+    _admin_ctx,
+    _anthropic_client,
+    _build_install_map,
+    _resolve_theme,
+    require_admin,
+    templates,
+)
+
+router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Admin dashboard
+# ---------------------------------------------------------------------------
+
+@router.get("/admin", response_class=HTMLResponse)
+def admin_dashboard(request: Request, user=Depends(require_admin), cal: str = ""):
+    records = db.get_recent()
+    ctx = _admin_ctx(user,
+        users_count=len(adb.list_users()),
+        records_count=len(records),
+        templates_count=len(tdb.list_templates()),
+        install_map_json=_build_install_map(records),
+        cal_jump=cal,  # e.g. "2026-08" — tells the calendar JS which month to open
+    )
+    response = templates.TemplateResponse(request, "admin_dashboard.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.get("/admin/users", response_class=HTMLResponse)
+def admin_users_page(request: Request, user=Depends(require_admin), success: str = None):
+    ctx = _admin_ctx(user,
+        users=adb.list_users(),
+        success="User created successfully." if success else None,
+        error=None,
+    )
+    response = templates.TemplateResponse(request, "admin_users.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.get("/admin/records", response_class=HTMLResponse)
+def admin_records_page(request: Request, user=Depends(require_admin)):
+    ctx = _admin_ctx(user, records=db.get_recent())
+    response = templates.TemplateResponse(request, "admin_records.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.get("/admin/templates", response_class=HTMLResponse)
+def admin_templates_page(request: Request, user=Depends(require_admin)):
+    ctx = _admin_ctx(user, templates=tdb.list_templates())
+    response = templates.TemplateResponse(request, "admin_templates.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.get("/admin/api-status")
+def admin_api_status(user=Depends(require_admin)):
+    """Ping Claude and return latency + status for the dashboard meter."""
+    def _ping(client, model: str) -> dict:
+        t0 = time.monotonic()
+        try:
+            client.messages.create(
+                model=model,
+                max_tokens=1,
+                messages=[{"role": "user", "content": "Hi"}],
+            )
+            ms = round((time.monotonic() - t0) * 1000)
+            return {"status": "ok", "ms": ms}
+        except Exception as e:
+            ms = round((time.monotonic() - t0) * 1000)
+            msg = str(e)
+            if "429" in msg or "rate_limit" in msg.lower():
+                return {"status": "rate_limited", "ms": ms, "detail": "Rate limit hit"}
+            if "401" in msg or "invalid_api_key" in msg.lower():
+                return {"status": "auth_error", "ms": ms, "detail": "Invalid API key"}
+            if "timeout" in msg.lower() or "timed out" in msg.lower():
+                return {"status": "timeout", "ms": ms, "detail": "Request timed out"}
+            return {"status": "error", "ms": ms, "detail": msg[:120]}
+
+    result = _ping(_anthropic_client, CLAUDE_MODEL) if _anthropic_client else {"status": "not_configured", "ms": 0}
+
+    return {
+        "text":   {"model": CLAUDE_MODEL, **result},
+        "vision": {"model": CLAUDE_MODEL, **result},
+    }
+
+
+@router.get("/admin/database", response_class=HTMLResponse)
+def admin_database_page(request: Request, user=Depends(require_admin)):
+    ctx = _admin_ctx(user)
+    response = templates.TemplateResponse(request, "admin_database.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.post("/admin/users/create", response_class=HTMLResponse)
+def admin_create_user(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    role: str = Form("user"),
+    user=Depends(require_admin),
+):
+    # H2 — allowlist role to prevent arbitrary role injection via crafted POST
+    if role not in {"user", "admin"}:
+        role = "user"
+    ok = adb.create_user(username, password, role)
+    if ok:
+        return RedirectResponse(url="/admin/users?success=1", status_code=303)
+    ctx = _admin_ctx(user,
+        users=adb.list_users(),
+        error=f"Username '{username}' already exists, is invalid, or password is too short (min. 8 characters).",
+        success=None,
+    )
+    response = templates.TemplateResponse(request, "admin_users.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.get("/admin/users/{user_id}", response_class=HTMLResponse)
+def admin_user_detail(user_id: int, request: Request, user=Depends(require_admin),
+                      success: str = None, error: str = None):
+    target = adb.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "User not found.")
+    qc_history = db.get_qc_history_by_user(user_id)
+    ctx = _admin_ctx(user,
+        target=target,
+        success=success,
+        error=error,
+        qc_history=qc_history,
+    )
+    response = templates.TemplateResponse(request, "admin_user.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.post("/admin/users/{user_id}/change-password")
+def admin_change_password(user_id: int, request: Request,
+                          new_password: str = Form(...),
+                          user=Depends(require_admin)):
+    target = adb.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "User not found.")
+    ok = adb.change_password(user_id, new_password)
+    if ok:
+        return RedirectResponse(url=f"/admin/users/{user_id}?success=Password+changed+successfully.", status_code=303)
+    return RedirectResponse(url=f"/admin/users/{user_id}?error=Password+must+be+at+least+8+characters.", status_code=303)
+
+
+@router.post("/admin/users/{user_id}/change-role")
+def admin_change_role(user_id: int, request: Request,
+                      new_role: str = Form(...),
+                      user=Depends(require_admin)):
+    if user_id == user["id"]:
+        return RedirectResponse(url=f"/admin/users/{user_id}?error=Cannot+change+your+own+role.", status_code=303)
+    target = adb.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "User not found.")
+    ok = adb.change_role(user_id, new_role)
+    if ok:
+        label = "Admin" if new_role == "admin" else "User"
+        return RedirectResponse(url=f"/admin/users/{user_id}?success=Role+changed+to+{label}.", status_code=303)
+    return RedirectResponse(url=f"/admin/users/{user_id}?error=Invalid+role.", status_code=303)
+
+
+@router.post("/admin/users/{user_id}/delete")
+def admin_delete_user(user_id: int, request: Request, user=Depends(require_admin)):
+    if user_id == user["id"]:
+        raise HTTPException(400, "Cannot delete your own account.")
+    adb.delete_user(user_id)
+    return RedirectResponse(url="/admin/users", status_code=303)
+
+
+@router.post("/admin/records/{record_id}/delete")
+def admin_delete_record(record_id: int, request: Request, user=Depends(require_admin)):
+    db.delete_quote(record_id)
+    return RedirectResponse(url="/admin/records", status_code=303)
+
+
+@router.post("/admin/settings/theme")
+def admin_set_theme(request: Request, theme: str = Form(...), user=Depends(require_admin),
+                    referer: str = None):
+    if theme in ("dark", "light"):
+        adb.set_setting("user_panel_theme", theme)
+    ref = request.headers.get("referer", "")
+    origin = str(request.base_url).rstrip("/")
+    dest = ref if (ref.startswith(origin + "/admin")) else "/admin"
+    return RedirectResponse(url=dest, status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# QC download / versioned view (admin)
+# ---------------------------------------------------------------------------
+
+@router.get("/admin/qc-download/{quote_id}", response_class=Response)
+def admin_qc_download(quote_id: int, user=Depends(require_admin)):
+    """Download the latest QC Excel for a quote (admin only)."""
+    record = db.get_quote(quote_id)
+    if not record or not record.get("qc_excel"):
+        raise HTTPException(404, "No QC report found for this record.")
+    raw_name = (record.get("customer_name") or f"quote_{quote_id}").replace(" ", "_")
+    safe_name = raw_name.replace('"', "").replace("\n", "").replace("\r", "")[:80]
+    return Response(
+        content=bytes(record["qc_excel"]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}_QC.xlsx"',
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+    )
+
+
+@router.get("/admin/qc-version/{version_id}/download", response_class=Response)
+def admin_qc_version_download(version_id: int, user=Depends(require_admin)):
+    """Download a specific QC version Excel (admin only)."""
+    xlsx = db.get_qc_version_excel(version_id)
+    if not xlsx:
+        raise HTTPException(404, "QC version not found.")
+    return Response(
+        content=xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="QC_v{version_id}.xlsx"',
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+    )
+
+
+@router.get("/admin/qc-version/{version_id}", response_class=HTMLResponse)
+def admin_qc_version_view(request: Request, version_id: int, user=Depends(require_admin)):
+    """Admin view of a specific QC version with inline edit capability."""
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT qv.*, q.customer_name, q.quote_number, q.install_date,
+                      q.email, q.phone, q.total_price, q.system_price,
+                      q.deposit, q.balance, q.payment_terms, q.billing_address
+               FROM qc_versions qv JOIN quotes q ON q.id = qv.quote_id
+               WHERE qv.id = ?""",
+            (version_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "QC version not found.")
+    v = dict(row)
+    rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
+    resp = templates.TemplateResponse(request, "admin_qc_version.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
+        "v": v,
+        "rows": rows,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
+
+
+@router.post("/admin/qc-version/{version_id}/save")
+async def admin_qc_version_save(request: Request, version_id: int, user=Depends(require_admin)):
+    """Save admin edits to a QC version — rebuilds Excel and updates DB."""
+    body = await request.json()
+    rows   = body.get("rows", [])
+    action = body.get("action", "draft")  # "draft" or "confirm"
+
+    # Rebuild Excel from edited rows
+    filled = {}
+    for row in rows:
+        if not row.get("is_section") and row.get("position") is not None:
+            filled[row["position"]] = {"status": row.get("status", "N/A"), "remark": row.get("remark", "")}
+
+    xlsx_blob = cx.build_xlsx(rows, filled=filled)
+    yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
+    no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
+    na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
+
+    confirm = action == "confirm"
+    db.update_qc_version(
+        version_id=version_id,
+        xlsx_bytes=xlsx_blob,
+        rows_json=json.dumps(rows),
+        yes_count=yes_count,
+        no_count=no_count,
+        na_count=na_count,
+        confirm=confirm,
+        confirmed_by_user_id=user["id"] if confirm else None,
+    )
+    return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}
+
+
+# ---------------------------------------------------------------------------
+# Database backup / restore (admin only)
+# ---------------------------------------------------------------------------
+
+@router.get("/db/download")
+def db_download(user=Depends(require_admin)):
+    from database import DB_PATH
+    # Use SQLite backup API for a consistent snapshot (safe even while live)
+    src = sqlite3.connect(DB_PATH)
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    dst = sqlite3.connect(tmp.name)
+    src.backup(dst)
+    dst.close()
+    src.close()
+    filename = os.path.basename(DB_PATH).replace(".db", "") + "_backup.db"
+    content = open(tmp.name, "rb").read()
+    os.unlink(tmp.name)
+    return Response(
+        content=content,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+_DB_RESTORE_MAX = 512 * 1024 * 1024  # 512 MB hard cap for DB restore uploads
+
+
+@router.post("/db/restore")
+async def db_restore(request: Request, file: UploadFile = File(...), user=Depends(require_admin)):
+    from database import DB_PATH
+    data = await file.read()
+    if len(data) > _DB_RESTORE_MAX:
+        raise HTTPException(400, "Uploaded file is too large. Maximum allowed size is 512 MB.")
+    if not data.startswith(b"SQLite format 3"):
+        raise HTTPException(400, "Invalid file — must be a SQLite database.")
+    # Snapshot the live DB before overwriting so the admin can recover if the
+    # uploaded file turns out to be corrupt despite passing the header check.
+    backup_path = DB_PATH + ".pre_restore_backup"
+    if os.path.exists(DB_PATH):
+        shutil.copy2(DB_PATH, backup_path)
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.write(data)
+    tmp.close()
+    shutil.move(tmp.name, DB_PATH)
+    return RedirectResponse(url="/Excel?restored=1", status_code=303)

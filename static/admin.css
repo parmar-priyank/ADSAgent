@@ -339,23 +339,6 @@
 }
 
 /* --------------------------------------------------------------------------
-   KV result rows (Customer Details)
-   -------------------------------------------------------------------------- */
-.kv { display: grid; gap: 0; }
-.kv-row {
-  display: grid; grid-template-columns: 210px 1fr;
-  padding: 13px 0; border-bottom: 1px solid var(--line); align-items: baseline;
-}
-.kv-row:last-child { border-bottom: none; }
-.kv-row .k { color: var(--muted); font-weight: 500; font-size: 12.5px; }
-.kv-row .v { font-size: 14px; word-break: break-word; color: var(--ink); }
-.kv-row .v.empty { color: var(--muted); font-style: italic; }
-
-@media (max-width: 560px) {
-  .kv-row { grid-template-columns: 1fr; gap: 3px; }
-}
-
-/* --------------------------------------------------------------------------
    Light Theme Overrides
    -------------------------------------------------------------------------- */
 [data-theme="light"] .dash-sidebar       { background: #fff; border-right-color: rgba(28,26,23,.08); }
@@ -386,7 +369,3 @@
 [data-theme="light"] .cal-cell:not(.cal-blank) { background: #f5f3ef; border-color: rgba(28,26,23,.09); }
 [data-theme="light"] .cal-day-num { color: var(--ink); }
 
-[data-theme="light"] .kv-row { border-bottom-color: rgba(28,26,23,.07); }
-[data-theme="light"] .kv-row .k { color: var(--muted); }
-[data-theme="light"] .kv-row .v { color: var(--ink); }
-[data-theme="light"] .kv-row .v.empty { color: #c5c0b7; }

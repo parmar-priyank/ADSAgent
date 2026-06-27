@@ -65,10 +65,15 @@ def _create_user(conn, username: str, password: str, role: str = "user"):
     )
 
 
+_USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9_.\-@]{1,64}$")
+
+
 def create_user(username: str, password: str, role: str = "user") -> bool:
     """Returns False if username already exists or inputs are invalid."""
     username = username.strip()
-    if not username or len(password) < 8:
+    if not username or not _USERNAME_RE.match(username):
+        return False
+    if len(password) < 8 or len(password) > 256:
         return False
     try:
         with get_db() as conn:
