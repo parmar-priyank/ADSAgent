@@ -1,21 +1,13 @@
 """
-services/claude.py — PDF text extraction and Claude-based data extraction.
-
-Contains:
-  - EXTRACTION_SCHEMA  : field descriptions sent to Claude
-  - extract_pdf_text() : split-column PDF text extraction via pdfplumber
-  - extract_with_claude(): structured JSON extraction via the Anthropic API
+services/ai_service.py — PDF text extraction and Claude-based data extraction.
 """
 import io
 import json
 
 import pdfplumber
 
-from core import CLAUDE_MODEL, _get_claude
+from config import CLAUDE_MODEL, _get_claude
 
-# ---------------------------------------------------------------------------
-# Schema sent to Claude for structured extraction
-# ---------------------------------------------------------------------------
 EXTRACTION_SCHEMA = {
     "quote_number": "string",
     "quote_valid_until": "string (date the quote is valid until)",
@@ -69,25 +61,19 @@ EXTRACTION_SCHEMA = {
 }
 
 
-# ---------------------------------------------------------------------------
-# PDF text extraction
-# ---------------------------------------------------------------------------
 def extract_pdf_text(file_bytes: bytes) -> str:
     """
     Extract text from the PDF (skipping page 1, the marketing flyer).
 
-    The agreement lays customer details and retailer details in two
-    side-by-side columns. A plain extract_text() reads each row left-to-right
-    and glues the two columns together (e.g. the customer's billing address
-    ends up merged with the retailer's postal address). To avoid that, each
-    page is split down the middle and the left (customer) and right (retailer)
-    halves are extracted separately and clearly labelled.
+    The agreement lays customer and retailer details in two side-by-side columns.
+    Each page is split down the middle so the two halves are labelled separately,
+    preventing field cross-contamination during extraction.
     """
     left_parts, right_parts, full_parts = [], [], []
     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
         for i, page in enumerate(pdf.pages):
             if i == 0:
-                continue  # ignore page one per requirement
+                continue
             mid = page.width / 2
             left = page.crop((0, 0, mid, page.height)).extract_text() or ""
             right = page.crop((mid, 0, page.width, page.height)).extract_text() or ""
@@ -106,9 +92,6 @@ def extract_pdf_text(file_bytes: bytes) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# Claude extraction
-# ---------------------------------------------------------------------------
 def extract_with_claude(text: str) -> dict:
     client = _get_claude()
 
@@ -149,7 +132,6 @@ def extract_with_claude(text: str) -> dict:
     )
 
     raw = resp.content[0].text.strip()
-    # Strip markdown code fences if Claude wrapped the JSON
     if raw.startswith("```"):
         raw = raw.split("```", 2)[1]
         if raw.startswith("json"):

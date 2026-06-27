@@ -1,20 +1,11 @@
 """
-db.py — SQLite database layer for the Solar Agreement Extractor.
-
-Two-table design:
-  - quotes:      one row per quote (Customer & Quote, Retailer, and Payment
-                 fields — all 1-to-1 with a quote). This is the "Saved Records"
-                 list.
-  - line_items:  many rows per quote (the System & Pricing table), linked to a
-                 quote by quote_number.
-
-The database file and both tables are created automatically on first import
-if they don't already exist (see ensure_db / init_db).
+db/quote_repo.py — SQLite data layer for quotes, line items, QC versions,
+and the pending-PDF duplicate-confirmation flow.
 """
-from database import get_db
+import secrets as _secrets
 
-# Scalar fields stored on the quotes table (everything that is 1-to-1 with a
-# quote). line_items are stored separately.
+from db.connection import get_db
+
 QUOTE_FIELDS = [
     # Customer & Quote Details
     "quote_number", "quote_valid_until", "customer_name", "contact_person",
@@ -30,7 +21,6 @@ QUOTE_FIELDS = [
 
 
 def init_db():
-    """Create the quotes and line_items tables if they don't already exist."""
     quote_cols = ",\n                ".join(f"{f} TEXT" for f in QUOTE_FIELDS)
     with get_db() as conn:
         conn.execute(
@@ -43,16 +33,13 @@ def init_db():
             )
             """
         )
-        # Enforce one row per quote_number so re-uploads can replace cleanly.
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_quote_number "
             "ON quotes(quote_number)"
         )
-        # Add qc_excel column if it doesn't exist yet (safe migration).
         cols = [r[1] for r in conn.execute("PRAGMA table_info(quotes)").fetchall()]
         if "qc_excel" not in cols:
             conn.execute("ALTER TABLE quotes ADD COLUMN qc_excel BLOB")
-        # Versioned QC history table.
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS qc_versions (
@@ -71,18 +58,16 @@ def init_db():
             )
             """
         )
-        # Migrate existing qc_versions rows if columns are missing.
         qcv_cols = [r[1] for r in conn.execute("PRAGMA table_info(qc_versions)").fetchall()]
-        if "rows_json" not in qcv_cols:
-            conn.execute("ALTER TABLE qc_versions ADD COLUMN rows_json TEXT")
-        if "confirmed_by_user_id" not in qcv_cols:
-            conn.execute("ALTER TABLE qc_versions ADD COLUMN confirmed_by_user_id INTEGER")
-        if "status" not in qcv_cols:
-            conn.execute("ALTER TABLE qc_versions ADD COLUMN status TEXT DEFAULT 'confirmed'")
-        if "saved_by_user_id" not in qcv_cols:
-            conn.execute("ALTER TABLE qc_versions ADD COLUMN saved_by_user_id INTEGER")
-        if "saved_at" not in qcv_cols:
-            conn.execute("ALTER TABLE qc_versions ADD COLUMN saved_at TIMESTAMP")
+        for col, defn in [
+            ("rows_json",            "TEXT"),
+            ("confirmed_by_user_id", "INTEGER"),
+            ("status",               "TEXT DEFAULT 'confirmed'"),
+            ("saved_by_user_id",     "INTEGER"),
+            ("saved_at",             "TIMESTAMP"),
+        ]:
+            if col not in qcv_cols:
+                conn.execute(f"ALTER TABLE qc_versions ADD COLUMN {col} {defn}")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS line_items (
@@ -98,10 +83,6 @@ def init_db():
             )
             """
         )
-        # Temporary store for PDFs awaiting duplicate-confirmation.
-        # Keeps PDF bytes + already-extracted text server-side so the browser
-        # never has to carry a multi-MB base64 blob in a form field.
-        # Rows are purged on next startup and after 1 h by store_pending_pdf.
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS pending_pdfs (
@@ -113,29 +94,21 @@ def init_db():
             )
             """
         )
-        # Purge stale pending rows (older than 1 hour) on every startup.
         conn.execute(
             "DELETE FROM pending_pdfs "
             "WHERE created_at < datetime('now', '-1 hour')"
         )
 
 
+# ---------------------------------------------------------------------------
+# Quotes
+# ---------------------------------------------------------------------------
+
 def save_extraction(filename: str, data: dict) -> int:
-    """
-    Save one extracted quote into the two-table schema and return the quote row id.
-
-    If a quote with the same (non-empty) quote_number already exists, the old
-    quote and its line items are removed first so the latest upload replaces it
-    (line_items cascade-delete with the parent quote).
-    """
     quote_number = (data.get("quote_number") or "").strip()
-
     with get_db() as conn:
-        # Replace any previous quote with the same number (cascades to line_items).
         if quote_number:
             conn.execute("DELETE FROM quotes WHERE quote_number = ?", (quote_number,))
-
-        # --- insert the quote row ---
         columns = ["filename"] + QUOTE_FIELDS
         placeholders = ",".join("?" for _ in columns)
         values = [filename] + [
@@ -147,8 +120,6 @@ def save_extraction(filename: str, data: dict) -> int:
             values,
         )
         quote_id = cur.lastrowid
-
-        # --- insert the line items ---
         for pos, li in enumerate(data.get("line_items") or []):
             conn.execute(
                 """
@@ -157,20 +128,15 @@ def save_extraction(filename: str, data: dict) -> int:
                 VALUES (?,?,?,?,?,?)
                 """,
                 (
-                    quote_number,
-                    pos,
-                    li.get("item", ""),
-                    li.get("quantity", ""),
-                    li.get("specification", ""),
-                    li.get("price", ""),
+                    quote_number, pos,
+                    li.get("item", ""), li.get("quantity", ""),
+                    li.get("specification", ""), li.get("price", ""),
                 ),
             )
-
         return quote_id
 
 
 def _attach_line_items(conn, quotes: list) -> list:
-    """Fetch all line items for the given quotes in a single query and attach them."""
     if not quotes:
         return quotes
     numbers = [q["quote_number"] for q in quotes]
@@ -190,48 +156,36 @@ def _attach_line_items(conn, quotes: list) -> list:
 
 
 def get_quote(quote_id: int):
-    """Return a single quote by its database id, including line_items."""
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT * FROM quotes WHERE id = ?", (quote_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM quotes WHERE id = ?", (quote_id,)).fetchone()
         if not row:
             return None
-        quotes = [dict(row)]
-        return _attach_line_items(conn, quotes)[0]
+        return _attach_line_items(conn, [dict(row)])[0]
 
 
 def get_recent(limit: int = 20):
-    """
-    Return the most recent quotes, each as a dict with all quote fields plus a
-    'line_items' list and 'qc_version_count', so callers can render the full record.
-    """
     with get_db() as conn:
         rows = conn.execute(
             "SELECT * FROM quotes ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
-        quotes = [dict(r) for r in rows]
-        quotes = _attach_line_items(conn, quotes)
-        # Attach QC version counts in a single query.
+        quotes = _attach_line_items(conn, [dict(r) for r in rows])
         if quotes:
             ids = [q["id"] for q in quotes]
             placeholders = ",".join("?" * len(ids))
             counts = conn.execute(
-                f"SELECT quote_id, COUNT(*) as cnt FROM qc_versions WHERE quote_id IN ({placeholders}) GROUP BY quote_id",
+                f"SELECT quote_id, COUNT(*) as cnt FROM qc_versions "
+                f"WHERE quote_id IN ({placeholders}) GROUP BY quote_id",
                 ids,
             ).fetchall()
             count_map = {r["quote_id"]: r["cnt"] for r in counts}
             for q in quotes:
                 q["qc_version_count"] = count_map.get(q["id"], 0)
-
     for display_num, q in enumerate(quotes, start=1):
         q["display_num"] = display_num
     return quotes
 
 
-
 def find_by_quote_number(quote_number: str):
-    """Return the existing quote with this quote_number, or None."""
     if not quote_number:
         return None
     with get_db() as conn:
@@ -241,16 +195,22 @@ def find_by_quote_number(quote_number: str):
         ).fetchone()
         if not row:
             return None
-        quotes = [dict(row)]
-        return _attach_line_items(conn, quotes)[0]
+        return _attach_line_items(conn, [dict(row)])[0]
 
+
+def delete_quote(quote_id: int):
+    with get_db() as conn:
+        conn.execute("DELETE FROM quotes WHERE id = ?", (quote_id,))
+
+
+# ---------------------------------------------------------------------------
+# QC Excel snapshots
+# ---------------------------------------------------------------------------
 
 def save_qc_excel(quote_id: int, xlsx_bytes: bytes):
-    """Attach a QC Excel blob to an existing quote row (latest snapshot)."""
     with get_db() as conn:
         conn.execute(
-            "UPDATE quotes SET qc_excel = ? WHERE id = ?",
-            (xlsx_bytes, quote_id),
+            "UPDATE quotes SET qc_excel = ? WHERE id = ?", (xlsx_bytes, quote_id)
         )
 
 
@@ -266,8 +226,7 @@ def add_qc_version(
     confirmed_by_user_id: int = None,
     status: str = "confirmed",
     saved_by_user_id: int = None,
-) -> int:
-    """Append a new QC version for this quote and return the version number."""
+) -> tuple:
     with get_db() as conn:
         row = conn.execute(
             "SELECT COALESCE(MAX(version), 0) FROM qc_versions WHERE quote_id = ?",
@@ -290,36 +249,9 @@ def add_qc_version(
     return version_id, next_version
 
 
-
-def get_qc_history_by_user(user_id: int) -> list:
-    """Return all QC versions saved or confirmed by a user, newest first."""
-    with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT qv.id, qv.version, qv.template_name, qv.zip_filename,
-                   qv.yes_count, qv.no_count, qv.na_count,
-                   qv.status, qv.confirmed_at, qv.saved_at,
-                   q.id as quote_id, q.customer_name, q.quote_number,
-                   q.install_date, q.total_price
-            FROM qc_versions qv
-            JOIN quotes q ON q.id = qv.quote_id
-            WHERE qv.saved_by_user_id = ? OR qv.confirmed_by_user_id = ?
-            ORDER BY COALESCE(qv.confirmed_at, qv.saved_at) DESC
-            """,
-            (user_id, user_id),
-        ).fetchall()
-    return [dict(r) for r in rows]
-
-
-# Alias kept so user-side call in main.py resolves to the same function
-get_qc_history_for_user = get_qc_history_by_user
-
-
 def update_qc_version(version_id: int, xlsx_bytes: bytes, rows_json: str,
                       yes_count: int, no_count: int, na_count: int,
                       confirm: bool = False, confirmed_by_user_id: int = None):
-    """Overwrite the Excel blob, rows, and counts for an existing QC version.
-    If confirm=True, also stamps confirmed_at and sets status to 'confirmed'."""
     with get_db() as conn:
         if confirm:
             conn.execute(
@@ -346,7 +278,6 @@ def update_qc_version(version_id: int, xlsx_bytes: bytes, rows_json: str,
 
 
 def get_qc_versions(quote_id: int) -> list:
-    """Return all QC versions for a quote, newest first."""
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -362,7 +293,6 @@ def get_qc_versions(quote_id: int) -> list:
 
 
 def get_qc_version_excel(version_id: int) -> bytes | None:
-    """Return the Excel blob for a specific qc_versions row."""
     with get_db() as conn:
         row = conn.execute(
             "SELECT excel_blob FROM qc_versions WHERE id = ?", (version_id,)
@@ -370,23 +300,34 @@ def get_qc_version_excel(version_id: int) -> bytes | None:
     return bytes(row["excel_blob"]) if row and row["excel_blob"] else None
 
 
-def delete_quote(quote_id: int):
-    """Delete a quote and its line items (cascade handles line_items)."""
+def get_qc_history_by_user(user_id: int) -> list:
     with get_db() as conn:
-        conn.execute("DELETE FROM quotes WHERE id = ?", (quote_id,))
+        rows = conn.execute(
+            """
+            SELECT qv.id, qv.version, qv.template_name, qv.zip_filename,
+                   qv.yes_count, qv.no_count, qv.na_count,
+                   qv.status, qv.confirmed_at, qv.saved_at,
+                   q.id as quote_id, q.customer_name, q.quote_number,
+                   q.install_date, q.total_price
+            FROM qc_versions qv
+            JOIN quotes q ON q.id = qv.quote_id
+            WHERE qv.saved_by_user_id = ? OR qv.confirmed_by_user_id = ?
+            ORDER BY COALESCE(qv.confirmed_at, qv.saved_at) DESC
+            """,
+            (user_id, user_id),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# Alias kept for any call sites that use the old name
+get_qc_history_for_user = get_qc_history_by_user
 
 
 # ---------------------------------------------------------------------------
 # Pending-PDF helpers (duplicate-confirmation flow)
 # ---------------------------------------------------------------------------
-import secrets as _secrets
 
 def store_pending_pdf(filename: str, pdf_bytes: bytes, pdf_text: str) -> str:
-    """
-    Save PDF bytes + pre-extracted text server-side and return a short opaque
-    token.  Rows older than 1 hour are pruned on each call so the table stays
-    small even without a background job.
-    """
     token = _secrets.token_urlsafe(24)
     with get_db() as conn:
         conn.execute(
@@ -401,10 +342,6 @@ def store_pending_pdf(filename: str, pdf_bytes: bytes, pdf_text: str) -> str:
 
 
 def pop_pending_pdf(token: str) -> dict | None:
-    """
-    Retrieve and delete the pending PDF row for *token*.
-    Returns {"filename": ..., "pdf_bytes": ..., "pdf_text": ...} or None.
-    """
     with get_db() as conn:
         row = conn.execute(
             "SELECT filename, pdf_bytes, pdf_text FROM pending_pdfs WHERE token = ?",
@@ -413,7 +350,11 @@ def pop_pending_pdf(token: str) -> dict | None:
         if not row:
             return None
         conn.execute("DELETE FROM pending_pdfs WHERE token = ?", (token,))
-    return {"filename": row["filename"], "pdf_bytes": bytes(row["pdf_bytes"]), "pdf_text": row["pdf_text"]}
+    return {
+        "filename": row["filename"],
+        "pdf_bytes": bytes(row["pdf_bytes"]),
+        "pdf_text": row["pdf_text"],
+    }
 
 
 init_db()

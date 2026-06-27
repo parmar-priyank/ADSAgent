@@ -1,21 +1,7 @@
 """
-templates_db.py — storage for QC checklist templates.
-
-Two tables (in the same SQLite database as the rest of the app):
-  - templates       : one row per named template (id, name, raw .xlsx blob,
-                      header labels, created_at). The blob preserves the
-                      originally-uploaded formatting for reference.
-  - checklist_items : many rows per template (the editable checklist). Items
-                      are the source of truth for editing and for regenerating
-                      the downloadable Excel.
-
-The structured items support add / edit / delete / reorder; ordering is held
-by the `position` column. Sub-points (i, ii, iii) nest under a numbered parent
-via `parent_position`.
+db/checklist_repo.py — storage for QC checklist templates and their items.
 """
-import sqlite3
-
-from database import get_db
+from db.connection import get_db
 
 
 def init_templates_db():
@@ -50,7 +36,6 @@ def init_templates_db():
             )
             """
         )
-        # Migrations: add columns to older databases that don't have them.
         cols = [r[1] for r in conn.execute("PRAGMA table_info(checklist_items)")]
         if "reference" not in cols:
             conn.execute("ALTER TABLE checklist_items ADD COLUMN reference TEXT DEFAULT ''")
@@ -61,15 +46,9 @@ def init_templates_db():
 # ---------------------------------------------------------------------------
 # Templates
 # ---------------------------------------------------------------------------
-def create_template(name: str, blob: bytes, items: list,
-                    note_text: str = "") -> int:
-    """
-    Create a named template plus its checklist items.
-    If a template with the same name already exists it is replaced, so
-    re-uploading the same checklist never creates duplicates.
-    """
+
+def create_template(name: str, blob: bytes, items: list, note_text: str = "") -> int:
     with get_db() as conn:
-        # Delete any existing template with the same name (cascades to items).
         conn.execute("DELETE FROM templates WHERE LOWER(name) = LOWER(?)", (name,))
         cur = conn.execute(
             "INSERT INTO templates (name, blob, note_text) VALUES (?,?,?)",
@@ -132,6 +111,7 @@ def delete_template(template_id: int):
 # ---------------------------------------------------------------------------
 # Checklist items
 # ---------------------------------------------------------------------------
+
 def get_items(template_id: int):
     with get_db() as conn:
         rows = conn.execute(
@@ -148,13 +128,15 @@ def add_item(template_id: int, text: str, sno: str = "",
     if position is None:
         position = (max([i["position"] for i in items], default=0)) + 1
     with get_db() as conn:
-        # shift existing items at/after position down by 1
         conn.execute(
             "UPDATE checklist_items SET position = position + 1 "
             "WHERE template_id = ? AND position >= ?",
             (template_id, position),
         )
-        default_prompt = "" if is_section else f"Verify that the '{text}' document is present, valid, and matches the agreement details."
+        default_prompt = "" if is_section else (
+            f"Verify that the '{text}' document is present, valid, "
+            "and matches the agreement details."
+        )
         _insert_items(conn, template_id, [{
             "position": position, "sno": sno, "parent_position": None,
             "is_section": is_section, "text": text, "reference": reference,
@@ -193,7 +175,6 @@ def delete_item(item_id: int):
 
 
 def reorder_items(template_id: int, ordered_ids: list):
-    """Set position for each item by its order in ordered_ids (1-based)."""
     with get_db() as conn:
         for pos, item_id in enumerate(ordered_ids, start=1):
             conn.execute(
@@ -204,7 +185,6 @@ def reorder_items(template_id: int, ordered_ids: list):
 
 
 def _needs_backfill() -> bool:
-    """Return True only if there are templates whose items all have empty references."""
     with get_db() as conn:
         unfilled = conn.execute(
             """
@@ -221,21 +201,14 @@ def _needs_backfill() -> bool:
 
 
 def backfill_references():
-    """
-    One-time migration: fill the reference column from the stored xlsx blob for
-    templates that still have all-empty references. Skips immediately if nothing
-    needs backfilling so it is cheap on every subsequent start.
-    """
     if not _needs_backfill():
         return
-
-    import excel as cx
-
+    from reports.xlsx_builder import parse_xlsx
     with get_db() as conn:
-        templates = conn.execute(
+        tmpls = conn.execute(
             "SELECT id, blob FROM templates WHERE blob IS NOT NULL"
         ).fetchall()
-        for t in templates:
+        for t in tmpls:
             tid, blob = t["id"], t["blob"]
             has_refs = conn.execute(
                 "SELECT 1 FROM checklist_items WHERE template_id = ? AND reference <> '' LIMIT 1",
@@ -243,12 +216,10 @@ def backfill_references():
             ).fetchone()
             if has_refs:
                 continue
-
             try:
-                parsed_items, _, _ = cx.parse_xlsx(bytes(blob))
+                parsed_items, _, _ = parse_xlsx(bytes(blob))
             except Exception:
                 continue
-
             ref_map = {
                 (it.get("sno", ""), it.get("text", "")): it.get("reference", "")
                 for it in parsed_items
@@ -267,28 +238,28 @@ def backfill_references():
 
 
 def backfill_prompts():
-    """
-    One-time migration: set a default prompt for every non-section item
-    that has an empty prompt, so the AI verifier has something to work with.
-    """
     with get_db() as conn:
         empty = conn.execute(
-            "SELECT 1 FROM checklist_items WHERE is_section = 0 AND (prompt IS NULL OR prompt = '') LIMIT 1"
+            "SELECT 1 FROM checklist_items WHERE is_section = 0 "
+            "AND (prompt IS NULL OR prompt = '') LIMIT 1"
         ).fetchone()
         if not empty:
             return
         rows = conn.execute(
-            "SELECT id, text FROM checklist_items WHERE is_section = 0 AND (prompt IS NULL OR prompt = '')"
+            "SELECT id, text FROM checklist_items "
+            "WHERE is_section = 0 AND (prompt IS NULL OR prompt = '')"
         ).fetchall()
         for row in rows:
-            default_prompt = f"Verify that the '{row['text']}' document is present, valid, and matches the agreement details."
+            default_prompt = (
+                f"Verify that the '{row['text']}' document is present, "
+                "valid, and matches the agreement details."
+            )
             conn.execute(
                 "UPDATE checklist_items SET prompt = ? WHERE id = ?",
                 (default_prompt, row["id"]),
             )
 
 
-# Create tables on import.
 init_templates_db()
 backfill_references()
 backfill_prompts()

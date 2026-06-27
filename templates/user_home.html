@@ -28,7 +28,7 @@
   <div class="user-upload-wrap">
 
     <!-- Step tracker -->
-    <div class="step-tracker" style="width:100%;max-width:460px;">
+    <div class="step-tracker" style="width:100%;max-width:620px;">
       <div class="step-item active">
         <div class="step-circle">1</div>
         <div class="step-label">Upload PDF</div>
@@ -36,11 +36,16 @@
       <div class="step-connector"></div>
       <div class="step-item">
         <div class="step-circle">2</div>
-        <div class="step-label">Upload ZIP</div>
+        <div class="step-label">Verify Email</div>
       </div>
       <div class="step-connector"></div>
       <div class="step-item">
         <div class="step-circle">3</div>
+        <div class="step-label">Upload ZIP</div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step-item">
+        <div class="step-circle">4</div>
         <div class="step-label">Confirm</div>
       </div>
     </div>
@@ -106,11 +111,16 @@
       <div class="step-connector"></div>
       <div class="step-item">
         <div class="step-circle">2</div>
-        <div class="step-label">Upload ZIP</div>
+        <div class="step-label">Verify Email</div>
       </div>
       <div class="step-connector"></div>
       <div class="step-item">
         <div class="step-circle">3</div>
+        <div class="step-label">Upload ZIP</div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step-item">
+        <div class="step-circle">4</div>
         <div class="step-label">Confirm</div>
       </div>
     </div>
@@ -188,7 +198,7 @@
     </div>
 
     <div style="text-align:center;margin:8px 0 32px;">
-      <a href="/qc-check?quote_id={{ result.get('id','') }}"
+      <a href="/email-verify?quote_id={{ result.get('id','') }}"
          style="display:inline-block;padding:13px 48px;font-size:1rem;background:var(--brand);color:#fff;border-radius:10px;font-weight:700;text-decoration:none;letter-spacing:-.01em;">
         Start QC Review &rarr;
       </a>

@@ -1,5 +1,5 @@
 """
-core.py — shared state for the Solar Agreement Extractor.
+config.py — shared application state.
 
 All routers import from here so the FastAPI app, Jinja2 templates, limiter,
 signer, Anthropic client, constants, and auth helpers are initialised exactly
@@ -20,24 +20,23 @@ from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from slowapi.errors import RateLimitExceeded
-
-import checklists as tdb   # checklist template storage
-import records as db        # quote/extraction storage
-import users as adb         # user accounts
+import db.checklist_repo as tdb
+import db.quote_repo as db_quotes
+import db.user_repo as adb
 
 # ---------------------------------------------------------------------------
 # Config — loaded from .env
 # ---------------------------------------------------------------------------
 load_dotenv()
 
-ANTHROPIC_API_KEY     = os.environ.get("ANTHROPIC_API_KEY")
-CLAUDE_MODEL          = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
-SECRET_KEY            = os.environ.get("SECRET_KEY")
-RECAPTCHA_SITE_KEY    = os.environ.get("RECAPTCHA_SITE_KEY", "")
-RECAPTCHA_SECRET_KEY  = os.environ.get("RECAPTCHA_SECRET_KEY", "")
+ANTHROPIC_API_KEY    = os.environ.get("ANTHROPIC_API_KEY")
+CLAUDE_MODEL         = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+SECRET_KEY           = os.environ.get("SECRET_KEY")
+RECAPTCHA_SITE_KEY   = os.environ.get("RECAPTCHA_SITE_KEY", "")
+RECAPTCHA_SECRET_KEY = os.environ.get("RECAPTCHA_SECRET_KEY", "")
 
 if not SECRET_KEY:
     raise RuntimeError(
@@ -46,9 +45,8 @@ if not SECRET_KEY:
 
 
 def _verify_recaptcha(token: str) -> bool:
-    """Return True if the reCAPTCHA v2 token passes Google's verification."""
     if not RECAPTCHA_SECRET_KEY or RECAPTCHA_SECRET_KEY == "YOUR_RECAPTCHA_SECRET_KEY_HERE":
-        return True  # skip check when keys are not configured yet
+        return True
     try:
         payload = urllib.parse.urlencode({
             "secret": RECAPTCHA_SECRET_KEY,
@@ -66,7 +64,6 @@ def _verify_recaptcha(token: str) -> bool:
         return False
 
 
-# Anthropic client initialised once at module load.
 _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 
@@ -81,13 +78,12 @@ MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB hard cap for all uploads
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 _POST_ONLY_PATHS = ("/run-checklist", "/user_upload", "/checklist-confirm")
 
-# Rate limiter (keyed by client IP)
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 
 app = FastAPI(
     title="Solar Agreement Extractor",
-    docs_url=None,    # disable /docs  (H5)
-    redoc_url=None,   # disable /redoc (H5)
+    docs_url=None,
+    redoc_url=None,
 )
 app.state.limiter = limiter
 
@@ -98,11 +94,12 @@ async def _on_rate_limit_exceeded(request: Request, exc: RateLimitExceeded):  # 
     dest = referer if referer.startswith(origin) else "/qc-check"
     return RedirectResponse(url=dest, status_code=303)
 
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # ---------------------------------------------------------------------------
-# Security headers middleware  (L1)
+# Security headers middleware
 # ---------------------------------------------------------------------------
 _CSP = (
     "default-src 'self'; "
@@ -136,8 +133,7 @@ _signer = URLSafeTimedSerializer(SECRET_KEY)
 # Session helpers
 # ---------------------------------------------------------------------------
 COOKIE = "session"
-
-SESSION_MAX_AGE = 86400 * 7  # 7 days — must match _signer max_age in _get_session
+SESSION_MAX_AGE = 86400 * 7  # 7 days
 
 
 def _set_session(response, user: dict):
@@ -150,7 +146,7 @@ def _set_session(response, user: dict):
         COOKIE, token,
         httponly=True,
         samesite="lax",
-        secure=False,       # set to True when serving over HTTPS in production
+        secure=False,
         max_age=SESSION_MAX_AGE,
     )
 
@@ -167,16 +163,12 @@ def _get_session(request: Request):
 
 
 class _AuthRedirect(Exception):
-    """Raised by auth dependencies to trigger a redirect that also clears the stale cookie."""
     def __init__(self, url: str):
         self.url = url
 
 
 async def _auth_redirect_handler(request: Request, exc: _AuthRedirect):
     r = RedirectResponse(url=exc.url, status_code=303)
-    # Only clear the cookie if one exists but is invalid (stale server instance,
-    # bad signature). If there is no cookie at all, deleting it is a no-op but
-    # avoids accidentally logging out a valid session on an unrelated error.
     if request.cookies.get(COOKIE):
         try:
             _signer.loads(request.cookies.get(COOKIE), max_age=SESSION_MAX_AGE)
@@ -189,7 +181,6 @@ def require_login(request: Request):
     user = _get_session(request)
     if not user:
         raise _AuthRedirect("/login")
-    # Admins are allowed to use user pages (e.g. for testing).
     return user
 
 
@@ -200,8 +191,6 @@ def require_admin(request: Request):
     return user
 
 
-# Serve a small inline SVG favicon so the browser stops requesting /favicon.ico
-# (which would otherwise 404 on every page load).
 _FAVICON = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
     'fill="none" stroke="#e8590c" stroke-width="2" stroke-linecap="round" '
@@ -210,12 +199,11 @@ _FAVICON = (
     'M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg>'
 )
 
-
 # ---------------------------------------------------------------------------
 # Context helpers used by multiple routers
 # ---------------------------------------------------------------------------
+
 def _resolve_theme(user: dict) -> str:
-    """User's personal DB preference wins; falls back to admin-set global default."""
     personal = adb.get_user_theme(user["id"])
     if personal in ("dark", "light"):
         return personal
@@ -223,10 +211,9 @@ def _resolve_theme(user: dict) -> str:
 
 
 def _index_context(user=None, **extra):
-    """Common context for any render of user_home.html."""
     saved = tdb.list_templates()
     base = {
-        "records": db.get_recent(),
+        "records": db_quotes.get_recent(),
         "result": None,
         "error": None,
         "latest_template": saved[0] if saved else None,
@@ -267,7 +254,6 @@ def _build_install_map(records: list) -> str:
 
 
 def _admin_ctx(user: dict, **extra) -> dict:
-    """Common context shared by all admin pages."""
     base = {
         "current_user": user,
         "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),

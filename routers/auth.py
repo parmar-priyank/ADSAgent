@@ -12,8 +12,8 @@ Routes:
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-import users as adb
-from core import (
+import db.user_repo as adb
+from config import (
     RECAPTCHA_SITE_KEY,
     _NO_CACHE,
     _POST_ONLY_PATHS,

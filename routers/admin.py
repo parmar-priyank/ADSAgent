@@ -29,16 +29,16 @@ import sqlite3
 import tempfile
 import time
 
-import users as adb
-import records as db
-import checklists as tdb
-import excel as cx
-from database import get_db
+import db.user_repo as adb
+import db.quote_repo as db
+import db.checklist_repo as tdb
+from reports.xlsx_builder import build_xlsx
+from db.connection import get_db
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from core import (
+from config import (
     CLAUDE_MODEL,
     _NO_CACHE,
     _admin_ctx,
@@ -313,7 +313,7 @@ async def admin_qc_version_save(request: Request, version_id: int, user=Depends(
         if not row.get("is_section") and row.get("position") is not None:
             filled[row["position"]] = {"status": row.get("status", "N/A"), "remark": row.get("remark", "")}
 
-    xlsx_blob = cx.build_xlsx(rows, filled=filled)
+    xlsx_blob = build_xlsx(rows, filled=filled)
     yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
     no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
     na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")

@@ -1,5 +1,5 @@
 """
-routers/pdf.py — PDF upload and quote detail routes.
+routers/uploads.py — PDF upload and quote detail routes.
 
 Routes:
   GET  /
@@ -15,14 +15,14 @@ import re
 
 import anthropic
 
-import records as db
-import users as adb
-from services.claude import extract_pdf_text, extract_with_claude
+import db.quote_repo as db
+import db.user_repo as adb
+from services.ai_service import extract_pdf_text, extract_with_claude
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from core import (
+from config import (
     MAX_UPLOAD_BYTES,
     _NO_CACHE,
     _get_session,
@@ -52,8 +52,7 @@ def root_redirect(request: Request):
 @router.get("/user_home", response_class=HTMLResponse)
 def home(request: Request, user=Depends(require_login)):
     response = templates.TemplateResponse(request, "user_home.html", _index_context(user=user))
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
+    response.headers.update(_NO_CACHE)
     return response
 
 
@@ -69,9 +68,10 @@ def upload_get(request: Request, id: int = None, user=Depends(require_login)):
         if record:
             result = record.get("data") or record
             result["id"] = id
-    response = templates.TemplateResponse(request, "user_home.html", _index_context(user=user, result=result))
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
+    response = templates.TemplateResponse(
+        request, "user_home.html", _index_context(user=user, result=result)
+    )
+    response.headers.update(_NO_CACHE)
     return response
 
 
@@ -83,7 +83,6 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
 
     file_bytes = await file.read()
 
-    # H1 — file size cap
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         resp = templates.TemplateResponse(
             request, "user_home.html",
@@ -140,11 +139,9 @@ async def upload_confirm(
     user=Depends(require_login),
 ):
     if action == "keep":
-        # Consume the pending row so it doesn't linger; ignore if already gone.
         db.pop_pending_pdf(pending_token)
         return RedirectResponse(url=f"/user_upload?id={existing_id}", status_code=303)
 
-    # action == "reextract" — retrieve PDF + pre-extracted text from DB.
     pending = db.pop_pending_pdf(pending_token)
     if not pending:
         resp = templates.TemplateResponse(
@@ -154,7 +151,6 @@ async def upload_confirm(
         resp.headers.update(_NO_CACHE)
         return resp
 
-    # Reuse the text extracted during the initial upload — no second PDF parse.
     filename = pending["filename"]
     text = pending["pdf_text"]
 
@@ -211,8 +207,7 @@ def quote_detail(request: Request, id: int = None, user=Depends(require_login)):
             "qc_versions": qc_versions,
         },
     )
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
+    response.headers.update(_NO_CACHE)
     return response
 
 

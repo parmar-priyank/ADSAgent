@@ -1,5 +1,5 @@
 """
-routers/qc.py — QC checklist execution and history routes.
+routers/qc_checks.py — QC checklist execution and history routes.
 
 Routes:
   GET  /qc-check
@@ -31,16 +31,16 @@ except ImportError:
 
 _PDF_DPI = 200   # 200 DPI: signatures and checkboxes render sharply for Claude vision
 
-import records as db
-import checklists as tdb
-import excel as cx
-from database import get_db
+import db.quote_repo as db
+import db.checklist_repo as tdb
+from reports.xlsx_builder import build_xlsx
+from db.connection import get_db
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from itsdangerous import BadSignature
 
-from core import (
+from config import (
     CLAUDE_MODEL,
     MAX_UPLOAD_BYTES,
     _NO_CACHE,
@@ -53,6 +53,12 @@ from core import (
 
 router = APIRouter()
 
+# Tracks which user IDs currently have a checklist run in progress.
+# Prevents a user from submitting two overlapping jobs that would race
+# on the same signed tokens. Each worker process has its own set, which
+# is fine — jobs from the same user can land on different workers safely.
+_active_jobs: set[int] = set()
+
 QC_SYSTEM = (
     "You are a QC document checker. "
     "Determine if the requirement is met based on the provided content. "
@@ -63,9 +69,8 @@ QC_SYSTEM = (
 def _render_pdf(fname: str, fdata: bytes) -> tuple[str, list[bytes]]:
     """Return (extracted_text, [page_png_bytes]) for a PDF.
 
-    Called once per unique PDF file before the parallel checklist loop so every
-    checklist item that references the same file shares the rendered pages
-    instead of re-rendering from scratch.
+    Called once per unique PDF before the parallel checklist loop so every
+    checklist item that references the same file shares the rendered pages.
     """
     text = ""
     try:
@@ -90,7 +95,6 @@ def _render_pdf(fname: str, fdata: bytes) -> tuple[str, list[bytes]]:
 
 
 def _mime_of(fname: str, fbytes: bytes) -> str:
-    """Detect MIME type from filename first, then magic-byte sniffing."""
     mime, _ = mimetypes.guess_type(fname)
     if mime:
         return mime
@@ -110,7 +114,6 @@ def _mime_of(fname: str, fbytes: bytes) -> str:
 
 
 def _claude_check(client, user_content) -> dict:
-    """Send content to Claude and parse the Yes/No/N/A JSON response."""
     resp = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=300,
@@ -128,6 +131,222 @@ def _claude_check(client, user_content) -> dict:
     except Exception:
         return {"status": "N/A", "remark": "AI returned an unreadable response."}
     return {"status": r.get("status", "N/A"), "remark": r.get("remark", "")}
+
+
+# ---------------------------------------------------------------------------
+# Email verify (Step 2) — upload .eml, extract attachments, match vs reference PDF
+# ---------------------------------------------------------------------------
+
+def _parse_eml(raw: bytes) -> list[dict]:
+    """
+    Parse a raw .eml file and return a list of attachment dicts:
+      {name, mime, data, size_kb}
+    Inline images and text parts are skipped — only named attachments are returned.
+    Uses Python's stdlib email parser — no extra dependencies needed.
+    """
+    import email as _email
+    import email.policy as _policy
+
+    msg = _email.message_from_bytes(raw, policy=_policy.compat32)
+    attachments = []
+    for part in msg.walk():
+        disposition = part.get_content_disposition() or ""
+        fname = part.get_filename()
+        if not fname:
+            continue
+        # Decode RFC-2047 encoded filenames (e.g. =?utf-8?q?...?=)
+        from email.header import decode_header as _dh
+        decoded_parts = _dh(fname)
+        fname = "".join(
+            (t.decode(enc or "utf-8") if isinstance(t, bytes) else t)
+            for t, enc in decoded_parts
+        )
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+        attachments.append({
+            "name": fname,
+            "mime": part.get_content_type(),
+            "data": payload,
+            "size_kb": round(len(payload) / 1024, 1),
+        })
+    return attachments
+
+
+def _match_attachment_with_claude(client, attachment: dict, reference_text: str) -> dict:
+    """
+    Send one email attachment to Claude with the reference PDF text and ask
+    whether the attachment details match the signed agreement.
+    Returns {name, size_kb, mime, status, remark}.
+    """
+    name = attachment["name"]
+    data = attachment["data"]
+    mime = attachment["mime"]
+    size_kb = attachment["size_kb"]
+
+    prompt = (
+        f"You are verifying whether an email attachment sent to a customer "
+        f"matches the details of their signed solar agreement.\n\n"
+        f"Attachment filename: {name}\n\n"
+        f"--- SIGNED AGREEMENT DETAILS ---\n{reference_text}\n\n"
+        f"Based on the attachment content and the agreement details above, "
+        f"answer: does this attachment appear to be correct and consistent "
+        f"with the signed agreement? "
+        f'Reply with JSON only: {{"status": "Yes" or "No" or "N/A", '
+        f'"remark": "one concise sentence explaining your finding"}}'
+    )
+
+    user_content: list = [{"type": "text", "text": prompt}]
+
+    # If it is a PDF, render pages and send as images
+    if mime == "application/pdf" or name.lower().endswith(".pdf"):
+        pages: list[bytes] = []
+        if _fitz is not None:
+            try:
+                doc = _fitz.open(stream=data, filetype="pdf")
+                for page in doc:
+                    pix = page.get_pixmap(dpi=_PDF_DPI)
+                    pages.append(pix.tobytes("png"))
+                doc.close()
+            except Exception:
+                pass
+        # Also extract text
+        try:
+            with pdfplumber.open(io.BytesIO(data)) as pdf:
+                txt = "\n".join(p.extract_text() or "" for p in pdf.pages)
+            if txt.strip():
+                user_content.append({"type": "text", "text": f"Attachment text:\n{txt[:6000]}"})
+        except Exception:
+            pass
+        for png in pages:
+            b64 = base64.standard_b64encode(png).decode()
+            user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
+    elif mime.startswith("image/"):
+        b64 = base64.standard_b64encode(data).decode()
+        user_content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
+    else:
+        # Plain text / docx / xlsx — send raw text if decodable
+        try:
+            user_content.append({"type": "text", "text": f"Attachment content (raw text):\n{data.decode('utf-8', errors='replace')[:6000]}"})
+        except Exception:
+            return {"name": name, "size_kb": size_kb, "mime": mime,
+                    "status": "N/A", "remark": "Unsupported attachment format — cannot read content."}
+
+    try:
+        resp = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=300,
+            messages=[{"role": "user", "content": user_content}],
+        )
+        raw_resp = resp.content[0].text.strip()
+        if raw_resp.startswith("```"):
+            raw_resp = raw_resp.split("```", 2)[1]
+            if raw_resp.startswith("json"):
+                raw_resp = raw_resp[4:]
+            raw_resp = raw_resp.rsplit("```", 1)[0].strip()
+        r = json.loads(raw_resp)
+        return {"name": name, "size_kb": size_kb, "mime": mime,
+                "status": r.get("status", "N/A"), "remark": r.get("remark", "")}
+    except Exception as e:
+        return {"name": name, "size_kb": size_kb, "mime": mime,
+                "status": "N/A", "remark": f"Error analysing attachment: {e}"}
+
+
+@router.get("/email-verify", response_class=HTMLResponse)
+def email_verify_page(request: Request, quote_id: str = "", user=Depends(require_login)):
+    resp = templates.TemplateResponse(request, "user_email_verify.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "quote_id": quote_id,
+        "results": None,
+        "error": None,
+        "email_subject": None,
+        "email_from": None,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
+
+
+@router.post("/email-verify", response_class=HTMLResponse)
+async def email_verify_post(
+    request: Request,
+    eml_file: UploadFile = File(...),
+    quote_id: str = Form(""),
+    user=Depends(require_login),
+):
+    def _err(msg: str):
+        resp = templates.TemplateResponse(request, "user_email_verify.html", {
+            "current_user": user,
+            "theme": _resolve_theme(user),
+            "quote_id": quote_id,
+            "results": None,
+            "error": msg,
+            "email_subject": None,
+            "email_from": None,
+        })
+        resp.headers.update(_NO_CACHE)
+        return resp
+
+    if not eml_file.filename.lower().endswith(".eml"):
+        return _err("Please upload a valid .eml file (Outlook email format).")
+
+    raw = await eml_file.read()
+    if len(raw) > 50 * 1024 * 1024:  # 50 MB cap for email files
+        return _err("Email file is too large. Maximum allowed size is 50 MB.")
+
+    # Extract email metadata
+    import email as _email_mod
+    import email.policy as _policy
+    msg = _email_mod.message_from_bytes(raw, policy=_policy.compat32)
+    email_subject = msg.get("Subject", "(no subject)")
+    email_from    = msg.get("From", "(unknown sender)")
+
+    attachments = _parse_eml(raw)
+    if not attachments:
+        return _err("No attachments found in this email. Please check the .eml file.")
+
+    # Build reference text from the linked quote
+    reference_text = ""
+    if quote_id:
+        try:
+            ref_record = db.get_quote(int(quote_id))
+        except (ValueError, TypeError):
+            ref_record = db.find_by_quote_number(quote_id)
+        if ref_record:
+            fields = [
+                ("Quote Number",    ref_record.get("quote_number", "")),
+                ("Customer Name",   ref_record.get("customer_name", "")),
+                ("Install Date",    ref_record.get("install_date", "")),
+                ("System Price",    ref_record.get("system_price", "")),
+                ("Total Price",     ref_record.get("total_price", "")),
+                ("Deposit",         ref_record.get("deposit", "")),
+                ("Balance",         ref_record.get("balance", "")),
+                ("Payment Terms",   ref_record.get("payment_terms", "")),
+                ("Billing Address", ref_record.get("billing_address", "")),
+                ("Email",           ref_record.get("email", "")),
+                ("Phone",           ref_record.get("phone", "")),
+            ]
+            reference_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
+
+    client = _get_claude()
+
+    # Analyse all attachments concurrently
+    results = await asyncio.gather(
+        *[asyncio.to_thread(_match_attachment_with_claude, client, att, reference_text)
+          for att in attachments]
+    )
+
+    resp = templates.TemplateResponse(request, "user_email_verify.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "quote_id": quote_id,
+        "results": list(results),
+        "error": None,
+        "email_subject": email_subject,
+        "email_from": email_from,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -160,13 +379,24 @@ async def upload_zip(
     template_id: int = Form(...),
     user=Depends(require_login),
 ):
-    # Load checklist items for the chosen template
+    uid = user["id"]
+    if uid in _active_jobs:
+        saved = tdb.list_templates()
+        resp = templates.TemplateResponse(request, "user_qc.html", {
+            "current_user": user,
+            "theme": _resolve_theme(user),
+            "quote_id": quote_id,
+            "saved_templates": saved,
+            "error": "A checklist run is already in progress for your account. Please wait for it to finish.",
+        })
+        resp.headers.update(_NO_CACHE)
+        return resp
+
     tpl = tdb.get_template(template_id)
     if not tpl:
         raise HTTPException(404, "Template not found.")
     items = tdb.get_items(template_id)
 
-    # Extract ZIP into a flat dict: lowercase filename → bytes
     data = await zip_file.read()
 
     def _qc_error(error: str):
@@ -184,7 +414,7 @@ async def upload_zip(
     if len(data) > MAX_UPLOAD_BYTES:
         return _qc_error("ZIP file is too large. Maximum allowed size is 200 MB.")
 
-    _ZIP_ENTRY_MAX = 500 * 1024 * 1024   # 500 MB max total uncompressed content
+    _ZIP_ENTRY_MAX = 500 * 1024 * 1024
     zip_files: dict[str, bytes] = {}
     try:
         with zipmod.ZipFile(io.BytesIO(data)) as zf:
@@ -192,16 +422,13 @@ async def upload_zip(
             if total_uncompressed > _ZIP_ENTRY_MAX:
                 return _qc_error("ZIP contents are too large. Total uncompressed size must not exceed 500 MB.")
             for name in zf.namelist():
-                # Use os.path.basename to handle both / and \ separators safely
                 basename = os.path.basename(name).strip()
                 if basename:
                     zip_files[basename.lower()] = zf.read(name)
     except zipmod.BadZipFile:
         return _qc_error("Uploaded file is not a valid ZIP archive.")
 
-    # Load the main reference PDF text from the uploaded agreement (Step 1).
-    # This is injected into every checklist prompt so Claude can compare
-    # values in ZIP documents against the original signed agreement.
+    # Build reference context from the linked quote record
     reference_pdf_text = ""
     if quote_id:
         try:
@@ -209,7 +436,6 @@ async def upload_zip(
         except (ValueError, TypeError):
             ref_record = db.find_by_quote_number(quote_id)
         if ref_record:
-            # Build structured summary from all extracted quote fields
             fields = [
                 ("Quote Number",    ref_record.get("quote_number", "")),
                 ("Customer Name",   ref_record.get("customer_name", "")),
@@ -229,10 +455,7 @@ async def upload_zip(
                 ("Phone",           ref_record.get("phone", "")),
                 ("Notes",           ref_record.get("notes", "")),
             ]
-            reference_pdf_text = "\n".join(
-                f"{k}: {v}" for k, v in fields if v
-            )
-            # Also include line items (panels, inverter, battery, roof type etc.)
+            reference_pdf_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
             line_items = ref_record.get("line_items") or []
             if line_items:
                 reference_pdf_text += "\n\nSystem Components:\n" + "\n".join(
@@ -243,20 +466,12 @@ async def upload_zip(
     _claude_client = _get_claude()
 
     def _resolve_file(name: str):
-        """Return (actual_zip_filename, bytes) for a reference name, or (name, None) if not found.
-
-        Matching order:
-        1. Exact name (case-insensitive)
-        2. Exact name ignoring spaces
-        3. Same stem, any extension (e.g. template says Deposit.jpg, ZIP has Deposit.png)
-        4. Same stem ignoring spaces, any extension
-        """
         key = name.lower()
-        if (data := zip_files.get(key)) is not None:
-            return key, data
+        if (fdata := zip_files.get(key)) is not None:
+            return key, fdata
 
-        key_nospace = key.replace(" ", "")
-        stem = os.path.splitext(key)[0]
+        key_nospace  = key.replace(" ", "")
+        stem         = os.path.splitext(key)[0]
         stem_nospace = stem.replace(" ", "")
 
         best_name, best_data = None, None
@@ -271,17 +486,14 @@ async def upload_zip(
 
         return (best_name, best_data) if best_data is not None else (name, None)
 
-    # Pre-render every PDF in the ZIP exactly once.
-    # Each entry: fname -> (extracted_text, [page_png_bytes])
-    # _analyse_item reads from this cache so the same PDF is never rendered twice
-    # even if 10 checklist items all reference it.
+    # Pre-render every PDF in the ZIP exactly once (cache avoids re-rendering per item)
     pdf_cache: dict[str, tuple[str, list[bytes]]] = {}
     for fname, fdata in zip_files.items():
         if _mime_of(fname, fdata) == "application/pdf":
             pdf_cache[fname] = _render_pdf(fname, fdata)
 
     def _analyse_item(item: dict) -> dict:
-        ref = (item.get("reference") or "").strip()
+        ref         = (item.get("reference") or "").strip()
         prompt_text = (item.get("prompt") or "").strip()
 
         if not ref:
@@ -289,16 +501,18 @@ async def upload_zip(
         if not prompt_text:
             return {"status": "N/A", "remark": "No prompt defined for this item."}
 
-        # Support multiple files separated by "+" e.g. "Rates.pdf + DL.pdf"
         ref_names = [r.strip() for r in ref.split("+") if r.strip()]
-        resolved = [_resolve_file(r) for r in ref_names]
+        resolved  = [_resolve_file(r) for r in ref_names]
 
-        missing = [name for name, data in resolved if data is None]
-        found = [(name, data) for name, data in resolved if data is not None]
+        missing = [name for name, d in resolved if d is None]
+        found   = [(name, d) for name, d in resolved if d is not None]
         if not found:
             return {"status": "N/A", "remark": f"File not found in ZIP: {', '.join(missing)}"}
         resolved = found
-        missing_note = f" (Note: {', '.join(missing)} not found in ZIP, working with available files only.)" if missing else ""
+        missing_note = (
+            f" (Note: {', '.join(missing)} not found in ZIP, working with available files only.)"
+            if missing else ""
+        )
 
         ref_section = (
             f"\n\n--- MAIN REFERENCE PDF (Signed Agreement) ---\n{reference_pdf_text}"
@@ -320,10 +534,7 @@ async def upload_zip(
             if unsupported:
                 return {"status": "N/A", "remark": f"Unsupported file type: {', '.join(unsupported)}"}
 
-            # Pull pre-rendered PDF data from cache — no re-rendering per item.
-            # Text extraction alone misses handwritten signatures, stamps, and
-            # checkbox ticks; the cached PNG pages cover those visual elements.
-            combined_pdf_text = ""
+            combined_pdf_text  = ""
             pdf_page_images: list[bytes] = []
             for fname, _ in pdf_parts:
                 cached_text, cached_pages = pdf_cache.get(fname, ("", []))
@@ -334,7 +545,6 @@ async def upload_zip(
                     if _fitz is None:
                         return {"status": "N/A", "remark": f"Could not render '{fname}' as image. Install PyMuPDF (pip install pymupdf)."}
 
-            # Build vision message: text context first, then all images
             user_content = [{"type": "text", "text": context}]
             if combined_pdf_text.strip():
                 user_content.append({"type": "text", "text": f"Document text (for reference):{combined_pdf_text[:8000]}"})
@@ -345,7 +555,6 @@ async def upload_zip(
                 b64 = base64.standard_b64encode(fdata).decode()
                 user_content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
 
-            # If nothing visual to send, fall back to text-only
             if len(user_content) == 1:
                 if combined_pdf_text.strip():
                     return _claude_check(_claude_client, f"{context}\n\nDocument content:{combined_pdf_text[:8000]}")
@@ -356,17 +565,20 @@ async def upload_zip(
         except Exception as e:
             return {"status": "N/A", "remark": f"Error analysing file: {e}"}
 
-    # Run all checklist items concurrently.
     non_section = [(i, item) for i, item in enumerate(items) if not item.get("is_section")]
 
-    results = await asyncio.gather(
-        *[asyncio.to_thread(_analyse_item, item) for _, item in non_section]
-    )
+    _active_jobs.add(uid)
+    try:
+        results = await asyncio.gather(
+            *[asyncio.to_thread(_analyse_item, item) for _, item in non_section]
+        )
+    finally:
+        _active_jobs.discard(uid)
 
     checklist_rows = []
     filled: dict[int, dict] = {}
-    ns_iter = iter(zip(non_section, results))
-    next_ns = next(ns_iter, None)
+    ns_iter  = iter(zip(non_section, results))
+    next_ns  = next(ns_iter, None)
     for i, item in enumerate(items):
         if item.get("is_section"):
             checklist_rows.append({**item, "status": "", "remark": ""})
@@ -376,24 +588,19 @@ async def upload_zip(
             checklist_rows.append({**item, "status": result["status"], "remark": result["remark"]})
             next_ns = next(ns_iter, None)
 
-    # Build a downloadable Excel blob with the results filled in
     headers = {
         "customer_label": tpl.get("customer_label"),
-        "address_label": tpl.get("address_label"),
-        "job_label": tpl.get("job_label"),
+        "address_label":  tpl.get("address_label"),
+        "job_label":      tpl.get("job_label"),
     }
-    xlsx_blob = cx.build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled)
+    xlsx_blob = build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled)
 
-    # Two separate signed tokens so neither URL param grows too large.
-    # result_token carries tpl + rows + quote_id (no binary blob).
-    # dl_token carries only the xlsx bytes and is reused by the download endpoint.
-    xlsx_b64 = base64.b64encode(xlsx_blob).decode()
-    dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]})
-    # Strip the raw Excel blob from tpl — it is bytes and not JSON-serialisable.
-    tpl_safe = {k: v for k, v in tpl.items() if not isinstance(v, (bytes, bytearray))}
-    yes_count = sum(1 for r in checklist_rows if r.get("status") == "Yes")
-    no_count  = sum(1 for r in checklist_rows if r.get("status") == "No")
-    na_count  = sum(1 for r in checklist_rows if r.get("status") == "N/A")
+    xlsx_b64   = base64.b64encode(xlsx_blob).decode()
+    dl_token   = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]})
+    tpl_safe   = {k: v for k, v in tpl.items() if not isinstance(v, (bytes, bytearray))}
+    yes_count  = sum(1 for r in checklist_rows if r.get("status") == "Yes")
+    no_count   = sum(1 for r in checklist_rows if r.get("status") == "No")
+    na_count   = sum(1 for r in checklist_rows if r.get("status") == "N/A")
     result_token = _signer.dumps({
         "tpl": tpl_safe,
         "rows": checklist_rows,
@@ -436,16 +643,11 @@ def checklist_result(request: Request, token: str, user=Depends(require_login)):
 
 @router.post("/checklist-save-edits")
 async def checklist_save_edits(request: Request, _auth=Depends(require_login)):
-    """
-    Accepts modified checklist rows as JSON, rebuilds the Excel, and returns
-    a new signed dl_token so the confirm flow can save the corrected version.
-    """
-    body = await request.json()
-    rows        = body.get("rows", [])       # [{sno, text, status, remark, position, is_section, ...}]
-    tpl         = body.get("tpl", {})
-    orig_token  = body.get("dl_token", "")
+    body       = await request.json()
+    rows       = body.get("rows", [])
+    tpl        = body.get("tpl", {})
+    orig_token = body.get("dl_token", "")
 
-    # Decode original token just to get template name (no need to validate Excel)
     tpl_name = tpl.get("name", "checklist")
     try:
         orig_payload = _signer.loads(orig_token, max_age=7200)
@@ -460,7 +662,6 @@ async def checklist_save_edits(request: Request, _auth=Depends(require_login)):
     }
     note_text = tpl.get("note_text", "")
 
-    # Build filled dict from edited rows
     filled = {}
     for row in rows:
         if not row.get("is_section") and row.get("position") is not None:
@@ -469,8 +670,8 @@ async def checklist_save_edits(request: Request, _auth=Depends(require_login)):
                 "remark": row.get("remark", ""),
             }
 
-    xlsx_blob = cx.build_xlsx(rows, headers, note_text, filled=filled)
-    xlsx_b64  = base64.b64encode(xlsx_blob).decode()
+    xlsx_blob    = build_xlsx(rows, headers, note_text, filled=filled)
+    xlsx_b64     = base64.b64encode(xlsx_blob).decode()
     new_dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl_name})
     return {"dl_token": new_dl_token}
 
@@ -507,11 +708,6 @@ def checklist_confirm(
     rows_json: str = Form(""),
     user=Depends(require_login),
 ):
-    """
-    Called when the user clicks 'Confirm & Add to Calendar' on the result page.
-    Saves the QC Excel as a new version and updates the latest snapshot on the quote.
-    """
-    # Sanitise string fields from form: strip control chars and cap length.
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
     zip_filename = zip_filename[:260].replace("\n", "").replace("\r", "")
 
@@ -522,10 +718,9 @@ def checklist_confirm(
         except (ValueError, TypeError):
             record = db.find_by_quote_number(quote_id)
 
-    # Persist the QC Excel as a confirmed version and update the latest snapshot.
     if dl_token and record:
         try:
-            payload = _signer.loads(dl_token, max_age=7200)
+            payload    = _signer.loads(dl_token, max_age=7200)
             xlsx_bytes = base64.b64decode(payload["xlsx"])
             db.save_qc_excel(record["id"], xlsx_bytes)
             db.add_qc_version(
@@ -544,7 +739,6 @@ def checklist_confirm(
         except Exception:
             pass
 
-    # Build redirect target: admin calendar, jumping to the install month if known.
     install_date = (record or {}).get("install_date", "").strip() if record else ""
     cal_param = ""
     if install_date:
@@ -578,7 +772,6 @@ def checklist_save_draft(
     rows_json: str = Form(""),
     user=Depends(require_login),
 ):
-    """Save QC results as a draft (no calendar entry). User can revisit later."""
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
     zip_filename = zip_filename[:260].replace("\n", "").replace("\r", "")
 
@@ -591,7 +784,7 @@ def checklist_save_draft(
 
     if dl_token and record:
         try:
-            payload = _signer.loads(dl_token, max_age=7200)
+            payload    = _signer.loads(dl_token, max_age=7200)
             xlsx_bytes = base64.b64decode(payload["xlsx"])
             db.add_qc_version(
                 quote_id=record["id"],
@@ -629,7 +822,6 @@ def user_history(request: Request, user=Depends(require_login)):
 
 @router.get("/user/qc-version/{version_id}", response_class=HTMLResponse)
 def user_qc_version_revisit(request: Request, version_id: int, user=Depends(require_login)):
-    """Let a user revisit a saved/confirmed QC version."""
     with get_db() as conn:
         row = conn.execute(
             """SELECT qv.*, q.customer_name, q.quote_number, q.install_date
@@ -640,7 +832,6 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
     if not row:
         raise HTTPException(404, "QC version not found.")
     v = dict(row)
-    # Only the user who saved/confirmed it can revisit it (admins can too)
     if (user.get("role") != "admin"
             and v.get("saved_by_user_id") != user["id"]
             and v.get("confirmed_by_user_id") != user["id"]):
@@ -651,9 +842,11 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
             rows = []
     except Exception:
         rows = []
-    tpl = {"id": 0, "name": v.get("template_name", ""), "customer_label": "", "address_label": "", "job_label": "", "note_text": ""}
 
-    # Re-sign a dl_token so download still works
+    tpl = {
+        "id": 0, "name": v.get("template_name", ""),
+        "customer_label": "", "address_label": "", "job_label": "", "note_text": "",
+    }
     xlsx_b64 = base64.b64encode(bytes(v["excel_blob"])).decode() if v.get("excel_blob") else ""
     dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]}) if xlsx_b64 else ""
 

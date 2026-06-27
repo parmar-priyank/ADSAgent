@@ -1,19 +1,15 @@
 """
-auth_db.py — user accounts and session helpers.
-
-Table: users
-  id          INTEGER PK
-  username    TEXT UNIQUE NOT NULL
-  password    TEXT NOT NULL  (bcrypt hash)
-  role        TEXT DEFAULT 'user'  ('admin' or 'user')
-  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+db/user_repo.py — user accounts, authentication, and app-wide settings.
 """
+import re
 import secrets
 import sqlite3
 
 import bcrypt
 
-from database import get_db
+from db.connection import get_db
+
+_USERNAME_RE = re.compile(r"^[A-Za-z0-9_.\-@]{1,64}$")
 
 
 def init_auth_db():
@@ -30,7 +26,6 @@ def init_auth_db():
             )
             """
         )
-        # Add theme column if upgrading from older schema without it.
         try:
             conn.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT NULL")
         except sqlite3.OperationalError:
@@ -65,11 +60,7 @@ def _create_user(conn, username: str, password: str, role: str = "user"):
     )
 
 
-_USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9_.\-@]{1,64}$")
-
-
 def create_user(username: str, password: str, role: str = "user") -> bool:
-    """Returns False if username already exists or inputs are invalid."""
     username = username.strip()
     if not username or not _USERNAME_RE.match(username):
         return False
@@ -84,7 +75,6 @@ def create_user(username: str, password: str, role: str = "user") -> bool:
 
 
 def verify_user(username: str, password: str):
-    """Return user row dict if credentials are valid, else None."""
     username = username.strip()
     if not username or not password:
         return None
@@ -134,7 +124,6 @@ def get_user(user_id: int):
 
 
 def get_user_theme(user_id: int) -> str | None:
-    """Return user's personal theme override, or None if they have none set."""
     with get_db() as conn:
         row = conn.execute("SELECT theme FROM users WHERE id = ?", (user_id,)).fetchone()
     return row["theme"] if row else None
