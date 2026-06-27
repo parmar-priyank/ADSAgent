@@ -260,3 +260,12 @@ tbody tr:last-child td { border-bottom: none; }
 [data-theme="light"] input[type=text],
 [data-theme="light"] input[type=password],
 [data-theme="light"] select { background: #fff; border-color: rgba(28,26,23,.14); color: var(--ink); }
+
+[data-theme="light"] .remark-view {
+  background: #fff !important;
+  border-color: rgba(28,26,23,.14) !important;
+  color: var(--ink) !important;
+}
+[data-theme="light"] .remark-view span {
+  color: var(--ink) !important;
+}

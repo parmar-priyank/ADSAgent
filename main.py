@@ -1463,7 +1463,8 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
 async def admin_qc_version_save(request: Request, version_id: int, user=Depends(require_admin)):
     """Save admin edits to a QC version — rebuilds Excel and updates DB."""
     body = await request.json()
-    rows = body.get("rows", [])
+    rows   = body.get("rows", [])
+    action = body.get("action", "draft")  # "draft" or "confirm"
 
     # Rebuild Excel from edited rows
     filled = {}
@@ -1476,6 +1477,7 @@ async def admin_qc_version_save(request: Request, version_id: int, user=Depends(
     no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
     na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
 
+    confirm = action == "confirm"
     db.update_qc_version(
         version_id=version_id,
         xlsx_bytes=xlsx_blob,
@@ -1483,6 +1485,8 @@ async def admin_qc_version_save(request: Request, version_id: int, user=Depends(
         yes_count=yes_count,
         no_count=no_count,
         na_count=na_count,
+        confirm=confirm,
+        confirmed_by_user_id=user["id"] if confirm else None,
     )
     return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}
 

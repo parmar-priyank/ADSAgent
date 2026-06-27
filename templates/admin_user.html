@@ -168,7 +168,9 @@
               {% if qc.na_count %}<span style="background:var(--line2);color:var(--muted);border-radius:4px;padding:1px 7px;font-size:11px;font-weight:600;">&#8212; {{ qc.na_count }}</span>{% endif %}
             </span>
           </td>
-          <td style="font-size:12px;color:var(--muted);white-space:nowrap;">{{ qc.confirmed_at[:16] if qc.confirmed_at else '—' }}</td>
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap;">
+            {% if qc.confirmed_at %}{{ qc.confirmed_at[:16] }}{% elif qc.saved_at %}{{ qc.saved_at[:16] }}{% else %}—{% endif %}
+          </td>
           <td style="text-align:right;" onclick="event.stopPropagation();">
             <a href="/admin/qc-version/{{ qc.id }}"
                style="font-size:12px;font-weight:600;color:var(--brand);text-decoration:none;">View &rsaquo;</a>
@@ -180,7 +182,7 @@
   </div>
   {% else %}
   <div class="dash-card-body" style="color:var(--muted);font-size:13px;text-align:center;padding:32px 20px;">
-    No QC runs confirmed by <strong>{{ target.username }}</strong> yet.
+    No QC runs by <strong>{{ target.username }}</strong> yet.
   </div>
   {% endif %}
 </div>

@@ -99,11 +99,11 @@
       <div>
         <div class="dash-topbar-title">Customer Agreement</div>
         <div class="dash-topbar-breadcrumb">
-          <a href="/admin#records" style="color:var(--brand);text-decoration:none;">Dashboard</a>
-          &rsaquo; Records &rsaquo; {{ record["customer_name"] }}
+          <a id="admin-back-crumb" href="/admin/records" style="color:var(--brand);text-decoration:none;">Records</a>
+          &rsaquo; {{ record["customer_name"] }}
         </div>
       </div>
-      <a href="/admin#records" class="link-btn">&larr; Back</a>
+      <a id="admin-back-btn" href="/admin/records" class="link-btn">&larr; Back</a>
     </div>
 
     <div class="dash-content">
@@ -280,6 +280,19 @@
 {% endif %}
 
 <script>
+  // Set Back button to referrer if it's a QC version page, otherwise default to records list
+  (function() {
+    var btn = document.getElementById('admin-back-btn');
+    var crumb = document.getElementById('admin-back-crumb');
+    if (btn && document.referrer) {
+      var ref = document.referrer;
+      if (ref.indexOf('/admin/qc-version/') !== -1 || ref.indexOf('/admin/records') !== -1 || ref.indexOf('/admin') !== -1) {
+        btn.href = ref;
+        if (crumb) crumb.href = ref;
+      }
+    }
+  })();
+
   document.querySelectorAll('tr.clickable[data-href]').forEach(function(row) {
     row.addEventListener('click', function() {
       window.location.href = row.dataset.href;

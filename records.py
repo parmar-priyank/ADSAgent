@@ -333,35 +333,52 @@ def get_qc_history_for_user(user_id: int) -> list:
 
 
 def get_qc_history_by_user(user_id: int) -> list:
-    """Return all QC versions confirmed by a specific user, newest first (admin use)."""
+    """Return all QC versions saved or confirmed by a specific user, newest first (admin use)."""
     with get_db() as conn:
         rows = conn.execute(
             """
             SELECT qv.id, qv.version, qv.template_name, qv.zip_filename,
-                   qv.yes_count, qv.no_count, qv.na_count, qv.confirmed_at,
+                   qv.yes_count, qv.no_count, qv.na_count,
+                   qv.status, qv.confirmed_at, qv.saved_at,
                    q.id as quote_id, q.customer_name, q.quote_number
             FROM qc_versions qv
             JOIN quotes q ON q.id = qv.quote_id
-            WHERE qv.confirmed_by_user_id = ?
-            ORDER BY qv.confirmed_at DESC
+            WHERE qv.saved_by_user_id = ? OR qv.confirmed_by_user_id = ?
+            ORDER BY COALESCE(qv.confirmed_at, qv.saved_at) DESC
             """,
-            (user_id,),
+            (user_id, user_id),
         ).fetchall()
     return [dict(r) for r in rows]
 
 
 def update_qc_version(version_id: int, xlsx_bytes: bytes, rows_json: str,
-                      yes_count: int, no_count: int, na_count: int):
-    """Overwrite the Excel blob, rows, and counts for an existing QC version."""
+                      yes_count: int, no_count: int, na_count: int,
+                      confirm: bool = False, confirmed_by_user_id: int = None):
+    """Overwrite the Excel blob, rows, and counts for an existing QC version.
+    If confirm=True, also stamps confirmed_at and sets status to 'confirmed'."""
     with get_db() as conn:
-        conn.execute(
-            """
-            UPDATE qc_versions
-               SET excel_blob=?, rows_json=?, yes_count=?, no_count=?, na_count=?
-             WHERE id=?
-            """,
-            (xlsx_bytes, rows_json, yes_count, no_count, na_count, version_id),
-        )
+        if confirm:
+            conn.execute(
+                """
+                UPDATE qc_versions
+                   SET excel_blob=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
+                       status='confirmed', confirmed_at=CURRENT_TIMESTAMP,
+                       confirmed_by_user_id=?
+                 WHERE id=?
+                """,
+                (xlsx_bytes, rows_json, yes_count, no_count, na_count,
+                 confirmed_by_user_id, version_id),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE qc_versions
+                   SET excel_blob=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
+                       status='draft'
+                 WHERE id=?
+                """,
+                (xlsx_bytes, rows_json, yes_count, no_count, na_count, version_id),
+            )
 
 
 def get_qc_versions(quote_id: int) -> list:
