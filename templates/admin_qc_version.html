@@ -59,10 +59,10 @@
       </div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
-      <!-- Live count chips -->
-      <span id="chip-yes" style="background:#16a34a;color:#fff;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700;">&#10003; {{ v.yes_count }} Yes</span>
-      <span id="chip-no"  style="background:#dc2626;color:#fff;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700;">&#10007; {{ v.no_count }} No</span>
-      <span id="chip-na"  style="background:var(--line2);color:var(--text2);border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;">&#8212; {{ v.na_count }} N/A</span>
+      <!-- Filter chips -->
+      <button id="chip-yes" onclick="toggleFilter('Yes')" style="background:#16a34a;color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700;cursor:pointer;">&#10003; {{ v.yes_count }} Yes</button>
+      <button id="chip-no"  onclick="toggleFilter('No')"  style="background:#dc2626;color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700;cursor:pointer;">&#10007; {{ v.no_count }} No</button>
+      <button id="chip-na"  onclick="toggleFilter('N/A')" style="background:var(--line2);color:var(--text2);border:none;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer;">&#8212; {{ v.na_count }} N/A</button>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
 
@@ -213,6 +213,23 @@
 
 {% block scripts %}
 <script>
+  var _activeFilter = 'all';
+
+  function toggleFilter(status) {
+    _activeFilter = (_activeFilter === status) ? 'all' : status;
+
+    // Show/hide data rows (skip section header rows)
+    document.querySelectorAll('#qc-tbody tr[data-position]').forEach(function(tr) {
+      tr.style.display = (_activeFilter === 'all' || tr.dataset.status === _activeFilter) ? '' : 'none';
+    });
+
+    // Dim inactive chips
+    ['Yes', 'No', 'N/A'].forEach(function(s) {
+      var el = document.getElementById('chip-' + (s === 'N/A' ? 'na' : s.toLowerCase()));
+      if (el) el.style.opacity = (_activeFilter === 'all' || _activeFilter === s) ? '1' : '0.35';
+    });
+  }
+
   var _editMode = false;
 
   function enterEditMode() {

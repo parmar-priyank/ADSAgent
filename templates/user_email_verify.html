@@ -115,17 +115,17 @@
         <strong style="color:var(--ink);">Subject:</strong> {{ email_subject }}
       </div>
 
-      <!-- Summary chips -->
+      <!-- Summary chips (filter buttons) -->
       {% set yes_c = results | selectattr('status','equalto','Yes') | list | length %}
       {% set no_c  = results | selectattr('status','equalto','No')  | list | length %}
       {% set na_c  = results | selectattr('status','equalto','N/A') | list | length %}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
-        <span class="chip chip-yes">&#10003; {{ yes_c }} Match</span>
-        <span class="chip chip-no">&#10007; {{ no_c }} Mismatch</span>
-        <span class="chip chip-na">— {{ na_c }} N/A</span>
-        <span class="chip" style="background:var(--surface3);color:var(--muted);">
-          {{ results | length }} attachment{{ 's' if results | length != 1 else '' }} total
-        </span>
+        <button onclick="toggleFilter('Yes')"  id="filter-yes" class="chip chip-yes"  style="border:none;cursor:pointer;">&#10003; {{ yes_c }} Match</button>
+        <button onclick="toggleFilter('No')"   id="filter-no"  class="chip chip-no"   style="border:none;cursor:pointer;">&#10007; {{ no_c }} Mismatch</button>
+        <button onclick="toggleFilter('N/A')"  id="filter-na"  class="chip chip-na"   style="border:none;cursor:pointer;">— {{ na_c }} N/A</button>
+        <button onclick="toggleFilter('all')"  id="filter-all" class="chip" style="border:none;cursor:pointer;background:var(--brand);color:#fff;">
+          {{ results | length }} total
+        </button>
       </div>
 
       <!-- Attachments table -->
@@ -140,7 +140,7 @@
         </thead>
         <tbody>
           {% for r in results %}
-          <tr style="border-bottom:1px solid var(--line2);">
+          <tr data-status="{{ r.status }}" style="border-bottom:1px solid var(--line2);">
             <td style="padding:10px;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
               <!-- File type icon -->
               {% set ext = r.name.rsplit('.',1)[-1].lower() %}
@@ -224,6 +224,25 @@
 
 {% block scripts %}
 <script>
+var _activeFilter = 'all';
+
+function toggleFilter(status) {
+  _activeFilter = (_activeFilter === status) ? 'all' : status;
+
+  // Show/hide rows
+  document.querySelectorAll('tr[data-status]').forEach(function(tr) {
+    tr.style.display = (_activeFilter === 'all' || tr.dataset.status === _activeFilter) ? '' : 'none';
+  });
+
+  // Update chip styles
+  var chips = { 'Yes': 'filter-yes', 'No': 'filter-no', 'N/A': 'filter-na', 'all': 'filter-all' };
+  Object.keys(chips).forEach(function(s) {
+    var el = document.getElementById(chips[s]);
+    if (!el) return;
+    el.style.opacity = (_activeFilter === 'all' || _activeFilter === s) ? '1' : '0.4';
+  });
+}
+
 (function () {
   // Helper: wire up a dropzone pair (dropzone label + file input + filename display)
   function wireDropzone(dzId, inputId, filenameId, formId, submitBtnId, loadingId) {

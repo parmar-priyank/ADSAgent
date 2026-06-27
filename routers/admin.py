@@ -338,7 +338,7 @@ async def admin_qc_version_save(request: Request, version_id: int, user=Depends(
 
 @router.get("/db/download")
 def db_download(user=Depends(require_admin)):
-    from database import DB_PATH
+    from db.connection import DB_PATH
     # Use SQLite backup API for a consistent snapshot (safe even while live)
     src = sqlite3.connect(DB_PATH)
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -362,7 +362,7 @@ _DB_RESTORE_MAX = 512 * 1024 * 1024  # 512 MB hard cap for DB restore uploads
 
 @router.post("/db/restore")
 async def db_restore(request: Request, file: UploadFile = File(...), user=Depends(require_admin)):
-    from database import DB_PATH
+    from db.connection import DB_PATH
     data = await file.read()
     if len(data) > _DB_RESTORE_MAX:
         raise HTTPException(400, "Uploaded file is too large. Maximum allowed size is 512 MB.")
