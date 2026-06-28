@@ -51,7 +51,7 @@
         <td><strong>{{ t["name"] }}</strong></td>
         <td class="muted">{{ t["created_at"] }}</td>
         <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
-          <a href="/templates/{{ t['id'] }}/download" class="link-btn">Download</a>
+          <a href="#" class="link-btn" onclick="downloadAndGo({{ t['id'] }}, event)">Download</a>
           <form action="/templates/{{ t['id'] }}/delete" method="post" style="display:inline;"
                 onsubmit="return confirm('Delete this template?');">
             <button type="submit" class="link-btn danger">Delete</button>
@@ -86,6 +86,28 @@
 
 {% block scripts %}
 <script>
+  function downloadAndGo(id, e) {
+    e.preventDefault();
+    fetch('/templates/' + id + '/download')
+      .then(function(r) {
+        var cd = r.headers.get('Content-Disposition') || '';
+        var match = cd.match(/filename="([^"]+)"/);
+        var name = match ? match[1] : 'template.xlsx';
+        return r.blob().then(function(blob) { return { blob: blob, name: name }; });
+      })
+      .then(function(obj) {
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(obj.blob);
+        a.download = obj.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+        setTimeout(function() { window.location.href = '/admin'; }, 300);
+      })
+      .catch(function() { alert('Download failed. Please try again.'); });
+  }
+
   function toggleTplUpload() {
     var wrap = document.getElementById('tpl-upload-form-wrap');
     var btn  = document.getElementById('tpl-upload-toggle-btn');

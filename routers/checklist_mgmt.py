@@ -166,7 +166,7 @@ def template_delete(template_id: int, user=Depends(require_admin)):
 
 
 @router.get("/templates/{template_id}/download")
-def template_download(template_id: int, user=Depends(require_login)):
+def template_download(template_id: int, user=Depends(require_admin)):
     tpl = tdb.get_template(template_id)
     if not tpl:
         raise HTTPException(404, "Template not found.")

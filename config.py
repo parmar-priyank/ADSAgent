@@ -181,6 +181,8 @@ def require_login(request: Request):
     user = _get_session(request)
     if not user:
         raise _AuthRedirect("/login")
+    if user.get("role") == "admin":
+        raise _AuthRedirect("/admin")
     return user
 
 
@@ -246,6 +248,7 @@ def _build_install_map(records: list) -> str:
             continue
         key = dt.strftime("%Y-%m-%d")
         install_map.setdefault(key, []).append({
+            "id":       r.get("id") or "",
             "customer": r.get("customer_name") or "",
             "quote":    r.get("quote_number")  or "",
             "address":  r.get("delivery_address") or "",

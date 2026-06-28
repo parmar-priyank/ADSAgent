@@ -27,7 +27,7 @@
     </thead>
     <tbody>
       {% for r in records %}
-      <tr class="clickable" data-href="/pdf?id={{ r['id'] }}">
+      <tr class="clickable" data-href="/admin/record/{{ r['id'] }}">
         <td><span class="id-pill">{{ r['display_num'] }}</span></td>
         <td>{{ r['quote_number'] }}</td>
         <td><strong>{{ r['customer_name'] }}</strong></td>

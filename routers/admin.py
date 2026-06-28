@@ -218,6 +218,18 @@ def admin_delete_user(user_id: int, request: Request, user=Depends(require_admin
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
+@router.get("/admin/record/{record_id}", response_class=HTMLResponse)
+def admin_record_detail(record_id: int, request: Request, user=Depends(require_admin)):
+    record = db.get_quote(record_id)
+    if not record:
+        raise HTTPException(404, "Record not found.")
+    qc_versions = db.get_qc_versions(record_id)
+    ctx = _admin_ctx(user, record=record, qc_versions=qc_versions)
+    response = templates.TemplateResponse(request, "admin_record.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
 @router.post("/admin/records/{record_id}/delete")
 def admin_delete_record(record_id: int, request: Request, user=Depends(require_admin)):
     db.delete_quote(record_id)

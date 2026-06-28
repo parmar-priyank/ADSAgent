@@ -1,0 +1,182 @@
+{% extends "admin_base.html" %}
+
+{% block title %}{{ record['customer_name'] or 'Record' }}{% endblock %}
+{% block nav_records %}active{% endblock %}
+{% block page_title %}Customer Record{% endblock %}
+{% block page_crumb %}
+  <a href="/admin/records" style="color:var(--brand);text-decoration:none;">Records</a>
+  &rsaquo; {{ record['customer_name'] or record['quote_number'] or 'Record' }}
+{% endblock %}
+
+{% block content %}
+
+<!-- Customer info strip -->
+<div style="display:grid;grid-template-columns:2fr 2fr 1fr 1fr 1.5fr;gap:1px;background:var(--line2);border:1px solid var(--line2);border-radius:12px;overflow:hidden;margin-bottom:16px;">
+
+  <div style="background:var(--surface);padding:16px 18px;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:8px;">Customer</div>
+    <div style="font-size:15px;font-weight:800;color:var(--ink);line-height:1.3;margin-bottom:5px;">{{ record['customer_name'] or '—' }}</div>
+    {% if record['email'] %}
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <span style="font-size:12px;font-weight:600;color:var(--ink);">{{ record['email'] }}</span>
+    </div>
+    {% endif %}
+    {% if record['phone'] %}
+    <div style="display:flex;align-items:center;gap:5px;">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.77a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16z"/></svg>
+      <span style="font-size:12px;font-weight:600;color:var(--ink);">{{ record['phone'] }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div style="background:var(--surface);padding:16px 18px;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:8px;">Quote / Address</div>
+    <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:5px;">{{ record['quote_number'] or '—' }}</div>
+    {% if record['billing_address'] %}
+    <div style="display:flex;align-items:flex-start;gap:5px;">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;margin-top:2px;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <span style="font-size:12px;font-weight:600;color:var(--ink);line-height:1.4;">{{ record['billing_address'] }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div style="background:var(--surface);padding:16px 18px;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:8px;">Install Date</div>
+    <div style="font-size:15px;font-weight:700;color:var(--ink);">{{ record['install_date'] or '—' }}</div>
+  </div>
+
+  <div style="background:var(--surface);padding:16px 18px;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:8px;">Deposit / Balance</div>
+    <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;">
+      <span style="font-size:14px;font-weight:700;color:var(--ink);">{{ record['deposit'] or '—' }}</span>
+      <span style="font-size:11px;color:var(--muted);font-weight:500;">/</span>
+      <span style="font-size:14px;font-weight:700;color:var(--ink);">{{ record['balance'] or '—' }}</span>
+    </div>
+  </div>
+
+  <div style="background:var(--surface);padding:16px 18px;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:8px;">Total Price</div>
+    <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px;">{{ record['total_price'] or '—' }}</div>
+    {% if record['payment_terms'] %}
+    <div style="display:inline-block;font-size:11px;font-weight:600;color:var(--brand);background:rgba(196,80,16,.1);border-radius:4px;padding:1px 7px;">{{ record['payment_terms'] }}</div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- QC Versions -->
+<div class="dash-card">
+  <div class="dash-card-header">
+    <div class="dash-card-title">QC Versions</div>
+    <span class="dash-card-count">{{ qc_versions|length }}</span>
+  </div>
+
+  {% if qc_versions %}
+  <table class="dash-table">
+    <thead>
+      <tr>
+        <th style="width:60px;">Version</th>
+        <th>Template</th>
+        <th>ZIP File</th>
+        <th style="text-align:center;">Results</th>
+        <th style="text-align:center;">Status</th>
+        <th class="muted">Date</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for qv in qc_versions %}
+      <tr class="clickable" data-href="/admin/qc-version/{{ qv['id'] }}">
+        <td><span class="id-pill">v{{ qv['version'] }}</span></td>
+        <td><strong>{{ qv['template_name'] or '—' }}</strong></td>
+        <td class="muted" style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ qv['zip_filename'] or '—' }}</td>
+        <td style="text-align:center;white-space:nowrap;">
+          <span style="background:rgba(34,197,94,.12);color:#16a34a;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700;">&#10003; {{ qv['yes_count'] }}</span>
+          <span style="background:rgba(248,113,113,.12);color:#dc2626;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700;margin-left:3px;">&#10007; {{ qv['no_count'] }}</span>
+          {% if qv['na_count'] %}<span style="background:var(--surface2);color:var(--muted);border-radius:4px;padding:2px 7px;font-size:11px;font-weight:600;margin-left:3px;">— {{ qv['na_count'] }}</span>{% endif %}
+        </td>
+        <td style="text-align:center;">
+          {% if qv['status'] == 'confirmed' %}
+          <span style="background:rgba(34,197,94,.10);color:#16a34a;border:1px solid rgba(34,197,94,.25);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">Confirmed</span>
+          {% else %}
+          <span style="background:rgba(245,166,35,.10);color:var(--brand);border:1px solid rgba(245,166,35,.3);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">Draft</span>
+          {% endif %}
+        </td>
+        <td class="muted" style="font-size:12px;">{{ (qv['confirmed_at'] or qv['saved_at'] or '')[:16] }}</td>
+        <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
+          <a href="/admin/qc-version/{{ qv['id'] }}" class="link-btn">View</a>
+          <a href="/admin/qc-version/{{ qv['id'] }}/download" class="link-btn">Download</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="dash-card-body">
+    <div class="empty-state">No QC versions for this record yet.</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Full extracted data -->
+<div class="dash-card" style="margin-top:16px;">
+  <div class="dash-card-header">
+    <div class="dash-card-title">Extracted Agreement Data</div>
+  </div>
+  <div class="dash-card-body">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:0;">
+      {% for key in ['quote_number','quote_valid_until','customer_name','contact_person',
+                     'billing_address','delivery_address','email','phone','roof_type',
+                     'retailer_name','retailer_contact_person','retailer_postal_address',
+                     'retailer_street_address','retailer_phone','retailer_email',
+                     'system_price','stc_incentive','vic_rebate','battery_rebate',
+                     'total_price','deposit','balance','payment_terms',
+                     'install_date','balance_due_date','notes'] %}
+      {% set value = record.get(key, '') %}
+      <div style="padding:10px 14px;border-bottom:1px solid var(--line2);display:flex;flex-direction:column;gap:3px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;">{{ key.replace('_',' ').title() }}</div>
+        <div style="font-size:14px;font-weight:{% if value %}600{% else %}400{% endif %};color:{{ 'var(--ink)' if value else 'var(--muted)' }};word-break:break-word;">{{ value if value else '—' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if record.get('line_items') %}
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line2);">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px;">System Components</div>
+      <table class="dash-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th style="text-align:center;">Qty</th>
+            <th>Specification</th>
+            <th style="text-align:right;">Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for li in record['line_items'] %}
+          <tr>
+            <td><strong>{{ li.get('item','') }}</strong></td>
+            <td style="text-align:center;">{{ li.get('quantity','') or '—' }}</td>
+            <td>{{ li.get('specification','') }}</td>
+            <td style="text-align:right;white-space:nowrap;">{{ li.get('price','') or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.querySelectorAll('tr.clickable[data-href]').forEach(function(row) {
+    row.addEventListener('click', function() {
+      window.location.href = row.dataset.href;
+    });
+  });
+</script>
+{% endblock %}

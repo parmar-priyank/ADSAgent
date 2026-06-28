@@ -68,6 +68,7 @@ def init_db():
         ]:
             if col not in qcv_cols:
                 conn.execute(f"ALTER TABLE qc_versions ADD COLUMN {col} {defn}")
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS line_items (
@@ -307,10 +308,11 @@ def get_qc_history_by_user(user_id: int) -> list:
             SELECT qv.id, qv.version, qv.template_name, qv.zip_filename,
                    qv.yes_count, qv.no_count, qv.na_count,
                    qv.status, qv.confirmed_at, qv.saved_at,
-                   q.id as quote_id, q.customer_name, q.quote_number,
+                   qv.quote_id,
+                   q.customer_name, q.quote_number,
                    q.install_date, q.total_price
             FROM qc_versions qv
-            JOIN quotes q ON q.id = qv.quote_id
+            LEFT JOIN quotes q ON q.id = qv.quote_id
             WHERE qv.saved_by_user_id = ? OR qv.confirmed_by_user_id = ?
             ORDER BY COALESCE(qv.confirmed_at, qv.saved_at) DESC
             """,
