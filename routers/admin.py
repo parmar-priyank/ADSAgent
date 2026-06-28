@@ -183,11 +183,16 @@ def admin_user_detail(user_id: int, request: Request, user=Depends(require_admin
 
 @router.post("/admin/users/{user_id}/change-password")
 def admin_change_password(user_id: int, request: Request,
+                          old_password: str = Form(...),
                           new_password: str = Form(...),
                           user=Depends(require_admin)):
+    import bcrypt
     target = adb.get_user(user_id)
     if not target:
         raise HTTPException(404, "User not found.")
+    # Verify old password matches stored hash
+    if not bcrypt.checkpw(old_password.encode(), target["password"].encode()):
+        return RedirectResponse(url=f"/admin/users/{user_id}?error=Current+password+is+incorrect.", status_code=303)
     ok = adb.change_password(user_id, new_password)
     if ok:
         return RedirectResponse(url=f"/admin/users/{user_id}?success=Password+changed+successfully.", status_code=303)

@@ -8,7 +8,15 @@
   <title>{% block title %}Admin{% endblock %} — PDF Agreement Extractor</title>
   <link rel="stylesheet" href="/static/base.css">
   <link rel="stylesheet" href="/static/admin.css">
-  <style>body { margin: 0; }</style>
+  <style>
+    body { margin: 0; }
+    .pwd-rule {
+      font-size: 11px; font-weight: 500; color: #bbb;
+      display: flex; align-items: center; gap: 5px;
+      transition: color .2s;
+    }
+    .pwd-rule.met { color: #16a34a; }
+  </style>
 </head>
 <body>
 <div class="dash-layout">
@@ -86,42 +94,196 @@
         <div class="dash-topbar-title">{% block page_title %}Dashboard{% endblock %}</div>
         <div class="dash-topbar-breadcrumb">{% block page_crumb %}Overview{% endblock %}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
         <!-- Theme toggle -->
         <form method="post" action="/admin/settings/theme" style="margin:0;">
           <input type="hidden" name="theme" value="{{ 'light' if user_panel_theme == 'dark' else 'dark' }}">
-          <button type="submit" class="theme-toggle" title="User panel is {{ user_panel_theme }} — click to switch">
+          <button type="submit" class="theme-toggle" title="Switch user panel theme">
             {% if user_panel_theme == 'dark' %}
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="4"/>
               <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>
             </svg>
             {% else %}
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
             </svg>
             {% endif %}
           </button>
         </form>
+
         <!-- Divider -->
-        <div style="width:1px;height:24px;background:var(--line2);"></div>
-        <!-- User info -->
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div class="sidebar-avatar" style="width:30px;height:30px;font-size:12px;">{{ current_user.username[0]|upper }}</div>
-          <div style="line-height:1.3;">
-            <div style="font-size:13px;font-weight:600;color:var(--ink);">{{ current_user.username }}</div>
-            <div style="font-size:11px;color:var(--muted);">Administrator</div>
+        <div style="width:1px;height:22px;background:var(--line2);"></div>
+
+        <!-- Avatar dropdown -->
+        <div style="position:relative;" id="topbar-user-wrap">
+          <button onclick="toggleUserMenu()" id="topbar-user-btn"
+                  style="display:flex;align-items:center;gap:9px;background:none;border:1px solid transparent;border-radius:10px;padding:5px 10px 5px 6px;cursor:pointer;transition:background .15s,border-color .15s;"
+                  onmouseover="this.style.background='var(--surface2)';this.style.borderColor='var(--line2)'"
+                  onmouseout="this.style.background='none';this.style.borderColor='transparent'">
+            <div style="width:36px;height:36px;border-radius:50%;overflow:hidden;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2);">
+              <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+                <!-- Background -->
+                <circle cx="32" cy="32" r="32" fill="#1a1a2e"/>
+                <!-- Suit body -->
+                <ellipse cx="32" cy="54" rx="18" ry="14" fill="#2c2c54"/>
+                <!-- White shirt -->
+                <ellipse cx="32" cy="54" rx="8" ry="13" fill="#f0f0f0"/>
+                <!-- Tie -->
+                <polygon points="32,42 29,50 32,62 35,50" fill="#c45010"/>
+                <!-- Head -->
+                <circle cx="32" cy="26" r="13" fill="#FDDBB4"/>
+                <!-- Hair -->
+                <path d="M19 24 Q19 12 32 12 Q45 12 45 24 Q43 16 32 17 Q21 16 19 24Z" fill="#1a1a1a"/>
+                <!-- Side burns -->
+                <rect x="19" y="22" width="3" height="6" rx="1.5" fill="#1a1a1a"/>
+                <rect x="42" y="22" width="3" height="6" rx="1.5" fill="#1a1a1a"/>
+                <!-- Eyes -->
+                <ellipse cx="27" cy="25" rx="2" ry="2.2" fill="#1a1a1a"/>
+                <ellipse cx="37" cy="25" rx="2" ry="2.2" fill="#1a1a1a"/>
+                <!-- Eye shine -->
+                <circle cx="28" cy="24" r=".7" fill="#fff"/>
+                <circle cx="38" cy="24" r=".7" fill="#fff"/>
+                <!-- Eyebrows -->
+                <path d="M24 21.5 Q27 20 30 21.5" stroke="#1a1a1a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+                <path d="M34 21.5 Q37 20 40 21.5" stroke="#1a1a1a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+                <!-- Confident smirk -->
+                <path d="M27 31 Q32 35 37 31" stroke="#c0724a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+                <!-- Glasses -->
+                <rect x="22" y="22.5" width="9" height="6" rx="3" fill="none" stroke="#c45010" stroke-width="1.3"/>
+                <rect x="33" y="22.5" width="9" height="6" rx="3" fill="none" stroke="#c45010" stroke-width="1.3"/>
+                <line x1="31" y1="25.5" x2="33" y2="25.5" stroke="#c45010" stroke-width="1.3"/>
+                <!-- Crown -->
+                <polygon points="20,13 24,7 28,11 32,5 36,11 40,7 44,13" fill="#FFD700" stroke="#e6a800" stroke-width=".5"/>
+                <circle cx="32" cy="6" r="2" fill="#FF6B6B"/>
+                <circle cx="24" cy="8" r="1.5" fill="#6BCB77"/>
+                <circle cx="40" cy="8" r="1.5" fill="#4D96FF"/>
+              </svg>
+            </div>
+            <div style="font-size:13px;font-weight:700;color:var(--ink);">{{ current_user.username }}</div>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+
+          <!-- Dropdown menu -->
+          <div id="topbar-user-menu"
+               style="display:none;position:absolute;right:0;top:calc(100% + 8px);background:#fff;border:1px solid #e8e2db;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.12);min-width:200px;overflow:hidden;z-index:200;">
+
+            <!-- User info header -->
+            <div style="padding:14px 16px 12px;border-bottom:1px solid #f0ece8;display:flex;align-items:center;gap:10px;">
+              <div style="width:38px;height:38px;border-radius:50%;overflow:hidden;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.15);">
+                <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+                  <circle cx="32" cy="32" r="32" fill="#1a1a2e"/>
+                  <ellipse cx="32" cy="54" rx="18" ry="14" fill="#2c2c54"/>
+                  <ellipse cx="32" cy="54" rx="8" ry="13" fill="#f0f0f0"/>
+                  <polygon points="32,42 29,50 32,62 35,50" fill="#c45010"/>
+                  <circle cx="32" cy="26" r="13" fill="#FDDBB4"/>
+                  <path d="M19 24 Q19 12 32 12 Q45 12 45 24 Q43 16 32 17 Q21 16 19 24Z" fill="#1a1a1a"/>
+                  <rect x="19" y="22" width="3" height="6" rx="1.5" fill="#1a1a1a"/>
+                  <rect x="42" y="22" width="3" height="6" rx="1.5" fill="#1a1a1a"/>
+                  <ellipse cx="27" cy="25" rx="2" ry="2.2" fill="#1a1a1a"/>
+                  <ellipse cx="37" cy="25" rx="2" ry="2.2" fill="#1a1a1a"/>
+                  <circle cx="28" cy="24" r=".7" fill="#fff"/>
+                  <circle cx="38" cy="24" r=".7" fill="#fff"/>
+                  <path d="M24 21.5 Q27 20 30 21.5" stroke="#1a1a1a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+                  <path d="M34 21.5 Q37 20 40 21.5" stroke="#1a1a1a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+                  <path d="M27 31 Q32 35 37 31" stroke="#c0724a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+                  <rect x="22" y="22.5" width="9" height="6" rx="3" fill="none" stroke="#c45010" stroke-width="1.3"/>
+                  <rect x="33" y="22.5" width="9" height="6" rx="3" fill="none" stroke="#c45010" stroke-width="1.3"/>
+                  <line x1="31" y1="25.5" x2="33" y2="25.5" stroke="#c45010" stroke-width="1.3"/>
+                  <polygon points="20,13 24,7 28,11 32,5 36,11 40,7 44,13" fill="#FFD700" stroke="#e6a800" stroke-width=".5"/>
+                  <circle cx="32" cy="6" r="2" fill="#FF6B6B"/>
+                  <circle cx="24" cy="8" r="1.5" fill="#6BCB77"/>
+                  <circle cx="40" cy="8" r="1.5" fill="#4D96FF"/>
+                </svg>
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:800;color:#1a1a1a;">{{ current_user.username }}</div>
+                <div style="font-size:11px;color:#aaa;margin-top:1px;">Administrator</div>
+              </div>
+            </div>
+
+            <!-- Settings item -->
+            <button onclick="openPwdModal()" type="button"
+                    style="width:100%;display:flex;align-items:center;gap:10px;padding:11px 16px;background:none;border:none;cursor:pointer;font-size:13px;font-weight:500;color:#333;text-align:left;transition:background .12s;"
+                    onmouseover="this.style.background='#fdf9f7'" onmouseout="this.style.background='none'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#888;flex-shrink:0;"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+              Change Password
+            </button>
+
+            <div style="height:1px;background:#f0ece8;margin:0 12px;"></div>
+
+            <!-- Sign out -->
+            <a href="/logout"
+               style="display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:13px;font-weight:600;color:#dc2626;text-decoration:none;transition:background .12s;"
+               onmouseover="this.style.background='#fff5f5'" onmouseout="this.style.background='none'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Sign Out
+            </a>
           </div>
         </div>
-        <!-- Sign out -->
-        <a href="/logout" class="sidebar-logout" style="margin-top:0;padding:7px 12px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-          Sign out
-        </a>
+      </div>
+
+      <!-- Change Password Modal -->
+      <div id="pwd-modal-overlay"
+           onclick="if(event.target===this)closePwdModal()"
+           style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:500;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:16px;width:100%;max-width:400px;box-shadow:0 16px 48px rgba(0,0,0,.18);overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid #f0ece8;">
+            <div>
+              <div style="font-size:15px;font-weight:800;color:#1a1a1a;">Change Password</div>
+              <div style="font-size:12px;color:#999;margin-top:2px;">Update your admin account password</div>
+            </div>
+            <button onclick="closePwdModal()" style="width:30px;height:30px;border-radius:50%;border:1px solid #e8e4e0;background:#f5f3f0;color:#666;font-size:16px;cursor:pointer;display:grid;place-items:center;padding:0;">&times;</button>
+          </div>
+          <form action="/admin/users/{{ current_user.id }}/change-password" method="post" style="padding:24px;" onsubmit="return validatePwdMatch(event)">
+            <div style="display:flex;flex-direction:column;gap:14px;">
+              <div>
+                <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Current Password</label>
+                <input type="password" name="old_password" id="pwd-old" required placeholder="Enter your current password"
+                       style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;"
+                       onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'">
+              </div>
+              <div style="height:1px;background:#f0ece8;"></div>
+              <div>
+                <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">New Password</label>
+                <input type="password" name="new_password" id="pwd-new" required minlength="8" placeholder="Minimum 8 characters"
+                       style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;"
+                       onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'"
+                       oninput="checkPwdStrength();checkPwdMatch()">
+                <!-- Strength bar -->
+                <div style="margin-top:8px;">
+                  <div style="display:flex;gap:4px;margin-bottom:5px;">
+                    <div id="sb1" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
+                    <div id="sb2" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
+                    <div id="sb3" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
+                    <div id="sb4" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
+                  </div>
+                  <div id="pwd-strength-label" style="font-size:11px;font-weight:600;color:#bbb;"></div>
+                </div>
+                <!-- Rules checklist -->
+                <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;">
+                  <div id="rule-len"  class="pwd-rule">&#10007; At least 8 characters</div>
+                  <div id="rule-upper" class="pwd-rule">&#10007; Uppercase letter (A–Z)</div>
+                  <div id="rule-lower" class="pwd-rule">&#10007; Lowercase letter (a–z)</div>
+                  <div id="rule-num"  class="pwd-rule">&#10007; Number (0–9)</div>
+                  <div id="rule-sym"  class="pwd-rule">&#10007; Symbol (!@#$…)</div>
+                </div>
+              </div>
+              <div>
+                <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Confirm Password</label>
+                <input type="password" id="pwd-confirm" required minlength="8" placeholder="Re-enter new password"
+                       style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;"
+                       onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'"
+                       oninput="checkPwdMatch()">
+                <div id="pwd-match-msg" style="display:none;font-size:12px;font-weight:600;margin-top:6px;"></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:20px;padding-top:18px;border-top:1px solid #f0ece8;">
+              <button type="button" onclick="closePwdModal()" style="flex:1;padding:10px;border-radius:9px;border:1.5px solid #e2dbd4;background:#fff;color:#555;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+              <button type="submit" id="pwd-submit-btn" style="flex:2;padding:10px;border-radius:9px;border:none;background:#c45010;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Update Password</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
 
@@ -132,5 +294,139 @@
 
 </div>
 {% block scripts %}{% endblock %}
+<script>
+  function toggleUserMenu() {
+    var menu = document.getElementById('topbar-user-menu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  }
+  document.addEventListener('click', function(e) {
+    var wrap = document.getElementById('topbar-user-wrap');
+    var menu = document.getElementById('topbar-user-menu');
+    if (wrap && menu && !wrap.contains(e.target)) {
+      menu.style.display = 'none';
+    }
+  });
+  function openPwdModal() {
+    document.getElementById('topbar-user-menu').style.display = 'none';
+    document.getElementById('pwd-modal-overlay').style.display = 'flex';
+    document.getElementById('pwd-old').value = '';
+    document.getElementById('pwd-new').value = '';
+    document.getElementById('pwd-confirm').value = '';
+    document.getElementById('pwd-match-msg').style.display = 'none';
+    document.getElementById('pwd-old').style.borderColor = '#e2dbd4';
+    document.getElementById('pwd-new').style.borderColor = '#e2dbd4';
+    document.getElementById('pwd-confirm').style.borderColor = '#e2dbd4';
+    document.getElementById('pwd-strength-label').textContent = '';
+    ['sb1','sb2','sb3','sb4'].forEach(function(id){ document.getElementById(id).style.background='#e8e2db'; });
+    ['rule-len','rule-upper','rule-lower','rule-num','rule-sym'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){ el.classList.remove('met'); }
+    });
+    setTimeout(function() { document.getElementById('pwd-old').focus(); }, 80);
+  }
+  function closePwdModal() {
+    document.getElementById('pwd-modal-overlay').style.display = 'none';
+  }
+  function checkPwdStrength() {
+    var v = document.getElementById('pwd-new').value;
+    var rules = {
+      len:   v.length >= 8,
+      upper: /[A-Z]/.test(v),
+      lower: /[a-z]/.test(v),
+      num:   /[0-9]/.test(v),
+      sym:   /[^A-Za-z0-9]/.test(v),
+    };
+    var score = Object.values(rules).filter(Boolean).length;
+
+    // Update rule indicators
+    Object.keys(rules).forEach(function(k) {
+      var el = document.getElementById('rule-' + k);
+      if (!el) return;
+      if (rules[k]) {
+        el.classList.add('met');
+        el.textContent = el.textContent.replace('✗', '✓');
+        el.innerHTML = '&#10003; ' + el.innerHTML.replace(/^[✓✗]\s*/, '').replace(/^&#10003;\s*|^&#10007;\s*/,'');
+      } else {
+        el.classList.remove('met');
+        el.innerHTML = '&#10007; ' + el.innerHTML.replace(/^[✓✗]\s*/, '').replace(/^&#10003;\s*|^&#10007;\s*/,'');
+      }
+    });
+
+    // Re-stamp label text cleanly
+    var labels = {
+      len:   'At least 8 characters',
+      upper: 'Uppercase letter (A–Z)',
+      lower: 'Lowercase letter (a–z)',
+      num:   'Number (0–9)',
+      sym:   'Symbol (!@#$…)',
+    };
+    Object.keys(rules).forEach(function(k) {
+      var el = document.getElementById('rule-' + k);
+      if (!el) return;
+      el.innerHTML = (rules[k] ? '&#10003; ' : '&#10007; ') + labels[k];
+      el.classList.toggle('met', rules[k]);
+    });
+
+    // Strength bar
+    var bars = ['sb1','sb2','sb3','sb4'];
+    var colors = ['#dc2626','#f59e0b','#f59e0b','#16a34a'];
+    var strengthLabels = ['','Weak','Fair','Good','Strong'];
+    var strengthColors = ['','#dc2626','#f59e0b','#f59e0b','#16a34a'];
+    bars.forEach(function(id, i) {
+      document.getElementById(id).style.background = (i < score) ? colors[Math.min(score-1,3)] : '#e8e2db';
+    });
+    var lbl = document.getElementById('pwd-strength-label');
+    if (!v) { lbl.textContent = ''; return; }
+    lbl.textContent = strengthLabels[score] || 'Strong';
+    lbl.style.color = strengthColors[score] || '#16a34a';
+  }
+
+  function checkPwdMatch() {
+    var np  = document.getElementById('pwd-new').value;
+    var cp  = document.getElementById('pwd-confirm').value;
+    var msg = document.getElementById('pwd-match-msg');
+    var confirmInput = document.getElementById('pwd-confirm');
+    if (!cp) { msg.style.display = 'none'; confirmInput.style.borderColor = '#e2dbd4'; return; }
+    if (np === cp) {
+      msg.style.display = 'block';
+      msg.style.color = '#16a34a';
+      msg.textContent = '✓ Passwords match';
+      confirmInput.style.borderColor = '#16a34a';
+    } else {
+      msg.style.display = 'block';
+      msg.style.color = '#dc2626';
+      msg.textContent = '✗ Passwords do not match';
+      confirmInput.style.borderColor = '#dc2626';
+    }
+  }
+  function validatePwdMatch(e) {
+    var np = document.getElementById('pwd-new').value;
+    var cp = document.getElementById('pwd-confirm').value;
+    var strong = np.length >= 8 && /[A-Z]/.test(np) && /[a-z]/.test(np) && /[0-9]/.test(np) && /[^A-Za-z0-9]/.test(np);
+    if (!strong) {
+      e.preventDefault();
+      document.getElementById('pwd-new').focus();
+      document.getElementById('pwd-new').style.borderColor = '#dc2626';
+      return false;
+    }
+    if (np !== cp) {
+      e.preventDefault();
+      document.getElementById('pwd-match-msg').style.display = 'block';
+      document.getElementById('pwd-match-msg').style.color = '#dc2626';
+      document.getElementById('pwd-match-msg').textContent = '✗ Passwords do not match';
+      document.getElementById('pwd-confirm').style.borderColor = '#dc2626';
+      document.getElementById('pwd-confirm').focus();
+      return false;
+    }
+    return true;
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closePwdModal();
+      var menu = document.getElementById('topbar-user-menu');
+      if (menu) menu.style.display = 'none';
+    }
+  });
+</script>
 </body>
 </html>
