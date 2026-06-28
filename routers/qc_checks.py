@@ -29,7 +29,8 @@ try:
 except ImportError:
     _fitz = None
 
-_PDF_DPI = 200   # 200 DPI: signatures and checkboxes render sharply for Claude vision
+_PDF_DPI = 100        # 100 DPI is enough for Claude vision and cuts payload to 1/4
+_PDF_MAX_PAGES = 2    # send at most 2 pages per PDF to Claude — most checks need page 1 only
 
 import db.quote_repo as db
 import db.checklist_repo as tdb
@@ -69,8 +70,8 @@ QC_SYSTEM = (
 def _render_pdf(fname: str, fdata: bytes) -> tuple[str, list[bytes]]:
     """Return (extracted_text, [page_png_bytes]) for a PDF.
 
-    Called once per unique PDF before the parallel checklist loop so every
-    checklist item that references the same file shares the rendered pages.
+    Images are only rendered when text extraction yields nothing (scanned PDFs).
+    Called once per unique PDF; the cache ensures each file is processed once.
     """
     text = ""
     try:
@@ -80,11 +81,15 @@ def _render_pdf(fname: str, fdata: bytes) -> tuple[str, list[bytes]]:
     except Exception:
         pass
 
+    # Skip image rendering if we already have usable text — saves time and payload size
+    if text.strip():
+        return text, []
+
     pages: list[bytes] = []
     if _fitz is not None:
         try:
             doc = _fitz.open(stream=fdata, filetype="pdf")
-            for page in doc:
+            for page in doc[:_PDF_MAX_PAGES]:
                 pix = page.get_pixmap(dpi=_PDF_DPI)
                 pages.append(pix.tobytes("png"))
             doc.close()
@@ -540,7 +545,7 @@ async def upload_zip(
                 cached_text, cached_pages = pdf_cache.get(fname, ("", []))
                 if cached_text.strip():
                     combined_pdf_text += f"\n\n--- {fname} ---\n{cached_text}"
-                pdf_page_images.extend(cached_pages)
+                pdf_page_images.extend(cached_pages[:_PDF_MAX_PAGES])
                 if not cached_pages and not cached_text.strip():
                     if _fitz is None:
                         return {"status": "N/A", "remark": f"Could not render '{fname}' as image. Install PyMuPDF (pip install pymupdf)."}

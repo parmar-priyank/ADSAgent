@@ -38,21 +38,30 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
     start_row = None
     col_map = {"sno": 1, "text": 2, "yn": 3, "ref": 4, "prompt": 5}
 
+    def _is_sno(v):
+        return (v.startswith("sno") or v.startswith("s.no") or
+                v.startswith("sr.no") or v in ("s no", "sr no", "#", "no."))
+
+    def _is_checklist(v):
+        return "checklist" in v
+
     for r in range(1, ws.max_row + 1):
         row_vals = [str(ws.cell(r, c).value or "").strip().lower() for c in range(1, 15)]
-        if any(v.startswith("sno") for v in row_vals) and any("checklist" in v for v in row_vals):
+        has_sno = any(_is_sno(v) for v in row_vals)
+        has_checklist = any(_is_checklist(v) for v in row_vals)
+        if has_sno and has_checklist:
             start_row = r + 1
             for c, v in enumerate(row_vals, start=1):
-                if v.startswith("sno"):
+                if _is_sno(v):
                     col_map["sno"] = c
-                elif "checklist" in v:
+                elif _is_checklist(v):
                     col_map["text"] = c
                 elif "yes" in v and "no" in v:
                     col_map["yn"] = c
+                elif "what to verify" in v or "verify as per" in v or "prompt" in v:
+                    col_map["prompt"] = c
                 elif "remark" in v or "reference" in v:
                     col_map["ref"] = c
-                elif "verify" in v or "prompt" in v or "agreement" in v:
-                    col_map["prompt"] = c
             break
 
     if start_row is None:
@@ -113,9 +122,10 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
 
 def _label_at(ws, needle: str):
     for r in range(1, 12):
-        v = str(ws.cell(r, 1).value or "")
-        if needle.lower() in v.lower():
-            return v.split(":")[0].strip() + "  :"
+        for c in range(1, ws.max_column + 1):
+            v = str(ws.cell(r, c).value or "")
+            if needle.lower() in v.lower():
+                return v.split(":")[0].strip() + "  :"
     return ""
 
 

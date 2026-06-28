@@ -81,7 +81,7 @@ async def templates_upload(
         raise HTTPException(400, "Please upload an .xlsx checklist template.")
     blob = await file.read()
     items, headers, note = parse_xlsx(blob)
-    tdb.create_template(name, blob, items, note)
+    tdb.create_template(name, blob, items, note, headers)
     return RedirectResponse(url="/admin/templates", status_code=303)
 
 

@@ -47,12 +47,20 @@ def init_templates_db():
 # Templates
 # ---------------------------------------------------------------------------
 
-def create_template(name: str, blob: bytes, items: list, note_text: str = "") -> int:
+def create_template(name: str, blob: bytes, items: list, note_text: str = "",
+                    header_labels: dict = None) -> int:
+    header_labels = header_labels or {}
     with get_db() as conn:
         conn.execute("DELETE FROM templates WHERE LOWER(name) = LOWER(?)", (name,))
         cur = conn.execute(
-            "INSERT INTO templates (name, blob, note_text) VALUES (?,?,?)",
-            (name, blob, note_text),
+            """INSERT INTO templates (name, blob, note_text, customer_label, address_label, job_label)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                name, blob, note_text,
+                header_labels.get("customer_label") or "Customer Name  :",
+                header_labels.get("address_label") or "Correct Address  :",
+                header_labels.get("job_label") or "Job Details  :",
+            ),
         )
         tid = cur.lastrowid
         _insert_items(conn, tid, items)
