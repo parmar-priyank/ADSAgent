@@ -4,6 +4,7 @@ db/user_repo.py — user accounts, authentication, and app-wide settings.
 import re
 import secrets
 import sqlite3
+import time
 
 import bcrypt
 
@@ -30,6 +31,24 @@ def init_auth_db():
             conn.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT NULL")
         except sqlite3.OperationalError:
             pass
+        for col in ("full_name TEXT DEFAULT NULL", "email TEXT DEFAULT NULL",
+                    "phone TEXT DEFAULT NULL", "email_verified INTEGER DEFAULT 0"):
+            try:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS otp_tokens (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL,
+                purpose    TEXT NOT NULL,
+                otp        TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                used       INTEGER DEFAULT 0
+            )
+            """
+        )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS settings (
@@ -121,6 +140,68 @@ def get_user(user_id: int):
     with get_db() as conn:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     return dict(row) if row else None
+
+
+def get_user_by_username(username: str):
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_user_by_email(email: str):
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    return dict(row) if row else None
+
+
+def set_email_verified(user_id: int, verified: bool = True):
+    with get_db() as conn:
+        conn.execute("UPDATE users SET email_verified = ? WHERE id = ?", (1 if verified else 0, user_id))
+
+
+def create_otp(user_id: int, purpose: str, ttl_seconds: int = 600) -> str:
+    """Generate a 6-digit OTP, store it, and return the code."""
+    otp = f"{secrets.randbelow(1000000):06d}"
+    expires_at = int(time.time()) + ttl_seconds
+    with get_db() as conn:
+        # Invalidate any previous unused OTPs for same user+purpose
+        conn.execute(
+            "UPDATE otp_tokens SET used=1 WHERE user_id=? AND purpose=? AND used=0",
+            (user_id, purpose),
+        )
+        conn.execute(
+            "INSERT INTO otp_tokens (user_id, purpose, otp, expires_at) VALUES (?,?,?,?)",
+            (user_id, purpose, otp, expires_at),
+        )
+    return otp
+
+
+def verify_otp(user_id: int, purpose: str, otp: str) -> bool:
+    """Check OTP validity and mark it used. Returns True if valid."""
+    now = int(time.time())
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT id FROM otp_tokens
+               WHERE user_id=? AND purpose=? AND otp=? AND used=0 AND expires_at>?
+               ORDER BY id DESC LIMIT 1""",
+            (user_id, purpose, otp, now),
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute("UPDATE otp_tokens SET used=1 WHERE id=?", (row["id"],))
+    return True
+
+
+def update_profile(user_id: int, full_name: str, email: str, phone: str):
+    current = get_user(user_id)
+    email_changed = (email or None) != (current.get("email") if current else None)
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE users SET full_name=?, email=?, phone=?, email_verified=? WHERE id=?",
+            (full_name or None, email or None, phone or None,
+             0 if email_changed else (current.get("email_verified", 0) if current else 0),
+             user_id),
+        )
 
 
 def get_user_theme(user_id: int) -> str | None:

@@ -34,9 +34,10 @@ import db.quote_repo as db
 import db.checklist_repo as tdb
 from reports.xlsx_builder import build_xlsx
 from db.connection import get_db
+from utils.mailer import send_otp_email, SMTP_CONFIGURED
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from config import (
     CLAUDE_MODEL,
@@ -179,6 +180,58 @@ def admin_user_detail(user_id: int, request: Request, user=Depends(require_admin
     response = templates.TemplateResponse(request, "admin_user.html", ctx)
     response.headers.update(_NO_CACHE)
     return response
+
+
+@router.post("/admin/users/{user_id}/update-profile")
+def admin_update_profile(user_id: int, request: Request,
+                         full_name: str = Form(""),
+                         email: str = Form(""),
+                         phone: str = Form(""),
+                         phone_country: str = Form(""),
+                         phone_number: str = Form(""),
+                         user=Depends(require_admin)):
+    if user_id != user["id"]:
+        raise HTTPException(403, "Cannot edit another user's profile here.")
+    # `phone` is the combined hidden field set by JS; fallback to building it from parts
+    combined_phone = phone.strip()
+    if not combined_phone and phone_number.strip():
+        digits = "".join(c for c in phone_number if c.isdigit())
+        combined_phone = f"{phone_country.strip()} {digits}".strip() if phone_country.strip() else digits
+    adb.update_profile(user_id, full_name.strip(), email.strip(), combined_phone)
+    ref = request.headers.get("referer", "")
+    origin = str(request.base_url).rstrip("/")
+    dest = ref if ref.startswith(origin + "/admin") else "/admin"
+    return RedirectResponse(url=dest, status_code=303)
+
+
+@router.post("/admin/email/send-otp")
+def admin_send_email_otp(request: Request, user=Depends(require_admin)):
+    """Send a 6-digit OTP to the user's saved email for verification."""
+    email = user.get("email")
+    if not email:
+        return JSONResponse({"ok": False, "error": "No email address saved. Save your email first."})
+    if not SMTP_CONFIGURED:
+        return JSONResponse({"ok": False, "error": "SMTP is not configured on this server."})
+    otp = adb.create_otp(user["id"], "verify")
+    ok = send_otp_email(email, otp, "verify", user["username"])
+    if not ok:
+        return JSONResponse({"ok": False, "error": "Failed to send email. Check SMTP settings."})
+    return JSONResponse({"ok": True})
+
+
+@router.post("/admin/email/verify-otp")
+def admin_verify_email_otp(request: Request,
+                            otp: str = Form(...),
+                            user=Depends(require_admin)):
+    """Verify the OTP and mark the email as verified."""
+    if not adb.verify_otp(user["id"], "verify", otp.strip()):
+        ref = request.headers.get("referer", "/admin")
+        return RedirectResponse(url=ref + "?profile_error=Invalid+or+expired+OTP.", status_code=303)
+    adb.set_email_verified(user["id"])
+    ref = request.headers.get("referer", "/admin")
+    # strip any existing query params and add success
+    base = ref.split("?")[0]
+    return RedirectResponse(url=base + "?profile_ok=Email+verified+successfully.", status_code=303)
 
 
 @router.post("/admin/users/{user_id}/change-password")

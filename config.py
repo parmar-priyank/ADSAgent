@@ -183,14 +183,18 @@ def require_login(request: Request):
         raise _AuthRedirect("/login")
     if user.get("role") == "admin":
         raise _AuthRedirect("/admin")
-    return user
+    # Fetch fresh row so profile fields (full_name, email, phone) are current
+    fresh = adb.get_user(user["id"])
+    return fresh if fresh else user
 
 
 def require_admin(request: Request):
     user = _get_session(request)
     if not user or user.get("role") != "admin":
         raise _AuthRedirect("/admin-dashboard")
-    return user
+    # Always fetch fresh user row so profile fields (full_name, email, phone) are current
+    fresh = adb.get_user(user["id"])
+    return fresh if fresh else user
 
 
 _FAVICON = (

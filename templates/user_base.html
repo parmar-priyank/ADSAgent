@@ -8,6 +8,10 @@
   <title>{% block title %}Solar Extractor{% endblock %} — Solar Extractor</title>
   <link rel="stylesheet" href="/static/base.css?v=4">
   <link rel="stylesheet" href="/static/home.css?v=4">
+  <style>
+    .pwd-rule { font-size:11px;font-weight:500;color:#bbb;display:flex;align-items:center;gap:5px;transition:color .2s; }
+    .pwd-rule.met { color:#16a34a; }
+  </style>
 </head>
 <body>
 
@@ -31,7 +35,7 @@
         </div>
       </div>
 
-      <!-- Right actions only — no centre page title -->
+      <!-- Right actions -->
       <div class="home-nav-actions">
 
         {% block nav_back %}{% endblock %}
@@ -43,7 +47,6 @@
           </svg>
           History
         </a>
-
 
         <!-- Theme toggle -->
         <form action="/toggle-theme" method="post" style="display:inline;margin:0;" id="theme-toggle-form">
@@ -66,23 +69,260 @@
 
         <div class="home-nav-divider"></div>
 
-        <!-- User pill -->
-        <div class="home-nav-user-pill">
-          <div class="home-nav-user-avatar">{{ current_user.username[0]|upper }}</div>
-          <span class="home-nav-user-name">{{ current_user.username }}</span>
+        <!-- User dropdown -->
+        <div style="position:relative;" id="user-menu-wrap">
+          <button onclick="toggleUserMenu()" id="user-menu-btn"
+                  style="display:flex;align-items:center;gap:8px;background:none;border:1px solid transparent;
+                         border-radius:10px;padding:5px 10px 5px 6px;cursor:pointer;transition:background .15s,border-color .15s;"
+                  onmouseover="this.style.background='var(--surface2)';this.style.borderColor='var(--line2)'"
+                  onmouseout="this.style.background='none';this.style.borderColor='transparent'">
+            <!-- Initials avatar -->
+            <div style="width:32px;height:32px;border-radius:50%;background:#c45010;display:grid;place-items:center;flex-shrink:0;">
+              <span style="font-size:13px;font-weight:800;color:#fff;">{{ current_user.username[0]|upper }}</span>
+            </div>
+            <span style="font-size:13px;font-weight:700;color:var(--ink);">{{ current_user.username }}</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+
+          <!-- Dropdown -->
+          <div id="user-menu-dropdown"
+               style="display:none;position:absolute;right:0;top:calc(100% + 8px);background:#fff;
+                      border:1px solid #e8e2db;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.12);
+                      min-width:210px;overflow:hidden;z-index:200;">
+
+            <!-- User info header -->
+            <div style="padding:14px 16px 12px;border-bottom:1px solid #f0ece8;display:flex;align-items:center;gap:10px;">
+              <div style="width:36px;height:36px;border-radius:50%;background:#c45010;display:grid;place-items:center;flex-shrink:0;">
+                <span style="font-size:14px;font-weight:800;color:#fff;">{{ current_user.username[0]|upper }}</span>
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:800;color:#1a1a1a;">
+                  {{ current_user.full_name or current_user.username }}
+                </div>
+                <div style="font-size:11px;color:#aaa;margin-top:1px;">User account</div>
+              </div>
+            </div>
+
+            <!-- Profile Settings -->
+            <button onclick="openUserProfileModal()" type="button"
+                    style="width:100%;display:flex;align-items:center;gap:10px;padding:11px 16px;
+                           background:none;border:none;cursor:pointer;font-size:13px;font-weight:500;
+                           color:#333;text-align:left;transition:background .12s;"
+                    onmouseover="this.style.background='#fdf9f7'" onmouseout="this.style.background='none'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" style="color:#888;flex-shrink:0;">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+              Profile Settings
+            </button>
+
+            <!-- Change Password -->
+            <button onclick="openUserPwdModal()" type="button"
+                    style="width:100%;display:flex;align-items:center;gap:10px;padding:11px 16px;
+                           background:none;border:none;cursor:pointer;font-size:13px;font-weight:500;
+                           color:#333;text-align:left;transition:background .12s;"
+                    onmouseover="this.style.background='#fdf9f7'" onmouseout="this.style.background='none'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" style="color:#888;flex-shrink:0;">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+              </svg>
+              Change Password
+            </button>
+
+            <div style="height:1px;background:#f0ece8;margin:0 12px;"></div>
+
+            <!-- Sign out -->
+            <a href="/logout"
+               style="display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:13px;
+                      font-weight:600;color:#dc2626;text-decoration:none;transition:background .12s;"
+               onmouseover="this.style.background='#fff5f5'" onmouseout="this.style.background='none'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              Sign Out
+            </a>
+          </div>
         </div>
 
-        <!-- Sign out -->
-        <a href="/logout" class="home-nav-btn danger">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-          Sign out
-        </a>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Profile Settings Modal ── -->
+  <div id="user-profile-overlay"
+       onclick="if(event.target===this)closeUserProfileModal()"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:500;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:460px;box-shadow:0 16px 48px rgba(0,0,0,.18);overflow:hidden;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid #f0ece8;position:sticky;top:0;background:#fff;z-index:1;">
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#1a1a1a;">Profile Settings</div>
+          <div style="font-size:12px;color:#999;margin-top:2px;">Update your display name, email and phone</div>
+        </div>
+        <button onclick="closeUserProfileModal()" style="width:30px;height:30px;border-radius:50%;border:1px solid #e8e4e0;background:#f5f3f0;color:#666;font-size:16px;cursor:pointer;display:grid;place-items:center;padding:0;">&times;</button>
+      </div>
+
+      <form action="/user/profile/update" method="post" style="padding:24px;" onsubmit="return validateUserPhone()">
+        <div style="display:flex;flex-direction:column;gap:16px;">
+
+          <!-- Display Name -->
+          <div>
+            <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Display Name</label>
+            <input type="text" name="full_name" id="user-profile-name" placeholder="Your full name"
+                   value="{{ current_user.full_name or '' }}"
+                   style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;box-sizing:border-box;"
+                   onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'">
+          </div>
+
+          <!-- Email -->
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;">Email Address</label>
+              {% if current_user.email_verified %}
+              <span style="font-size:11px;font-weight:700;color:#16a34a;background:#f0fdf4;border:1px solid #86efac;border-radius:20px;padding:2px 8px;">&#10003; Verified</span>
+              {% elif current_user.email %}
+              <button type="button" id="user-send-otp-btn" onclick="sendUserVerifyOtp()"
+                      style="font-size:11px;font-weight:700;color:#c45010;background:#fff8f5;border:1px solid #f5c9b0;border-radius:20px;padding:2px 10px;cursor:pointer;">
+                Verify Email
+              </button>
+              {% endif %}
+            </div>
+            <input type="email" name="email" id="user-profile-email" placeholder="e.g. user@example.com"
+                   value="{{ current_user.email or '' }}"
+                   style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;box-sizing:border-box;"
+                   onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'"
+                   oninput="onUserEmailChange()">
+            <div id="user-email-changed-note" style="display:none;font-size:11px;color:#b45309;margin-top:5px;font-weight:500;">
+              ⚠ Saving a new email will require re-verification.
+            </div>
+          </div>
+
+          <!-- OTP panel -->
+          <div id="user-otp-panel" style="display:none;background:#f8f4ff;border:1.5px solid #d8b4fe;border-radius:10px;padding:14px;">
+            <div style="font-size:12px;font-weight:700;color:#6d28d9;margin-bottom:8px;">Enter the 6-digit code sent to your email</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="text" id="user-otp-field" maxlength="6" inputmode="numeric"
+                     placeholder="000000"
+                     style="flex:1;padding:9px 12px;border:1.5px solid #d8b4fe;border-radius:8px;font-size:18px;font-weight:700;
+                            color:#6d28d9;letter-spacing:4px;text-align:center;outline:none;background:#fff;box-sizing:border-box;"
+                     onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#d8b4fe'">
+              <button type="button" onclick="submitUserVerifyOtp()"
+                      style="padding:9px 16px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
+                Confirm
+              </button>
+            </div>
+            <div id="user-otp-msg" style="display:none;font-size:12px;font-weight:600;margin-top:8px;"></div>
+            <div style="margin-top:8px;font-size:11px;color:#999;">
+              Didn't receive it?
+              <button type="button" onclick="sendUserVerifyOtp()" style="background:none;border:none;color:#7c3aed;font-size:11px;font-weight:700;cursor:pointer;padding:0;">Resend</button>
+            </div>
+          </div>
+
+          <!-- Phone -->
+          <div>
+            <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Phone Number</label>
+            <div style="display:flex;gap:8px;">
+              <div style="position:relative;flex-shrink:0;">
+                <button type="button" id="user-country-btn" onclick="toggleUserCountryDropdown()"
+                        style="display:flex;align-items:center;gap:6px;padding:10px 12px;border:1.5px solid #e2dbd4;border-radius:9px;background:#fafaf9;cursor:pointer;font-size:14px;white-space:nowrap;">
+                  <span id="user-country-flag">🇮🇳</span>
+                  <span id="user-country-dial" style="font-weight:700;color:#1a1a1a;">+91</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <input type="hidden" name="phone_country" id="user-phone-country" value="+91">
+                <div id="user-country-dropdown"
+                     style="display:none;position:absolute;top:calc(100% + 4px);left:0;background:#fff;border:1px solid #e8e2db;border-radius:12px;
+                            box-shadow:0 8px 28px rgba(0,0,0,.12);z-index:300;width:260px;max-height:240px;overflow-y:auto;">
+                  <div style="padding:8px;">
+                    <input type="text" id="user-country-search" placeholder="Search country..." oninput="filterUserCountries()"
+                           style="width:100%;padding:7px 10px;border:1px solid #e2dbd4;border-radius:7px;font-size:13px;outline:none;box-sizing:border-box;">
+                  </div>
+                  <div id="user-country-list"></div>
+                </div>
+              </div>
+              <input type="tel" name="phone_number" id="user-phone-number"
+                     placeholder="Phone number"
+                     style="flex:1;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;box-sizing:border-box;"
+                     onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'"
+                     oninput="validateUserPhoneInput()">
+              <input type="hidden" name="phone" id="user-phone-combined">
+            </div>
+            <div id="user-phone-hint" style="font-size:11px;color:#aaa;margin-top:5px;">India: 10 digits</div>
+            <div id="user-phone-error" style="display:none;font-size:11px;color:#dc2626;font-weight:600;margin-top:5px;"></div>
+          </div>
+
+        </div>
+        <div style="display:flex;gap:10px;margin-top:20px;padding-top:18px;border-top:1px solid #f0ece8;">
+          <button type="button" onclick="closeUserProfileModal()" style="flex:1;padding:10px;border-radius:9px;border:1.5px solid #e2dbd4;background:#fff;color:#555;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+          <button type="submit" style="flex:2;padding:10px;border-radius:9px;border:none;background:#c45010;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Change Password Modal ── -->
+  <div id="user-pwd-overlay"
+       onclick="if(event.target===this)closeUserPwdModal()"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:500;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:400px;box-shadow:0 16px 48px rgba(0,0,0,.18);overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid #f0ece8;">
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#1a1a1a;">Change Password</div>
+          <div style="font-size:12px;color:#999;margin-top:2px;">Update your account password</div>
+        </div>
+        <button onclick="closeUserPwdModal()" style="width:30px;height:30px;border-radius:50%;border:1px solid #e8e4e0;background:#f5f3f0;color:#666;font-size:16px;cursor:pointer;display:grid;place-items:center;padding:0;">&times;</button>
+      </div>
+      <form action="/user/change-password" method="post" style="padding:24px;" onsubmit="return validateUserPwd(event)">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Current Password</label>
+            <input type="password" name="old_password" id="user-pwd-old" required placeholder="Enter your current password"
+                   style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;box-sizing:border-box;"
+                   onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'">
+          </div>
+          <div style="height:1px;background:#f0ece8;"></div>
+          <div>
+            <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">New Password</label>
+            <input type="password" name="new_password" id="user-pwd-new" required minlength="8" placeholder="Minimum 8 characters"
+                   style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;box-sizing:border-box;"
+                   onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'"
+                   oninput="checkUserPwdStrength();checkUserPwdMatch()">
+            <div style="margin-top:8px;">
+              <div style="display:flex;gap:4px;margin-bottom:5px;">
+                <div id="usb1" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
+                <div id="usb2" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
+                <div id="usb3" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
+                <div id="usb4" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
+              </div>
+            </div>
+            <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;">
+              <div id="ur-len"   class="pwd-rule">&#10007; At least 8 characters</div>
+              <div id="ur-upper" class="pwd-rule">&#10007; Uppercase (A–Z)</div>
+              <div id="ur-lower" class="pwd-rule">&#10007; Lowercase (a–z)</div>
+              <div id="ur-num"   class="pwd-rule">&#10007; Number (0–9)</div>
+              <div id="ur-sym"   class="pwd-rule">&#10007; Symbol (!@#$…)</div>
+            </div>
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Confirm Password</label>
+            <input type="password" id="user-pwd-confirm" required minlength="8" placeholder="Re-enter new password"
+                   style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;box-sizing:border-box;"
+                   onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'"
+                   oninput="checkUserPwdMatch()">
+            <div id="user-pwd-match-msg" style="display:none;font-size:12px;font-weight:600;margin-top:6px;"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:20px;padding-top:18px;border-top:1px solid #f0ece8;">
+          <button type="button" onclick="closeUserPwdModal()" style="flex:1;padding:10px;border-radius:9px;border:1.5px solid #e2dbd4;background:#fff;color:#555;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+          <button type="submit" style="flex:2;padding:10px;border-radius:9px;border:none;background:#c45010;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Update Password</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -93,8 +333,250 @@
 
   {% block scripts %}{% endblock %}
   <script>
-    // Set on page load so it always reflects the current GET URL, never a POST URL.
     document.getElementById('theme-next-input').value = window.location.href;
+
+    /* ── Dropdown toggle ── */
+    function toggleUserMenu() {
+      var dd = document.getElementById('user-menu-dropdown');
+      dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+    }
+    document.addEventListener('click', function(e) {
+      var wrap = document.getElementById('user-menu-wrap');
+      var dd   = document.getElementById('user-menu-dropdown');
+      if (wrap && dd && !wrap.contains(e.target)) dd.style.display = 'none';
+    });
+
+    /* ── Country data ── */
+    var USER_COUNTRIES = [
+      { flag:'🇮🇳', name:'India',        dial:'+91',  digits:10 },
+      { flag:'🇺🇸', name:'USA',          dial:'+1',   digits:10 },
+      { flag:'🇬🇧', name:'UK',           dial:'+44',  digits:10 },
+      { flag:'🇦🇺', name:'Australia',    dial:'+61',  digits:9  },
+      { flag:'🇨🇦', name:'Canada',       dial:'+1',   digits:10 },
+      { flag:'🇩🇪', name:'Germany',      dial:'+49',  digits:11 },
+      { flag:'🇫🇷', name:'France',       dial:'+33',  digits:9  },
+      { flag:'🇯🇵', name:'Japan',        dial:'+81',  digits:10 },
+      { flag:'🇨🇳', name:'China',        dial:'+86',  digits:11 },
+      { flag:'🇦🇪', name:'UAE',          dial:'+971', digits:9  },
+      { flag:'🇸🇬', name:'Singapore',    dial:'+65',  digits:8  },
+      { flag:'🇳🇿', name:'New Zealand',  dial:'+64',  digits:9  },
+      { flag:'🇿🇦', name:'South Africa', dial:'+27',  digits:9  },
+      { flag:'🇧🇷', name:'Brazil',       dial:'+55',  digits:11 },
+      { flag:'🇲🇽', name:'Mexico',       dial:'+52',  digits:10 },
+      { flag:'🇰🇷', name:'South Korea',  dial:'+82',  digits:10 },
+      { flag:'🇮🇩', name:'Indonesia',    dial:'+62',  digits:10 },
+      { flag:'🇵🇰', name:'Pakistan',     dial:'+92',  digits:10 },
+      { flag:'🇧🇩', name:'Bangladesh',   dial:'+880', digits:10 },
+      { flag:'🇳🇬', name:'Nigeria',      dial:'+234', digits:10 },
+      { flag:'🇮🇹', name:'Italy',        dial:'+39',  digits:10 },
+      { flag:'🇪🇸', name:'Spain',        dial:'+34',  digits:9  },
+      { flag:'🇷🇺', name:'Russia',       dial:'+7',   digits:10 },
+      { flag:'🇳🇱', name:'Netherlands',  dial:'+31',  digits:9  },
+      { flag:'🇸🇦', name:'Saudi Arabia', dial:'+966', digits:9  },
+    ];
+    var _userSelectedCountry = USER_COUNTRIES[0];
+
+    function _renderUserCountries(list) {
+      var ul = document.getElementById('user-country-list');
+      ul.innerHTML = '';
+      list.forEach(function(c) {
+        var div = document.createElement('div');
+        div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;font-size:13px;transition:background .1s;';
+        div.innerHTML = '<span style="font-size:18px;">' + c.flag + '</span><span style="font-weight:600;color:#1a1a1a;">' + c.name + '</span><span style="color:#aaa;font-size:12px;margin-left:auto;">' + c.dial + '</span>';
+        div.onmouseover = function(){ this.style.background='#fdf9f7'; };
+        div.onmouseout  = function(){ this.style.background=''; };
+        div.onclick = function() { selectUserCountry(c); };
+        ul.appendChild(div);
+      });
+    }
+
+    function selectUserCountry(c) {
+      _userSelectedCountry = c;
+      document.getElementById('user-country-flag').textContent = c.flag;
+      document.getElementById('user-country-dial').textContent = c.dial;
+      document.getElementById('user-phone-country').value = c.dial;
+      document.getElementById('user-phone-hint').textContent = c.name + ': ' + c.digits + ' digits';
+      document.getElementById('user-country-dropdown').style.display = 'none';
+      validateUserPhoneInput();
+    }
+
+    function toggleUserCountryDropdown() {
+      var dd = document.getElementById('user-country-dropdown');
+      if (dd.style.display === 'none') {
+        dd.style.display = 'block';
+        document.getElementById('user-country-search').value = '';
+        _renderUserCountries(USER_COUNTRIES);
+        setTimeout(function(){ document.getElementById('user-country-search').focus(); }, 50);
+      } else {
+        dd.style.display = 'none';
+      }
+    }
+
+    function filterUserCountries() {
+      var q = document.getElementById('user-country-search').value.toLowerCase();
+      _renderUserCountries(USER_COUNTRIES.filter(function(c) {
+        return c.name.toLowerCase().includes(q) || c.dial.includes(q);
+      }));
+    }
+
+    document.addEventListener('click', function(e) {
+      var btn = document.getElementById('user-country-btn');
+      var dd  = document.getElementById('user-country-dropdown');
+      if (btn && dd && !btn.contains(e.target) && !dd.contains(e.target)) dd.style.display = 'none';
+    });
+
+    function validateUserPhoneInput() {
+      var num = (document.getElementById('user-phone-number').value || '').replace(/\D/g,'');
+      var err  = document.getElementById('user-phone-error');
+      document.getElementById('user-phone-hint').textContent = _userSelectedCountry.name + ': ' + _userSelectedCountry.digits + ' digits';
+      if (!num) { err.style.display='none'; return; }
+      if (num.length !== _userSelectedCountry.digits) {
+        err.style.display='block';
+        err.textContent = 'Expected ' + _userSelectedCountry.digits + ' digits, got ' + num.length;
+      } else { err.style.display='none'; }
+    }
+
+    function validateUserPhone() {
+      var num = (document.getElementById('user-phone-number').value || '').replace(/\D/g,'');
+      if (num && num.length !== _userSelectedCountry.digits) {
+        document.getElementById('user-phone-error').style.display='block';
+        document.getElementById('user-phone-error').textContent = 'Expected ' + _userSelectedCountry.digits + ' digits for ' + _userSelectedCountry.name;
+        document.getElementById('user-phone-number').focus();
+        return false;
+      }
+      document.getElementById('user-phone-combined').value = num ? (_userSelectedCountry.dial + ' ' + num) : '';
+      return true;
+    }
+
+    function onUserEmailChange() {
+      var note = document.getElementById('user-email-changed-note');
+      var orig = '{{ current_user.email or "" }}';
+      var cur  = document.getElementById('user-profile-email').value;
+      if (note) note.style.display = (cur !== orig && cur !== '') ? 'block' : 'none';
+    }
+
+    /* ── Profile modal ── */
+    function openUserProfileModal() {
+      document.getElementById('user-menu-dropdown').style.display = 'none';
+      document.getElementById('user-profile-overlay').style.display = 'flex';
+      var saved = '{{ current_user.phone or "" }}';
+      if (saved) {
+        var parts = saved.split(' ');
+        var dial = parts[0];
+        var num  = parts.slice(1).join('');
+        var c = USER_COUNTRIES.find(function(x){ return x.dial === dial; }) || USER_COUNTRIES[0];
+        selectUserCountry(c);
+        document.getElementById('user-phone-number').value = num;
+      } else {
+        selectUserCountry(USER_COUNTRIES[0]);
+      }
+      _renderUserCountries(USER_COUNTRIES);
+      setTimeout(function(){ document.getElementById('user-profile-name').focus(); }, 80);
+    }
+    function closeUserProfileModal() {
+      document.getElementById('user-profile-overlay').style.display = 'none';
+      document.getElementById('user-otp-panel').style.display = 'none';
+    }
+
+    /* ── Email OTP ── */
+    function sendUserVerifyOtp() {
+      var btn = document.getElementById('user-send-otp-btn');
+      if (btn) { btn.disabled=true; btn.textContent='Sending…'; }
+      fetch('/user/email/send-otp', { method:'POST', credentials:'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(d) {
+          if (d.ok) {
+            document.getElementById('user-otp-panel').style.display = 'block';
+            document.getElementById('user-otp-field').focus();
+            if (btn) { btn.textContent='Resend'; btn.disabled=false; }
+          } else {
+            alert(d.error || 'Failed to send OTP.');
+            if (btn) { btn.textContent='Verify Email'; btn.disabled=false; }
+          }
+        })
+        .catch(function() {
+          alert('Network error sending OTP.');
+          if (btn) { btn.disabled=false; btn.textContent='Verify Email'; }
+        });
+    }
+
+    function submitUserVerifyOtp() {
+      var otp = document.getElementById('user-otp-field').value.trim();
+      var msg = document.getElementById('user-otp-msg');
+      if (otp.length !== 6) {
+        msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent='Enter a 6-digit code.';
+        return;
+      }
+      var fd = new FormData();
+      fd.append('otp', otp);
+      fetch('/user/email/verify-otp', { method:'POST', body:fd, credentials:'same-origin', redirect:'manual' })
+        .then(function() { window.location.reload(); })
+        .catch(function() {
+          msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent='Network error.';
+        });
+    }
+
+    /* ── Change Password modal ── */
+    function openUserPwdModal() {
+      document.getElementById('user-menu-dropdown').style.display = 'none';
+      document.getElementById('user-pwd-overlay').style.display = 'flex';
+      ['user-pwd-old','user-pwd-new','user-pwd-confirm'].forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) { el.value=''; el.style.borderColor='#e2dbd4'; }
+      });
+      document.getElementById('user-pwd-match-msg').style.display='none';
+      ['usb1','usb2','usb3','usb4'].forEach(function(id){
+        document.getElementById(id).style.background='#e8e2db';
+      });
+      ['ur-len','ur-upper','ur-lower','ur-num','ur-sym'].forEach(function(id){
+        var el=document.getElementById(id); if(el) el.classList.remove('met');
+      });
+      setTimeout(function(){ document.getElementById('user-pwd-old').focus(); }, 80);
+    }
+    function closeUserPwdModal() {
+      document.getElementById('user-pwd-overlay').style.display = 'none';
+    }
+
+    var _urLabels = { len:'At least 8 characters', upper:'Uppercase (A–Z)', lower:'Lowercase (a–z)', num:'Number (0–9)', sym:'Symbol (!@#$…)' };
+    function checkUserPwdStrength() {
+      var v = document.getElementById('user-pwd-new').value;
+      var rules = { len:v.length>=8, upper:/[A-Z]/.test(v), lower:/[a-z]/.test(v), num:/[0-9]/.test(v), sym:/[^A-Za-z0-9]/.test(v) };
+      var score = Object.values(rules).filter(Boolean).length;
+      Object.keys(rules).forEach(function(k){
+        var el=document.getElementById('ur-'+k); if(!el)return;
+        el.innerHTML=(rules[k]?'&#10003; ':'&#10007; ')+_urLabels[k];
+        el.classList.toggle('met',rules[k]);
+      });
+      var colors=['#dc2626','#f59e0b','#f59e0b','#16a34a'];
+      ['usb1','usb2','usb3','usb4'].forEach(function(id,i){
+        document.getElementById(id).style.background = i<score ? colors[Math.min(score-1,3)] : '#e8e2db';
+      });
+    }
+    function checkUserPwdMatch() {
+      var np=document.getElementById('user-pwd-new').value;
+      var cp=document.getElementById('user-pwd-confirm').value;
+      var msg=document.getElementById('user-pwd-match-msg');
+      var inp=document.getElementById('user-pwd-confirm');
+      if(!cp){msg.style.display='none';inp.style.borderColor='#e2dbd4';return;}
+      if(np===cp){msg.style.display='block';msg.style.color='#16a34a';msg.textContent='✓ Passwords match';inp.style.borderColor='#16a34a';}
+      else{msg.style.display='block';msg.style.color='#dc2626';msg.textContent='✗ Passwords do not match';inp.style.borderColor='#dc2626';}
+    }
+    function validateUserPwd(e) {
+      var np=document.getElementById('user-pwd-new').value;
+      var cp=document.getElementById('user-pwd-confirm').value;
+      var strong=np.length>=8&&/[A-Z]/.test(np)&&/[a-z]/.test(np)&&/[0-9]/.test(np)&&/[^A-Za-z0-9]/.test(np);
+      if(!strong){e.preventDefault();document.getElementById('user-pwd-new').style.borderColor='#dc2626';document.getElementById('user-pwd-new').focus();return false;}
+      if(np!==cp){e.preventDefault();var msg=document.getElementById('user-pwd-match-msg');msg.style.display='block';msg.style.color='#dc2626';msg.textContent='✗ Passwords do not match';document.getElementById('user-pwd-confirm').style.borderColor='#dc2626';document.getElementById('user-pwd-confirm').focus();return false;}
+      return true;
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeUserProfileModal();
+        closeUserPwdModal();
+        document.getElementById('user-menu-dropdown').style.display = 'none';
+      }
+    });
   </script>
 </body>
 </html>
