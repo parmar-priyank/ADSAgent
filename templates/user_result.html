@@ -278,8 +278,8 @@
         <input type="hidden" name="yes_count"          id="draft-yes"       value="{{ yes_count }}">
         <input type="hidden" name="no_count"           id="draft-no"        value="{{ no_count }}">
         <input type="hidden" name="na_count"           id="draft-na"        value="{{ na_count }}">
-        <input type="hidden" name="rows_json"          id="draft-rows-json" value="{{ checklist_rows | tojson | e }}">
-        <input type="hidden" name="email_results_json" value="{{ email_results | default([]) | tojson | e }}">
+        <input type="hidden" name="rows_json"          id="draft-rows-json" value='{{ checklist_rows | tojson }}'>
+        <input type="hidden" name="email_results_json" value='{{ email_results | default([]) | tojson }}'>
         <button type="submit"
                 style="display:flex;align-items:center;gap:7px;padding:9px 20px;
                        background:var(--surface3);border:1px solid var(--line2);
@@ -301,8 +301,8 @@
         <input type="hidden" name="yes_count"          id="confirm-yes"       value="{{ yes_count }}">
         <input type="hidden" name="no_count"           id="confirm-no"        value="{{ no_count }}">
         <input type="hidden" name="na_count"           id="confirm-na"        value="{{ na_count }}">
-        <input type="hidden" name="rows_json"          id="confirm-rows-json" value="{{ checklist_rows | tojson | e }}">
-        <input type="hidden" name="email_results_json" value="{{ email_results | default([]) | tojson | e }}">
+        <input type="hidden" name="rows_json"          id="confirm-rows-json" value='{{ checklist_rows | tojson }}'>
+        <input type="hidden" name="email_results_json" value='{{ email_results | default([]) | tojson }}'>
         <button type="submit"
                 style="display:flex;align-items:center;gap:7px;padding:9px 22px;
                        background:var(--brand);color:#fff;border:none;

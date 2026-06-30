@@ -274,7 +274,7 @@
 
       <!-- Hidden field: carries edited email results to next step -->
       <input type="hidden" id="eml-results-json"
-             value="{{ results | tojson | e }}">
+             value='{{ results | tojson }}'>
     </div>
 
     <!-- Re-upload option -->
@@ -315,7 +315,7 @@
       <form method="post" action="/qc-check-with-email" id="eml-proceed-form">
         <input type="hidden" name="quote_id" value="{{ quote_id }}">
         <input type="hidden" name="email_results_json" id="eml-proceed-json"
-               value="{{ results | tojson | e }}">
+               value='{{ results | tojson }}'>
         <button type="submit"
                 style="display:inline-flex;align-items:center;gap:8px;
                        background:var(--brand);color:#fff;border:none;font-weight:700;

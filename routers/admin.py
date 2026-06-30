@@ -359,12 +359,17 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
         raise HTTPException(404, "QC version not found.")
     v = dict(row)
     rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
+    try:
+        email_results = json.loads(v.get("email_results_json") or "[]") or []
+    except Exception:
+        email_results = []
     resp = templates.TemplateResponse(request, "admin_qc_version.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
         "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
         "v": v,
         "rows": rows,
+        "email_results": email_results,
     })
     resp.headers.update(_NO_CACHE)
     return resp
