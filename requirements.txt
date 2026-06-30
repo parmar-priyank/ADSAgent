@@ -23,4 +23,6 @@ slowapi==0.1.10
 
 # Config
 python-dotenv==1.2.2
-pyyaml==6.0.3
+
+# Production server
+gunicorn==23.0.0

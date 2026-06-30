@@ -25,6 +25,7 @@ ENV/
 
 # ---- Dev / scratch files ----
 check_db.py
+skills-lock.json
 
 # ---- IDE / editor ----
 .vscode/

@@ -93,6 +93,13 @@ def create_user(username: str, password: str, role: str = "user") -> bool:
         return False
 
 
+def _safe_user(row) -> dict:
+    """Return user dict with the password hash removed."""
+    d = dict(row)
+    d.pop("password", None)
+    return d
+
+
 def verify_user(username: str, password: str):
     username = username.strip()
     if not username or not password:
@@ -102,7 +109,7 @@ def verify_user(username: str, password: str):
             "SELECT * FROM users WHERE username = ?", (username,)
         ).fetchone()
     if row and bcrypt.checkpw(password.encode(), row["password"].encode()):
-        return dict(row)
+        return _safe_user(row)
     return None
 
 
@@ -117,6 +124,13 @@ def list_users():
 def delete_user(user_id: int):
     with get_db() as conn:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
+def get_password_hash(user_id: int) -> str | None:
+    """Return raw bcrypt hash — only used internally to verify current password."""
+    with get_db() as conn:
+        row = conn.execute("SELECT password FROM users WHERE id = ?", (user_id,)).fetchone()
+    return row["password"] if row else None
 
 
 def change_password(user_id: int, new_password: str) -> bool:
@@ -139,19 +153,19 @@ def change_role(user_id: int, new_role: str) -> bool:
 def get_user(user_id: int):
     with get_db() as conn:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    return dict(row) if row else None
+    return _safe_user(row) if row else None
 
 
 def get_user_by_username(username: str):
     with get_db() as conn:
         row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    return dict(row) if row else None
+    return _safe_user(row) if row else None
 
 
 def get_user_by_email(email: str):
     with get_db() as conn:
         row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-    return dict(row) if row else None
+    return _safe_user(row) if row else None
 
 
 def set_email_verified(user_id: int, verified: bool = True):

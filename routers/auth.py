@@ -9,6 +9,8 @@ Routes:
   GET  /logout
   POST /toggle-theme
 """
+import re
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -211,19 +213,26 @@ def forgot_password_verify(request: Request,
     return RedirectResponse(url=f"{dest}?success=Password+reset+successfully.", status_code=303)
 
 
+_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}$")
+
+
 @router.post("/user/profile/update")
 def user_update_profile(request: Request,
-                        full_name: str = Form(""),
-                        email: str = Form(""),
-                        phone: str = Form(""),
-                        phone_country: str = Form(""),
-                        phone_number: str = Form(""),
+                        full_name: str = Form("", max_length=120),
+                        email: str = Form("", max_length=254),
+                        phone: str = Form("", max_length=30),
+                        phone_country: str = Form("", max_length=10),
+                        phone_number: str = Form("", max_length=20),
                         user=Depends(require_login)):
+    clean_name  = full_name.strip()[:120]
+    clean_email = email.strip()
+    if clean_email and not _EMAIL_RE.match(clean_email):
+        return RedirectResponse(url="/user_home?profile_error=Invalid+email+address.", status_code=303)
     combined_phone = phone.strip()
     if not combined_phone and phone_number.strip():
-        digits = "".join(c for c in phone_number if c.isdigit())
+        digits = "".join(c for c in phone_number if c.isdigit())[:15]
         combined_phone = f"{phone_country.strip()} {digits}".strip() if phone_country.strip() else digits
-    adb.update_profile(user["id"], full_name.strip(), email.strip(), combined_phone)
+    adb.update_profile(user["id"], clean_name, clean_email, combined_phone[:30])
     ref = request.headers.get("referer", "/user_home")
     origin = str(request.base_url).rstrip("/")
     dest = ref if ref.startswith(origin) else "/user_home"
@@ -245,9 +254,12 @@ def user_send_email_otp(request: Request, user=Depends(require_login)):
 
 
 @router.post("/user/email/verify-otp")
+@limiter.limit("10/minute")
 def user_verify_email_otp(request: Request,
-                           otp: str = Form(...),
+                           otp: str = Form(..., max_length=6),
                            user=Depends(require_login)):
+    if not otp.strip().isdigit() or len(otp.strip()) != 6:
+        return RedirectResponse(url="/user_home?profile_error=Invalid+OTP+format.", status_code=303)
     if not adb.verify_otp(user["id"], "verify", otp.strip()):
         return RedirectResponse(url="/user_home?profile_error=Invalid+or+expired+OTP.", status_code=303)
     adb.set_email_verified(user["id"])
@@ -256,14 +268,13 @@ def user_verify_email_otp(request: Request,
 
 @router.post("/user/change-password")
 def user_change_password(request: Request,
-                         old_password: str = Form(...),
-                         new_password: str = Form(...),
+                         old_password: str = Form(..., max_length=256),
+                         new_password: str = Form(..., max_length=256),
                          user=Depends(require_login)):
     import bcrypt
-    target = adb.get_user(user["id"])
-    if not target or not bcrypt.checkpw(old_password.encode(), target["password"].encode()):
-        ref = request.headers.get("referer", "/user_home")
-        return RedirectResponse(url=ref + "?pwd_error=Current+password+is+incorrect.", status_code=303)
+    current_hash = adb.get_password_hash(user["id"])
+    if not current_hash or not bcrypt.checkpw(old_password.encode(), current_hash.encode()):
+        return RedirectResponse(url="/user_home?pwd_error=Current+password+is+incorrect.", status_code=303)
     ok = adb.change_password(user["id"], new_password)
     if ok:
         return RedirectResponse(url="/user_home?pwd_ok=Password+changed+successfully.", status_code=303)

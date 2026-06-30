@@ -37,6 +37,7 @@ CLAUDE_MODEL         = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 SECRET_KEY           = os.environ.get("SECRET_KEY")
 RECAPTCHA_SITE_KEY   = os.environ.get("RECAPTCHA_SITE_KEY", "")
 RECAPTCHA_SECRET_KEY = os.environ.get("RECAPTCHA_SECRET_KEY", "")
+COOKIE_SECURE        = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 
 if not SECRET_KEY:
     raise RuntimeError(
@@ -116,14 +117,20 @@ _CSP = (
 )
 
 
+_HSTS_ENABLED = os.environ.get("HSTS_ENABLED", "false").lower() == "true"
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         response.headers["Content-Security-Policy"] = _CSP
+        if _HSTS_ENABLED:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
 
@@ -146,7 +153,7 @@ def _set_session(response, user: dict):
         COOKIE, token,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=COOKIE_SECURE,
         max_age=SESSION_MAX_AGE,
     )
 

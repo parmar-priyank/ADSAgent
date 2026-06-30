@@ -1,0 +1,43 @@
+[Unit]
+Description=ADS Agent (FastAPI + Gunicorn)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=notify
+
+# Dedicated system user — no login shell, no home directory
+User=adsagent
+Group=adsagent
+
+# App lives here — update if you clone to a different path
+WorkingDirectory=/var/www/adsagent
+
+# Load secrets from .env
+EnvironmentFile=/var/www/adsagent/.env
+
+# Start Gunicorn with the project config
+ExecStart=/var/www/adsagent/venv/bin/gunicorn -c gunicorn.conf.py main:app
+
+# Graceful reload on: systemctl reload adsagent
+ExecReload=/bin/kill -s HUP $MAINPID
+
+# Always restart the app if it crashes, with a short back-off
+Restart=on-failure
+RestartSec=5s
+
+# Hard limits — prevent a runaway process from eating the whole server
+LimitNOFILE=65536
+LimitNPROC=512
+
+# Create /run/adsagent at boot so the socket directory always exists
+RuntimeDirectory=adsagent
+RuntimeDirectoryMode=0750
+
+# Harden the service process
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

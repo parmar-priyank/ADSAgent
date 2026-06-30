@@ -178,6 +178,7 @@ def template_download(template_id: int, user=Depends(require_admin)):
     }
     blob = build_xlsx(items, hdrs, tpl.get("note_text", ""))
     safe = (tpl["name"] or "checklist").replace(" ", "_")
+    safe = "".join(c for c in safe if c.isalnum() or c in "_-")[:80] or "checklist"
     return StreamingResponse(
         io.BytesIO(blob),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
