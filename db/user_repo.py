@@ -159,7 +159,7 @@ def set_email_verified(user_id: int, verified: bool = True):
         conn.execute("UPDATE users SET email_verified = ? WHERE id = ?", (1 if verified else 0, user_id))
 
 
-def create_otp(user_id: int, purpose: str, ttl_seconds: int = 600) -> str:
+def create_otp(user_id: int, purpose: str, ttl_seconds: int = 300) -> str:
     """Generate a 6-digit OTP, store it, and return the code."""
     otp = f"{secrets.randbelow(1000000):06d}"
     expires_at = int(time.time()) + ttl_seconds

@@ -55,6 +55,7 @@
 
     <form action="/run-checklist" method="post" enctype="multipart/form-data" id="check-form">
       <input type="hidden" name="quote_id" value="{{ quote_id }}">
+      <input type="hidden" name="email_results_json" value="{{ email_results_json | default('') | e }}">
 
       {% if saved_templates %}
       <div style="margin-bottom:20px;">

@@ -366,6 +366,28 @@ def qc_check_page(request: Request, quote_id: str = "", user=Depends(require_log
         "theme": _resolve_theme(user),
         "quote_id": quote_id,
         "saved_templates": saved,
+        "email_results_json": "",
+        "error": None,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
+
+
+@router.post("/qc-check-with-email", response_class=HTMLResponse)
+def qc_check_page_with_email(
+    request: Request,
+    quote_id: str = Form(""),
+    email_results_json: str = Form(""),
+    user=Depends(require_login),
+):
+    """Arrive from Step 2 (email verify) carrying the edited email results."""
+    saved = tdb.list_templates()
+    resp = templates.TemplateResponse(request, "user_qc.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "quote_id": quote_id,
+        "saved_templates": saved,
+        "email_results_json": email_results_json,
         "error": None,
     })
     resp.headers.update(_NO_CACHE)
@@ -382,6 +404,7 @@ async def upload_zip(
     zip_file: UploadFile = File(...),
     quote_id: str = Form(""),
     template_id: int = Form(...),
+    email_results_json: str = Form(""),
     user=Depends(require_login),
 ):
     uid = user["id"]
@@ -411,6 +434,7 @@ async def upload_zip(
             "theme": _resolve_theme(user),
             "quote_id": quote_id,
             "saved_templates": saved,
+            "email_results_json": email_results_json,
             "error": error,
         })
         resp.headers.update(_NO_CACHE)
@@ -593,12 +617,26 @@ async def upload_zip(
             checklist_rows.append({**item, "status": result["status"], "remark": result["remark"]})
             next_ns = next(ns_iter, None)
 
+    # Parse email verify results passed from Step 2 (may be empty if step was skipped)
+    email_results = []
+    if email_results_json.strip():
+        try:
+            parsed = json.loads(email_results_json)
+            if isinstance(parsed, list):
+                email_results = [
+                    r for r in parsed
+                    if isinstance(r, dict) and r.get("name")
+                ]
+        except Exception:
+            pass
+
     headers = {
         "customer_label": tpl.get("customer_label"),
         "address_label":  tpl.get("address_label"),
         "job_label":      tpl.get("job_label"),
     }
-    xlsx_blob = build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled)
+    xlsx_blob = build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled,
+                           email_results=email_results)
 
     xlsx_b64   = base64.b64encode(xlsx_blob).decode()
     dl_token   = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]})
@@ -615,6 +653,7 @@ async def upload_zip(
         "yes_count": yes_count,
         "no_count": no_count,
         "na_count": na_count,
+        "email_results": email_results,
     })
     rt_enc = urllib.parse.quote(result_token, safe="")
     return RedirectResponse(url=f"/checklist-result?token={rt_enc}", status_code=303)
@@ -640,6 +679,7 @@ def checklist_result(request: Request, token: str, user=Depends(require_login)):
         "yes_count": payload.get("yes_count", 0),
         "no_count": payload.get("no_count", 0),
         "na_count": payload.get("na_count", 0),
+        "email_results": payload.get("email_results", []),
         "theme": _resolve_theme(user),
     })
     resp.headers.update(_NO_CACHE)
@@ -652,11 +692,15 @@ async def checklist_save_edits(request: Request, _auth=Depends(require_login)):
     rows       = body.get("rows", [])
     tpl        = body.get("tpl", {})
     orig_token = body.get("dl_token", "")
+    email_results = body.get("email_results", [])
 
     tpl_name = tpl.get("name", "checklist")
     try:
         orig_payload = _signer.loads(orig_token, max_age=7200)
         tpl_name = orig_payload.get("name", tpl_name)
+        # Preserve email_results from original token if not supplied by client
+        if not email_results:
+            email_results = orig_payload.get("email_results", [])
     except Exception:
         pass
 
@@ -675,7 +719,7 @@ async def checklist_save_edits(request: Request, _auth=Depends(require_login)):
                 "remark": row.get("remark", ""),
             }
 
-    xlsx_blob    = build_xlsx(rows, headers, note_text, filled=filled)
+    xlsx_blob    = build_xlsx(rows, headers, note_text, filled=filled, email_results=email_results)
     xlsx_b64     = base64.b64encode(xlsx_blob).decode()
     new_dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl_name})
     return {"dl_token": new_dl_token}
@@ -711,6 +755,7 @@ def checklist_confirm(
     no_count: int = Form(0),
     na_count: int = Form(0),
     rows_json: str = Form(""),
+    email_results_json: str = Form(""),
     user=Depends(require_login),
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
@@ -737,6 +782,7 @@ def checklist_confirm(
                 no_count=no_count,
                 na_count=na_count,
                 rows_json=rows_json,
+                email_results_json=email_results_json,
                 confirmed_by_user_id=user["id"],
                 saved_by_user_id=user["id"],
                 status="confirmed",
@@ -775,6 +821,7 @@ def checklist_save_draft(
     no_count: int = Form(0),
     na_count: int = Form(0),
     rows_json: str = Form(""),
+    email_results_json: str = Form(""),
     user=Depends(require_login),
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
@@ -800,6 +847,7 @@ def checklist_save_draft(
                 no_count=no_count,
                 na_count=na_count,
                 rows_json=rows_json,
+                email_results_json=email_results_json,
                 saved_by_user_id=user["id"],
                 status="draft",
             )
@@ -859,6 +907,17 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
     no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
     na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
 
+    # Load saved email results from DB
+    saved_email_results = []
+    raw_email_json = v.get("email_results_json") or ""
+    if raw_email_json.strip():
+        try:
+            parsed_email = json.loads(raw_email_json)
+            if isinstance(parsed_email, list):
+                saved_email_results = parsed_email
+        except Exception:
+            pass
+
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
@@ -870,6 +929,7 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         "yes_count": yes_count,
         "no_count": no_count,
         "na_count": na_count,
+        "email_results": saved_email_results,
         "revisit_version": v,
     })
     resp.headers.update(_NO_CACHE)

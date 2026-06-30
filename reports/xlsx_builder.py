@@ -131,7 +131,7 @@ def _label_at(ws, needle: str):
 
 def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
                title: str = "||  JOB COMPLIANCE CHECKLIST (QC)  ||",
-               filled: dict = None) -> bytes:
+               filled: dict = None, email_results: list = None) -> bytes:
     """
     Build a styled .xlsx from structured items.
     filled (optional): {position: {"status": "Y"/"N", "remark": "..."}}
@@ -176,6 +176,47 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
         cell.border = BORDER
 
     r = 9
+
+    # ── Email Verification section (only when Step 2 results are present) ──────
+    if email_results:
+        # Section header row
+        sec_cell = ws.cell(r, 2, "EMAIL VERIFICATION")
+        sec_cell.font  = section_font
+        sec_cell.fill  = section_fill
+        for ci in (1, 2, 3, 4, 5):
+            c = ws.cell(r, ci)
+            c.fill   = section_fill
+            c.border = BORDER
+        ws.cell(r, 1).font = section_font
+        ws.cell(r, 3).font = section_font
+        ws.cell(r, 4).font = section_font
+        ws.cell(r, 5).font = section_font
+        r += 1
+
+        for idx, er in enumerate(email_results, start=1):
+            name   = er.get("name", "")
+            status = er.get("status", "N/A")
+            remark = er.get("remark", "")
+
+            sno_c    = ws.cell(r, 1, str(idx))
+            text_c   = ws.cell(r, 2, name)
+            yn_c     = ws.cell(r, 3, status)
+            remark_c = ws.cell(r, 4, remark)
+            prompt_c = ws.cell(r, 5, "Email attachment verification")
+
+            for cell in (sno_c, text_c, yn_c, remark_c, prompt_c):
+                cell.border = BORDER
+
+            sno_c.font    = bold
+            sno_c.alignment  = center
+            text_c.font   = normal
+            text_c.alignment = left
+            yn_c.alignment   = center
+            remark_c.alignment = left
+            prompt_c.alignment = left
+
+            r += 1
+
     for it in items:
         if not it.get("active", 1):
             continue

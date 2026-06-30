@@ -65,6 +65,7 @@ def init_db():
             ("status",               "TEXT DEFAULT 'confirmed'"),
             ("saved_by_user_id",     "INTEGER"),
             ("saved_at",             "TIMESTAMP"),
+            ("email_results_json",   "TEXT DEFAULT ''"),
         ]:
             if col not in qcv_cols:
                 conn.execute(f"ALTER TABLE qc_versions ADD COLUMN {col} {defn}")
@@ -224,6 +225,7 @@ def add_qc_version(
     no_count: int = 0,
     na_count: int = 0,
     rows_json: str = "",
+    email_results_json: str = "",
     confirmed_by_user_id: int = None,
     status: str = "confirmed",
     saved_by_user_id: int = None,
@@ -239,12 +241,12 @@ def add_qc_version(
             INSERT INTO qc_versions
                 (quote_id, version, template_name, zip_filename,
                  yes_count, no_count, na_count, excel_blob, rows_json,
-                 confirmed_by_user_id, status, saved_by_user_id, saved_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                 email_results_json, confirmed_by_user_id, status, saved_by_user_id, saved_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (quote_id, next_version, template_name, zip_filename,
              yes_count, no_count, na_count, xlsx_bytes, rows_json,
-             confirmed_by_user_id, status, saved_by_user_id),
+             email_results_json or "", confirmed_by_user_id, status, saved_by_user_id),
         )
         version_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     return version_id, next_version

@@ -140,24 +140,33 @@ def forgot_password_page(request: Request, error: str = None, success: str = Non
 @router.post("/forgot-password/request")
 @limiter.limit("5/minute")
 def forgot_password_request(request: Request,
-                            username: str = Form(..., max_length=150),
+                            username: str = Form("", max_length=150),
                             via: str = Form("admin")):
     """Look up user, send OTP to verified email."""
     via = via if via in ("admin", "user") else "admin"
     uname = username.strip()
+    if not uname:
+        return RedirectResponse(url=f"/forgot-password?via={via}&error=Please+enter+your+username.", status_code=303)
     import urllib.parse
     uname_enc = urllib.parse.quote(uname)
     user = adb.get_user_by_username(uname)
-    # Generic response either way to avoid username enumeration
-    generic_ok = RedirectResponse(
-        url=f"/forgot-password?step=otp&via={via}&username={uname_enc}&success=If+that+username+has+a+verified+email%2C+an+OTP+was+sent.",
-        status_code=303,
-    )
     if not user:
-        return generic_ok
+        # Don't reveal whether username exists
+        return RedirectResponse(
+            url=f"/forgot-password?step=otp&via={via}&username={uname_enc}&success=If+that+username+exists%2C+an+OTP+was+sent.",
+            status_code=303,
+        )
     email = user.get("email")
-    if not email or not user.get("email_verified"):
-        return generic_ok
+    if not email:
+        return RedirectResponse(
+            url=f"/forgot-password?via={via}&username={uname_enc}&error=No+email+address+linked+to+this+account.+Contact+your+administrator.",
+            status_code=303,
+        )
+    if not user.get("email_verified"):
+        return RedirectResponse(
+            url=f"/forgot-password?via={via}&username={uname_enc}&error=Email+not+verified.+Log+in+and+verify+your+email+first+via+Profile+Settings.",
+            status_code=303,
+        )
     if not bool(SMTP_CONFIGURED):
         return RedirectResponse(
             url=f"/forgot-password?via={via}&error=Email+service+not+configured+on+this+server.",
@@ -165,15 +174,18 @@ def forgot_password_request(request: Request,
         )
     otp = adb.create_otp(user["id"], "reset")
     send_otp_email(email, otp, "reset", user["username"])
-    return generic_ok
+    return RedirectResponse(
+        url=f"/forgot-password?step=otp&via={via}&username={uname_enc}&success=OTP+sent+to+your+registered+email.",
+        status_code=303,
+    )
 
 
 @router.post("/forgot-password/verify")
 @limiter.limit("10/minute")
 def forgot_password_verify(request: Request,
-                           username: str = Form(..., max_length=150),
-                           otp: str = Form(..., max_length=6),
-                           new_password: str = Form(..., min_length=8, max_length=256),
+                           username: str = Form("", max_length=150),
+                           otp: str = Form("", max_length=6),
+                           new_password: str = Form("", max_length=256),
                            via: str = Form("admin")):
     via = via if via in ("admin", "user") else "admin"
     import urllib.parse

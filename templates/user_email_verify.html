@@ -115,59 +115,166 @@
         <strong style="color:var(--ink);">Subject:</strong> {{ email_subject }}
       </div>
 
-      <!-- Summary chips (filter buttons) -->
+      <!-- Summary chips + Modify button -->
       {% set yes_c = results | selectattr('status','equalto','Yes') | list | length %}
       {% set no_c  = results | selectattr('status','equalto','No')  | list | length %}
       {% set na_c  = results | selectattr('status','equalto','N/A') | list | length %}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
-        <button onclick="toggleFilter('Yes')"  id="filter-yes" class="chip chip-yes"  style="border:none;cursor:pointer;">&#10003; {{ yes_c }} Match</button>
-        <button onclick="toggleFilter('No')"   id="filter-no"  class="chip chip-no"   style="border:none;cursor:pointer;">&#10007; {{ no_c }} Mismatch</button>
-        <button onclick="toggleFilter('N/A')"  id="filter-na"  class="chip chip-na"   style="border:none;cursor:pointer;">— {{ na_c }} N/A</button>
-        <button onclick="toggleFilter('all')"  id="filter-all" class="chip" style="border:none;cursor:pointer;background:var(--brand);color:#fff;">
-          {{ results | length }} total
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px;justify-content:space-between;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button onclick="toggleFilter('Yes')" id="filter-yes"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid rgba(52,211,153,.4);
+                         background:rgba(52,211,153,.12);color:#16a34a;transition:opacity .15s;">
+            &#10003; <span id="cnt-yes">{{ yes_c }}</span> Match
+          </button>
+          <button onclick="toggleFilter('No')" id="filter-no"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid rgba(248,113,113,.4);
+                         background:rgba(248,113,113,.12);color:#dc2626;transition:opacity .15s;">
+            &#10007; <span id="cnt-no">{{ no_c }}</span> Mismatch
+          </button>
+          <button onclick="toggleFilter('N/A')" id="filter-na"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--line2);
+                         background:var(--surface3);color:var(--muted);transition:opacity .15s;">
+            — <span id="cnt-na">{{ na_c }}</span> N/A
+          </button>
+          <button onclick="toggleFilter('all')" id="filter-all"
+                  style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;
+                         font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid rgba(196,80,16,.4);
+                         background:rgba(196,80,16,.1);color:var(--brand);transition:opacity .15s;">
+            {{ results | length }} total
+          </button>
+        </div>
+        <button type="button" id="eml-modify-btn" onclick="emlEnterEditMode()"
+                style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;
+                       border:1.5px solid var(--brand);border-radius:8px;background:var(--surface3);
+                       color:var(--brand);font-size:13px;font-weight:600;cursor:pointer;">
+          &#9998; Modify
         </button>
       </div>
 
+      <!-- Edit mode save bar (hidden until Modify clicked) -->
+      <div id="eml-edit-bar"
+           style="display:none;background:var(--brand);color:#fff;border-radius:8px;
+                  padding:10px 16px;margin-bottom:12px;align-items:center;
+                  justify-content:space-between;gap:12px;">
+        <span style="font-size:13px;font-weight:600;">&#9998; Edit mode — change status and remarks, then save.</span>
+        <div style="display:flex;gap:8px;">
+          <button type="button" onclick="emlCancelEditMode()"
+                  style="background:transparent;border:1.5px solid rgba(255,255,255,.6);color:#fff;
+                         border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;">
+            Cancel
+          </button>
+          <button type="button" onclick="emlSaveEdits()"
+                  style="background:#fff;color:var(--brand);border:none;border-radius:6px;
+                         padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;">
+            Save Changes
+          </button>
+        </div>
+      </div>
+
       <!-- Attachments table -->
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;" id="eml-results-table">
+        <colgroup>
+          <col style="width:28%;">
+          <col style="width:9%;">
+          <col style="width:14%;">
+          <col style="width:49%;">
+        </colgroup>
         <thead>
           <tr style="border-bottom:2px solid var(--line2);">
-            <th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--ink);width:36%;">Attachment</th>
-            <th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--ink);width:8%;">Size</th>
-            <th style="text-align:center;padding:8px 10px;font-weight:700;color:var(--ink);width:10%;">Status</th>
-            <th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--ink);">Finding</th>
+            <th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--ink);">Attachment</th>
+            <th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--ink);">Size</th>
+            <th style="text-align:center;padding:8px 10px;font-weight:700;color:var(--ink);">Status</th>
+            <th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--ink);">Finding / Remark</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="eml-results-tbody">
           {% for r in results %}
-          <tr data-status="{{ r.status }}" style="border-bottom:1px solid var(--line2);">
-            <td style="padding:10px;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-              <!-- File type icon -->
+          <tr data-idx="{{ loop.index0 }}"
+              data-name="{{ r.name | e }}"
+              data-size="{{ r.size_kb }}"
+              data-status="{{ r.status }}"
+              data-remark="{{ r.remark | e }}"
+              style="border-bottom:1px solid var(--line2);vertical-align:top;">
+            <td style="padding:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
               {% set ext = r.name.rsplit('.',1)[-1].lower() %}
               {% if ext == 'pdf' %}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e84a3a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e84a3a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               {% elif ext in ['jpg','jpeg','png','gif','webp'] %}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a8ee8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a8ee8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;flex-shrink:0;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
               {% else %}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               {% endif %}
               <span title="{{ r.name }}">{{ r.name }}</span>
             </td>
-            <td style="padding:10px;color:var(--muted);">{{ r.size_kb }} KB</td>
+            <td style="padding:10px;color:var(--muted);white-space:nowrap;">{{ r.size_kb }} KB</td>
+
+            <!-- Status cell: view badge + edit dropdown -->
             <td style="padding:10px;text-align:center;">
-              {% if r.status == 'Yes' %}
-              <span class="chip chip-yes" style="font-size:11px;padding:3px 10px;">&#10003; Match</span>
-              {% elif r.status == 'No' %}
-              <span class="chip chip-no" style="font-size:11px;padding:3px 10px;">&#10007; Mismatch</span>
-              {% else %}
-              <span class="chip chip-na" style="font-size:11px;padding:3px 10px;">— N/A</span>
-              {% endif %}
+              <span class="eml-status-view" style="display:block;">
+                {% if r.status == 'Yes' %}
+                <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;
+                             font-size:11px;font-weight:700;background:rgba(52,211,153,.12);
+                             color:#16a34a;border:1px solid rgba(52,211,153,.35);">&#10003; Match</span>
+                {% elif r.status == 'No' %}
+                <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;
+                             font-size:11px;font-weight:700;background:rgba(248,113,113,.12);
+                             color:#dc2626;border:1px solid rgba(248,113,113,.35);">&#10007; Mismatch</span>
+                {% else %}
+                <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;
+                             font-size:11px;font-weight:700;background:var(--surface3);
+                             color:var(--muted);border:1px solid var(--line2);">— N/A</span>
+                {% endif %}
+              </span>
+              <select class="eml-status-edit"
+                      style="display:none;width:100%;font-size:12px;padding:4px 6px;border-radius:6px;
+                             border:1.5px solid var(--brand);background:var(--surface3);
+                             color:var(--ink);cursor:pointer;">
+                <option value="Yes" {% if r.status == 'Yes' %}selected{% endif %}>✓ Yes</option>
+                <option value="No"  {% if r.status == 'No'  %}selected{% endif %}>✗ No</option>
+                <option value="N/A" {% if r.status == 'N/A' %}selected{% endif %}>— N/A</option>
+              </select>
             </td>
-            <td style="padding:10px;color:var(--ink2);line-height:1.5;">{{ r.remark }}</td>
+
+            <!-- Remark cell: view text (truncated, click → modal) + edit button -->
+            <td style="padding:10px;color:var(--ink2);line-height:1.5;overflow:hidden;">
+              <!-- View mode -->
+              <span class="eml-remark-view"
+                    onclick="emlOpenRemarkView(this)"
+                    title="{{ r.remark | e }}"
+                    style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+                           width:100%;{% if r.remark %}cursor:pointer;{% endif %}">
+                {{- r.remark if r.remark else '—' -}}
+              </span>
+              <!-- hidden value store -->
+              <input class="eml-remark-edit-val" type="hidden" value="{{ r.remark | e }}">
+              <!-- Edit mode button -->
+              <button type="button" class="eml-remark-edit-btn"
+                      style="display:none;width:100%;text-align:left;padding:6px 8px;
+                             border:1.5px solid var(--brand);border-radius:6px;background:var(--surface3);
+                             color:var(--ink);font-size:12px;cursor:pointer;align-items:center;gap:6px;"
+                      onclick="emlOpenRemarkModal(this)">
+                <span class="eml-remark-btn-preview"
+                      style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2);">
+                  {{- r.remark if r.remark else 'Click to add remark…' -}}
+                </span>
+                <svg style="flex-shrink:0;opacity:.5;" width="11" height="11" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+              </button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+
+      <!-- Hidden field: carries edited email results to next step -->
+      <input type="hidden" id="eml-results-json"
+             value="{{ results | tojson | e }}">
     </div>
 
     <!-- Re-upload option -->
@@ -205,16 +312,22 @@
     {% if results %}
     <div style="border-top:1px solid var(--line2);padding-top:18px;margin-top:4px;
                 display:flex;justify-content:flex-end;">
-      <a href="/qc-check?quote_id={{ quote_id }}"
-         style="display:inline-flex;align-items:center;gap:8px;
-                background:var(--brand);color:#fff;text-decoration:none;font-weight:700;
-                font-size:14px;padding:11px 22px;border-radius:10px;">
-        Continue to Upload ZIP
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </a>
+      <form method="post" action="/qc-check-with-email" id="eml-proceed-form">
+        <input type="hidden" name="quote_id" value="{{ quote_id }}">
+        <input type="hidden" name="email_results_json" id="eml-proceed-json"
+               value="{{ results | tojson | e }}">
+        <button type="submit"
+                style="display:inline-flex;align-items:center;gap:8px;
+                       background:var(--brand);color:#fff;border:none;font-weight:700;
+                       font-size:14px;padding:11px 22px;border-radius:10px;cursor:pointer;"
+                onclick="emlSyncProceed()">
+          Continue to Upload ZIP
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
+      </form>
     </div>
     {% endif %}
 
@@ -225,22 +338,159 @@
 {% block scripts %}
 <script>
 var _activeFilter = 'all';
+var _emlEditMode  = false;
+var _emlRemarkBtn = null;
 
+// ── Filter ────────────────────────────────────────────────────────────────────
 function toggleFilter(status) {
   _activeFilter = (_activeFilter === status) ? 'all' : status;
-
-  // Show/hide rows
-  document.querySelectorAll('tr[data-status]').forEach(function(tr) {
+  document.querySelectorAll('#eml-results-tbody tr').forEach(function(tr) {
     tr.style.display = (_activeFilter === 'all' || tr.dataset.status === _activeFilter) ? '' : 'none';
   });
-
-  // Update chip styles
   var chips = { 'Yes': 'filter-yes', 'No': 'filter-no', 'N/A': 'filter-na', 'all': 'filter-all' };
   Object.keys(chips).forEach(function(s) {
     var el = document.getElementById(chips[s]);
     if (!el) return;
     el.style.opacity = (_activeFilter === 'all' || _activeFilter === s) ? '1' : '0.4';
   });
+}
+
+// ── Collect current row data into array ───────────────────────────────────────
+function _emlCollect() {
+  var rows = [];
+  document.querySelectorAll('#eml-results-tbody tr').forEach(function(tr) {
+    var sel = tr.querySelector('.eml-status-edit');
+    var inp = tr.querySelector('.eml-remark-edit-val');
+    rows.push({
+      name:    tr.dataset.name    || '',
+      size_kb: parseFloat(tr.dataset.size) || 0,
+      status:  sel ? sel.value : (tr.dataset.status || 'N/A'),
+      remark:  inp ? inp.value : (tr.dataset.remark || ''),
+    });
+  });
+  return rows;
+}
+
+// Sync the hidden proceed field with latest edits, then submit
+function emlSyncProceed() {
+  var el = document.getElementById('eml-proceed-json');
+  if (el) el.value = JSON.stringify(_emlCollect());
+}
+
+// ── Edit mode ─────────────────────────────────────────────────────────────────
+function emlEnterEditMode() {
+  _emlEditMode = true;
+  document.getElementById('eml-modify-btn').style.display = 'none';
+  document.getElementById('eml-edit-bar').style.display = 'flex';
+  document.querySelectorAll('#eml-results-tbody tr').forEach(function(tr) {
+    tr.querySelector('.eml-status-view').style.display    = 'none';
+    tr.querySelector('.eml-status-edit').style.display    = 'block';
+    tr.querySelector('.eml-remark-view').style.display    = 'none';
+    tr.querySelector('.eml-remark-edit-btn').style.display = 'flex';
+  });
+}
+
+function emlCancelEditMode() {
+  _emlEditMode = false;
+  document.getElementById('eml-modify-btn').style.display = '';
+  document.getElementById('eml-edit-bar').style.display = 'none';
+  document.querySelectorAll('#eml-results-tbody tr').forEach(function(tr) {
+    var sel = tr.querySelector('.eml-status-edit');
+    var inp = tr.querySelector('.eml-remark-edit-val');
+    sel.value = tr.dataset.status;
+    inp.value = tr.dataset.remark || '';
+    tr.querySelector('.eml-remark-btn-preview').textContent = tr.dataset.remark || 'Click to add remark…';
+    tr.querySelector('.eml-status-view').style.display = 'block';
+    sel.style.display = 'none';
+    tr.querySelector('.eml-remark-view').style.display = 'block';
+    tr.querySelector('.eml-remark-edit-btn').style.display = 'none';
+  });
+}
+
+function emlSaveEdits() {
+  _emlEditMode = false;
+  document.getElementById('eml-modify-btn').style.display = '';
+  document.getElementById('eml-edit-bar').style.display = 'none';
+
+  var yes = 0, no = 0, na = 0;
+  document.querySelectorAll('#eml-results-tbody tr').forEach(function(tr) {
+    var sel = tr.querySelector('.eml-status-edit');
+    var inp = tr.querySelector('.eml-remark-edit-val');
+    var newStatus = sel.value;
+    var newRemark = inp.value;
+
+    // Persist back to data attrs (source of truth)
+    tr.dataset.status = newStatus;
+    tr.dataset.remark = newRemark;
+
+    // Update status view badge
+    var _badges = {
+      'Yes': '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(52,211,153,.12);color:#16a34a;border:1px solid rgba(52,211,153,.35);">&#10003; Match</span>',
+      'No':  '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(248,113,113,.12);color:#dc2626;border:1px solid rgba(248,113,113,.35);">&#10007; Mismatch</span>',
+      'N/A': '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:var(--surface3);color:var(--muted);border:1px solid var(--line2);">— N/A</span>',
+    };
+    var statusView = tr.querySelector('.eml-status-view');
+    statusView.innerHTML = _badges[newStatus] || _badges['N/A'];
+    statusView.style.display = 'block';
+    sel.style.display = 'none';
+
+    // Update remark view
+    var rv = tr.querySelector('.eml-remark-view');
+    rv.textContent = newRemark || '—';
+    rv.title = newRemark || '';
+    rv.style.cursor = newRemark ? 'pointer' : '';
+    rv.style.display = 'block';
+    inp.value = newRemark;
+    var editBtn = tr.querySelector('.eml-remark-edit-btn');
+    editBtn.querySelector('.eml-remark-btn-preview').textContent = newRemark || 'Click to add remark…';
+    editBtn.style.display = 'none';
+
+    if (newStatus === 'Yes') yes++; else if (newStatus === 'No') no++; else na++;
+  });
+
+  // Update summary chip counts
+  document.getElementById('cnt-yes').textContent = yes;
+  document.getElementById('cnt-no').textContent  = no;
+  document.getElementById('cnt-na').textContent  = na;
+
+  // Keep the hidden proceed field in sync
+  var el = document.getElementById('eml-proceed-json');
+  if (el) el.value = JSON.stringify(_emlCollect());
+  // Also keep the local hidden field in sync
+  var local = document.getElementById('eml-results-json');
+  if (local) local.value = JSON.stringify(_emlCollect());
+}
+
+// ── Remark view modal (read-only) ─────────────────────────────────────────────
+function emlOpenRemarkView(span) {
+  var txt = span.title || span.textContent || '';
+  if (!txt || txt === '—') return; // nothing to show
+  document.getElementById('eml-remark-view-text').textContent = txt;
+  document.getElementById('eml-remark-view-overlay').style.display = 'flex';
+}
+function emlCloseRemarkView() {
+  document.getElementById('eml-remark-view-overlay').style.display = 'none';
+}
+
+// ── Remark edit modal ─────────────────────────────────────────────────────────
+function emlOpenRemarkModal(btn) {
+  _emlRemarkBtn = btn;
+  var inp = btn.previousElementSibling;
+  document.getElementById('eml-remark-modal-textarea').value = inp.value;
+  document.getElementById('eml-remark-modal-overlay').style.display = 'flex';
+  setTimeout(function() {
+    var ta = document.getElementById('eml-remark-modal-textarea');
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+  }, 50);
+}
+function emlCloseRemarkModal(save) {
+  if (save && _emlRemarkBtn) {
+    var val = document.getElementById('eml-remark-modal-textarea').value;
+    _emlRemarkBtn.previousElementSibling.value = val;
+    _emlRemarkBtn.querySelector('.eml-remark-btn-preview').textContent = val;
+  }
+  document.getElementById('eml-remark-modal-overlay').style.display = 'none';
+  _emlRemarkBtn = null;
 }
 
 (function () {
@@ -288,5 +538,80 @@ function toggleFilter(status) {
   wireDropzone('eml-dropzone',       'emlInput',      'eml-filename',       'eml-form',       'eml-submit-btn',   'eml-loading');
   wireDropzone('eml-dropzone-retry', 'emlRetryInput', 'eml-retry-filename', 'eml-form-retry', 'eml-retry-btn',    'eml-retry-loading');
 })();
+
+// ── Modal event wiring (safe: only runs if modals exist) ──────────────────────
+(function() {
+  var rv = document.getElementById('eml-remark-view-overlay');
+  if (rv) {
+    rv.addEventListener('click', function(e) { if (e.target === this) emlCloseRemarkView(); });
+  }
+  var rm = document.getElementById('eml-remark-modal-overlay');
+  if (rm) {
+    rm.addEventListener('click', function(e) { if (e.target === this) emlCloseRemarkModal(false); });
+  }
+  var ta = document.getElementById('eml-remark-modal-textarea');
+  if (ta) {
+    ta.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); emlCloseRemarkModal(true); }
+      if (e.key === 'Escape') { e.preventDefault(); emlCloseRemarkModal(false); }
+    });
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      if ((rv || {}).style && rv.style.display === 'flex') emlCloseRemarkView();
+    }
+  });
+})();
 </script>
+
+<!-- Remark view modal (read-only) -->
+<div id="eml-remark-view-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface2);border:1px solid var(--line2);border-radius:14px;padding:28px 28px 22px;width:min(520px,92vw);box-shadow:0 24px 60px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <span style="font-size:14px;font-weight:700;color:var(--ink);">Finding</span>
+      <button type="button" onclick="emlCloseRemarkView()"
+              style="background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
+    </div>
+    <div id="eml-remark-view-text"
+         style="padding:10px 12px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);
+                color:var(--ink);font-size:14px;line-height:1.7;min-height:60px;white-space:pre-wrap;word-break:break-word;"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+      <button type="button" onclick="emlCloseRemarkView()"
+              style="padding:8px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;background:var(--surface3);border:1px solid var(--line2);color:var(--ink2);">
+        Close
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Remark edit modal -->
+<div id="eml-remark-modal-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center;">
+  <div style="background:var(--surface2);border:1px solid var(--line2);border-radius:14px;padding:28px 28px 22px;width:min(520px,92vw);box-shadow:0 24px 60px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <span style="font-size:14px;font-weight:700;color:var(--ink);">Edit Remark</span>
+      <button type="button" onclick="emlCloseRemarkModal(false)"
+              style="background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
+    </div>
+    <textarea id="eml-remark-modal-textarea" rows="5"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--line2);border-radius:8px;
+                     background:var(--surface3);color:var(--ink);font-size:14px;line-height:1.6;
+                     resize:vertical;box-sizing:border-box;font-family:inherit;outline:none;"
+              onfocus="this.style.borderColor='var(--brand)'"
+              onblur="this.style.borderColor='var(--line2)'"
+              placeholder="Write your remark here…"></textarea>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;">Ctrl+Enter to save &middot; Esc to cancel</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+      <button type="button" onclick="emlCloseRemarkModal(false)"
+              style="padding:8px 18px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;background:var(--surface3);border:1px solid var(--line2);color:var(--ink2);">
+        Cancel
+      </button>
+      <button type="button" onclick="emlCloseRemarkModal(true)"
+              style="padding:8px 20px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;background:var(--brand);border:none;color:#fff;">
+        Apply
+      </button>
+    </div>
+  </div>
+</div>
 {% endblock %}

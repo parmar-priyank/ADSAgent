@@ -99,7 +99,7 @@ def send_otp_email(to: str, otp: str, purpose: str, username: str) -> bool:
       </h2>
       <p style="font-size:14px;color:#555;margin:0 0 24px;">
         Hi <strong>{username}</strong>, use the code below to {action}.
-        It expires in <strong>10 minutes</strong>.
+        It expires in <strong>5 minutes</strong>.
       </p>
       <div style="background:#fff;border:2px dashed #c45010;border-radius:12px;
                   padding:20px;text-align:center;margin-bottom:24px;">

@@ -136,6 +136,58 @@
     </div>
     {% endif %}
 
+    {% if email_results %}
+    <!-- ── Email Verification Results panel ── -->
+    <div style="margin-bottom:20px;border:1.5px solid rgba(196,80,16,.2);border-radius:12px;overflow:hidden;">
+      <div style="background:rgba(196,80,16,.07);padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(196,80,16,.15);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <span style="font-size:13px;font-weight:700;color:var(--brand);">Email Verification</span>
+        <span style="font-size:12px;color:var(--muted);margin-left:4px;">{{ email_results | length }} attachment{{ 's' if email_results | length != 1 else '' }}</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
+        <colgroup>
+          <col style="width:30%;">
+          <col style="width:12%;">
+          <col style="width:58%;">
+        </colgroup>
+        <thead>
+          <tr style="border-bottom:1px solid var(--line2);background:var(--surface3);">
+            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Attachment</th>
+            <th style="text-align:center;padding:8px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Status</th>
+            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Finding / Remark</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for er in email_results %}
+          <tr style="border-bottom:1px solid var(--line2);">
+            <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:var(--ink);" title="{{ er.name }}">
+              {% set ext = er.name.rsplit('.',1)[-1].lower() if '.' in er.name else '' %}
+              {% if ext == 'pdf' %}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e84a3a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              {% elif ext in ['jpg','jpeg','png','gif','webp'] %}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3a8ee8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              {% endif %}
+              {{ er.name }}
+            </td>
+            <td style="padding:9px 12px;text-align:center;">
+              {% if er.status == 'Yes' %}
+              <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(52,211,153,.12);color:#16a34a;border:1px solid rgba(52,211,153,.35);">&#10003; Match</span>
+              {% elif er.status == 'No' %}
+              <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(248,113,113,.12);color:#dc2626;border:1px solid rgba(248,113,113,.35);">&#10007; Mismatch</span>
+              {% else %}
+              <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:var(--surface3);color:var(--muted);border:1px solid var(--line2);">— N/A</span>
+              {% endif %}
+            </td>
+            <td style="padding:9px 12px;color:var(--ink2);line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:{% if er.remark %}pointer{% else %}default{% endif %};"
+                title="{{ er.remark }}"
+                {% if er.remark %}onclick="openEmlRemark(this)"{% endif %}>{{ er.remark or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
     <div style="overflow-x:auto;">
       <table class="checklist-table">
         <thead>
@@ -219,14 +271,15 @@
       {% else %}
       <!-- Save Draft -->
       <form method="post" action="/checklist-save-draft" id="save-draft-form">
-        <input type="hidden" name="quote_id"     value="{{ quote_id }}">
-        <input type="hidden" name="dl_token"     id="draft-dl-token" value="{{ dl_token }}">
-        <input type="hidden" name="zip_filename" value="{{ zip_filename }}">
-        <input type="hidden" name="tpl_name"     value="{{ tpl.name }}">
-        <input type="hidden" name="yes_count"    id="draft-yes"       value="{{ yes_count }}">
-        <input type="hidden" name="no_count"     id="draft-no"        value="{{ no_count }}">
-        <input type="hidden" name="na_count"     id="draft-na"        value="{{ na_count }}">
-        <input type="hidden" name="rows_json"    id="draft-rows-json" value="{{ checklist_rows | tojson | e }}">
+        <input type="hidden" name="quote_id"           value="{{ quote_id }}">
+        <input type="hidden" name="dl_token"           id="draft-dl-token" value="{{ dl_token }}">
+        <input type="hidden" name="zip_filename"       value="{{ zip_filename }}">
+        <input type="hidden" name="tpl_name"           value="{{ tpl.name }}">
+        <input type="hidden" name="yes_count"          id="draft-yes"       value="{{ yes_count }}">
+        <input type="hidden" name="no_count"           id="draft-no"        value="{{ no_count }}">
+        <input type="hidden" name="na_count"           id="draft-na"        value="{{ na_count }}">
+        <input type="hidden" name="rows_json"          id="draft-rows-json" value="{{ checklist_rows | tojson | e }}">
+        <input type="hidden" name="email_results_json" value="{{ email_results | default([]) | tojson | e }}">
         <button type="submit"
                 style="display:flex;align-items:center;gap:7px;padding:9px 20px;
                        background:var(--surface3);border:1px solid var(--line2);
@@ -241,14 +294,15 @@
 
       <!-- Confirm & Add to Calendar -->
       <form method="post" action="/checklist-confirm" id="confirm-form">
-        <input type="hidden" name="quote_id"     value="{{ quote_id }}">
-        <input type="hidden" name="dl_token"     id="confirm-dl-token" value="{{ dl_token }}">
-        <input type="hidden" name="zip_filename" value="{{ zip_filename }}">
-        <input type="hidden" name="tpl_name"     value="{{ tpl.name }}">
-        <input type="hidden" name="yes_count"    id="confirm-yes"       value="{{ yes_count }}">
-        <input type="hidden" name="no_count"     id="confirm-no"        value="{{ no_count }}">
-        <input type="hidden" name="na_count"     id="confirm-na"        value="{{ na_count }}">
-        <input type="hidden" name="rows_json"    id="confirm-rows-json" value="{{ checklist_rows | tojson | e }}">
+        <input type="hidden" name="quote_id"           value="{{ quote_id }}">
+        <input type="hidden" name="dl_token"           id="confirm-dl-token" value="{{ dl_token }}">
+        <input type="hidden" name="zip_filename"       value="{{ zip_filename }}">
+        <input type="hidden" name="tpl_name"           value="{{ tpl.name }}">
+        <input type="hidden" name="yes_count"          id="confirm-yes"       value="{{ yes_count }}">
+        <input type="hidden" name="no_count"           id="confirm-no"        value="{{ no_count }}">
+        <input type="hidden" name="na_count"           id="confirm-na"        value="{{ na_count }}">
+        <input type="hidden" name="rows_json"          id="confirm-rows-json" value="{{ checklist_rows | tojson | e }}">
+        <input type="hidden" name="email_results_json" value="{{ email_results | default([]) | tojson | e }}">
         <button type="submit"
                 style="display:flex;align-items:center;gap:7px;padding:9px 22px;
                        background:var(--brand);color:#fff;border:none;
@@ -318,9 +372,18 @@
 
 {% block scripts %}
 <script>
+  // Email verification remark — reuse existing read-only remark modal
+  function openEmlRemark(td) {
+    var txt = td.title || td.textContent || '';
+    if (!txt || txt === '—') return;
+    document.getElementById('remark-view-text').textContent = txt;
+    document.getElementById('remark-view-overlay').style.display = 'flex';
+  }
+
   var _activeFilter = 'All';
   var _editMode     = false;
-  var _tplData      = {{ tpl | tojson }};
+  var _tplData       = {{ tpl | tojson }};
+  var _emailResults  = {{ email_results | default([]) | tojson }};
   var _currentDlToken = (document.getElementById('confirm-dl-token') || {}).value || '';
 
   // ── Remark view modal (read-only) ────────────────────────────────────────
@@ -505,7 +568,7 @@
     fetch('/checklist-save-edits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows: rows, tpl: _tplData, dl_token: _currentDlToken }),
+      body: JSON.stringify({ rows: rows, tpl: _tplData, dl_token: _currentDlToken, email_results: _emailResults }),
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
