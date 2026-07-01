@@ -59,11 +59,6 @@
 
   <div class="card" style="border-color:rgba(245,166,35,.35);box-shadow:0 0 0 3px rgba(245,166,35,.06),var(--shadow-card);">
 
-    <p style="font-size:14px;color:var(--muted);margin:0 0 20px;line-height:1.6;">
-      Upload the <strong>.eml</strong> email file (exported from Outlook) that was sent to the customer.
-      Each attachment will be opened and verified against the signed agreement details.
-      This step is <strong>optional</strong> — use the Skip button above to go straight to the ZIP upload.
-    </p>
 
     {% if error %}
     <div style="padding:12px;background:var(--err-bg);border:1px solid rgba(248,113,113,.25);
@@ -110,9 +105,16 @@
     <!-- Results panel -->
     {% if results %}
     <div style="margin-bottom:20px;">
-      <div style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.6;">
-        <strong style="color:var(--ink);">From:</strong> {{ email_from }}<br>
-        <strong style="color:var(--ink);">Subject:</strong> {{ email_subject }}
+      <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:10px;
+                  padding:12px 16px;margin-bottom:14px;font-size:13px;line-height:1.7;">
+        <div style="display:flex;gap:8px;">
+          <span style="color:var(--muted);font-weight:600;min-width:56px;flex-shrink:0;">From</span>
+          <span style="color:var(--ink);word-break:break-all;">{{ email_from }}</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:4px;">
+          <span style="color:var(--muted);font-weight:600;min-width:56px;flex-shrink:0;">Subject</span>
+          <span style="color:var(--ink);">{{ email_subject }}</span>
+        </div>
       </div>
 
       <!-- Summary chips + Modify button -->

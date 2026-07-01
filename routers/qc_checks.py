@@ -303,9 +303,24 @@ async def email_verify_post(
     # Extract email metadata
     import email as _email_mod
     import email.policy as _policy
+    from email.header import decode_header as _decode_header
     msg = _email_mod.message_from_bytes(raw, policy=_policy.compat32)
-    email_subject = msg.get("Subject", "(no subject)")
-    email_from    = msg.get("From", "(unknown sender)")
+
+    def _decode_field(raw_val: str) -> str:
+        """Decode RFC-2047 encoded header (e.g. =?Windows-1252?Q?...?=) to plain text."""
+        if not raw_val:
+            return ""
+        parts = _decode_header(raw_val)
+        decoded = []
+        for part, enc in parts:
+            if isinstance(part, bytes):
+                decoded.append(part.decode(enc or "utf-8", errors="replace"))
+            else:
+                decoded.append(part)
+        return "".join(decoded).strip()
+
+    email_subject = _decode_field(msg.get("Subject", "")) or "(no subject)"
+    email_from    = _decode_field(msg.get("From", ""))    or "(unknown sender)"
 
     attachments = _parse_eml(raw)
     if not attachments:
