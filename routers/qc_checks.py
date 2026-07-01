@@ -34,6 +34,7 @@ _PDF_MAX_PAGES = 2    # send at most 2 pages per PDF to Claude — most checks n
 
 import db.quote_repo as db
 import db.checklist_repo as tdb
+from db.checklist_repo import store_pending_result, fetch_pending_result
 from reports.xlsx_builder import build_xlsx
 from db.connection import get_db
 
@@ -644,7 +645,7 @@ async def upload_zip(
     yes_count  = sum(1 for r in checklist_rows if r.get("status") == "Yes")
     no_count   = sum(1 for r in checklist_rows if r.get("status") == "No")
     na_count   = sum(1 for r in checklist_rows if r.get("status") == "N/A")
-    result_token = _signer.dumps({
+    result_token = store_pending_result({
         "tpl": tpl_safe,
         "rows": checklist_rows,
         "quote_id": quote_id,
@@ -655,8 +656,7 @@ async def upload_zip(
         "na_count": na_count,
         "email_results": email_results,
     })
-    rt_enc = urllib.parse.quote(result_token, safe="")
-    return RedirectResponse(url=f"/checklist-result?token={rt_enc}", status_code=303)
+    return RedirectResponse(url=f"/checklist-result?token={result_token}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -665,9 +665,8 @@ async def upload_zip(
 
 @router.get("/checklist-result", response_class=HTMLResponse)
 def checklist_result(request: Request, token: str, user=Depends(require_login)):
-    try:
-        payload = _signer.loads(token, max_age=7200)
-    except BadSignature:
+    payload = fetch_pending_result(token)
+    if not payload:
         raise HTTPException(400, "Result link has expired. Please re-run the checklist.")
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,

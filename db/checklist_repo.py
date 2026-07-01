@@ -1,6 +1,10 @@
 """
 db/checklist_repo.py — storage for QC checklist templates and their items.
 """
+import json
+import secrets
+import time
+
 from db.connection import get_db
 
 
@@ -41,6 +45,15 @@ def init_templates_db():
             conn.execute("ALTER TABLE checklist_items ADD COLUMN reference TEXT DEFAULT ''")
         if "prompt" not in cols:
             conn.execute("ALTER TABLE checklist_items ADD COLUMN prompt TEXT DEFAULT ''")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_results (
+                token      TEXT PRIMARY KEY,
+                payload    TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +279,38 @@ def backfill_prompts():
                 "UPDATE checklist_items SET prompt = ? WHERE id = ?",
                 (default_prompt, row["id"]),
             )
+
+
+def store_pending_result(payload: dict, ttl: int = 7200) -> str:
+    """Store result payload in DB, return a short random token."""
+    token = secrets.token_urlsafe(32)
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO pending_results (token, payload, created_at) VALUES (?, ?, ?)",
+            (token, json.dumps(payload), int(time.time())),
+        )
+        # Clean up expired results (older than ttl)
+        conn.execute(
+            "DELETE FROM pending_results WHERE created_at < ?",
+            (int(time.time()) - ttl,),
+        )
+    return token
+
+
+def fetch_pending_result(token: str, ttl: int = 7200) -> dict | None:
+    """Fetch and delete a pending result by token. Returns None if expired/missing."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT payload, created_at FROM pending_results WHERE token = ?",
+            (token,),
+        ).fetchone()
+        if not row:
+            return None
+        if int(time.time()) - row["created_at"] > ttl:
+            conn.execute("DELETE FROM pending_results WHERE token = ?", (token,))
+            return None
+        # Keep the row so page refresh still works within TTL
+    return json.loads(row["payload"])
 
 
 init_templates_db()
