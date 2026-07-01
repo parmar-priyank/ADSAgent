@@ -45,8 +45,6 @@ def login_user_page(request: Request):
     user = _get_session(request)
     if user and user.get("role") == "user":
         return RedirectResponse(url="/user_home", status_code=302)
-    if user and user.get("role") == "admin":
-        return RedirectResponse(url="/admin", status_code=302)
     response = templates.TemplateResponse(request, "login_user.html", _login_ctx())
     response.headers.update(_NO_CACHE)
     return response
@@ -86,6 +84,8 @@ def login_admin_page(request: Request):
     user = _get_session(request)
     if user and user.get("role") == "admin":
         return RedirectResponse(url="/admin", status_code=302)
+    # If a user (non-admin) session is active, show admin login anyway —
+    # don't redirect them away, they may want to log in as admin separately.
     response = templates.TemplateResponse(request, "login_admin.html", _login_ctx())
     response.headers.update(_NO_CACHE)
     return response
