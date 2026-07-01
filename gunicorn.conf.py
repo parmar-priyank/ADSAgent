@@ -9,9 +9,9 @@ bind = "unix:/run/adsagent/gunicorn.sock"
 # Worker class — uvicorn workers handle async FastAPI correctly
 worker_class = "uvicorn.workers.UvicornWorker"
 
-# 2 workers per CPU core is the standard starting point for I/O-bound apps.
-# Adjust down if the server has very little RAM (each worker ~150-200 MB).
-workers = multiprocessing.cpu_count() * 2
+# (2 × cores) + 1 is the sweet spot for async I/O-bound apps.
+# Server: 2 cores, ~128 MB/worker → 5 workers ≈ 640 MB total, well within 3.8 GB.
+workers = (multiprocessing.cpu_count() * 2) + 1
 
 # Restart a worker after this many requests to prevent memory leaks
 max_requests = 1000
