@@ -281,6 +281,22 @@ def backfill_prompts():
             )
 
 
+def _cleanup_tmp_xlsx(ttl: int = 7200):
+    """Delete xlsx temp files older than ttl seconds from tmp_xlsx/."""
+    import os
+    xlsx_dir = os.path.join(os.path.dirname(__file__), "..", "tmp_xlsx")
+    if not os.path.isdir(xlsx_dir):
+        return
+    cutoff = time.time() - ttl
+    for fname in os.listdir(xlsx_dir):
+        fpath = os.path.join(xlsx_dir, fname)
+        try:
+            if os.path.isfile(fpath) and os.path.getmtime(fpath) < cutoff:
+                os.unlink(fpath)
+        except OSError:
+            pass
+
+
 def store_pending_result(payload: dict, ttl: int = 7200) -> str:
     """Store result payload in DB, return a short random token."""
     token = secrets.token_urlsafe(32)
@@ -289,11 +305,13 @@ def store_pending_result(payload: dict, ttl: int = 7200) -> str:
             "INSERT INTO pending_results (token, payload, created_at) VALUES (?, ?, ?)",
             (token, json.dumps(payload), int(time.time())),
         )
-        # Clean up expired results (older than ttl)
+        # Clean up expired DB rows
         conn.execute(
             "DELETE FROM pending_results WHERE created_at < ?",
             (int(time.time()) - ttl,),
         )
+    # Clean up orphaned xlsx temp files at the same time
+    _cleanup_tmp_xlsx(ttl)
     return token
 
 

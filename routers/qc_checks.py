@@ -639,8 +639,20 @@ async def upload_zip(
     xlsx_blob = build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled,
                            email_results=email_results)
 
-    xlsx_b64   = base64.b64encode(xlsx_blob).decode()
-    dl_token   = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]})
+    # Save Excel to a temp file on disk instead of embedding it in the DB row.
+    # The signed token carries only the file path — a few bytes instead of megabytes.
+    import tempfile
+    xlsx_dir = os.path.join(os.path.dirname(__file__), "..", "tmp_xlsx")
+    os.makedirs(xlsx_dir, exist_ok=True)
+    xlsx_tmp = tempfile.NamedTemporaryFile(
+        suffix=".xlsx", dir=xlsx_dir, delete=False
+    )
+    try:
+        xlsx_tmp.write(xlsx_blob)
+    finally:
+        xlsx_tmp.close()
+
+    dl_token   = _signer.dumps({"xlsx_path": xlsx_tmp.name, "name": tpl["name"]})
     tpl_safe   = {k: v for k, v in tpl.items() if not isinstance(v, (bytes, bytearray))}
     yes_count  = sum(1 for r in checklist_rows if r.get("status") == "Yes")
     no_count   = sum(1 for r in checklist_rows if r.get("status") == "No")
@@ -718,9 +730,20 @@ async def checklist_save_edits(request: Request, _auth=Depends(require_login)):
                 "remark": row.get("remark", ""),
             }
 
-    xlsx_blob    = build_xlsx(rows, headers, note_text, filled=filled, email_results=email_results)
-    xlsx_b64     = base64.b64encode(xlsx_blob).decode()
-    new_dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl_name})
+    xlsx_blob = build_xlsx(rows, headers, note_text, filled=filled, email_results=email_results)
+
+    import tempfile
+    xlsx_dir = os.path.join(os.path.dirname(__file__), "..", "tmp_xlsx")
+    os.makedirs(xlsx_dir, exist_ok=True)
+    xlsx_tmp = tempfile.NamedTemporaryFile(
+        suffix=".xlsx", dir=xlsx_dir, delete=False
+    )
+    try:
+        xlsx_tmp.write(xlsx_blob)
+    finally:
+        xlsx_tmp.close()
+
+    new_dl_token = _signer.dumps({"xlsx_path": xlsx_tmp.name, "name": tpl_name})
     return {"dl_token": new_dl_token}
 
 
@@ -730,7 +753,17 @@ def checklist_download(token: str, _auth=Depends(require_login)):
         payload = _signer.loads(token, max_age=7200)
     except BadSignature:
         raise HTTPException(400, "Invalid or expired download token.")
-    xlsx_blob = base64.b64decode(payload["xlsx"])
+
+    # Support both old base64 tokens and new file-path tokens
+    if "xlsx_path" in payload:
+        xlsx_path = payload["xlsx_path"]
+        if not os.path.isfile(xlsx_path):
+            raise HTTPException(410, "Download file has expired. Please re-run the checklist.")
+        with open(xlsx_path, "rb") as f:
+            xlsx_blob = f.read()
+    else:
+        xlsx_blob = base64.b64decode(payload["xlsx"])
+
     safe_name = (payload.get("name") or "checklist").replace(" ", "_")
     return Response(
         content=xlsx_blob,
@@ -769,8 +802,18 @@ def checklist_confirm(
 
     if dl_token and record:
         try:
-            payload    = _signer.loads(dl_token, max_age=7200)
-            xlsx_bytes = base64.b64decode(payload["xlsx"])
+            payload = _signer.loads(dl_token, max_age=7200)
+            if "xlsx_path" in payload:
+                xlsx_path = payload["xlsx_path"]
+                with open(xlsx_path, "rb") as f:
+                    xlsx_bytes = f.read()
+                # Clean up the temp file now that it's been saved to DB
+                try:
+                    os.unlink(xlsx_path)
+                except OSError:
+                    pass
+            else:
+                xlsx_bytes = base64.b64decode(payload["xlsx"])
             db.save_qc_excel(record["id"], xlsx_bytes)
             db.add_qc_version(
                 quote_id=record["id"],
@@ -835,8 +878,17 @@ def checklist_save_draft(
 
     if dl_token and record:
         try:
-            payload    = _signer.loads(dl_token, max_age=7200)
-            xlsx_bytes = base64.b64decode(payload["xlsx"])
+            payload = _signer.loads(dl_token, max_age=7200)
+            if "xlsx_path" in payload:
+                xlsx_path = payload["xlsx_path"]
+                with open(xlsx_path, "rb") as f:
+                    xlsx_bytes = f.read()
+                try:
+                    os.unlink(xlsx_path)
+                except OSError:
+                    pass
+            else:
+                xlsx_bytes = base64.b64decode(payload["xlsx"])
             db.add_qc_version(
                 quote_id=record["id"],
                 xlsx_bytes=xlsx_bytes,
@@ -899,8 +951,21 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         "id": 0, "name": v.get("template_name", ""),
         "customer_label": "", "address_label": "", "job_label": "", "note_text": "",
     }
-    xlsx_b64 = base64.b64encode(bytes(v["excel_blob"])).decode() if v.get("excel_blob") else ""
-    dl_token = _signer.dumps({"xlsx": xlsx_b64, "name": tpl["name"]}) if xlsx_b64 else ""
+    # For revisiting saved versions, write the blob back to a temp file so the
+    # dl_token stays small (same pattern as the live checklist flow).
+    dl_token = ""
+    if v.get("excel_blob"):
+        import tempfile
+        xlsx_dir = os.path.join(os.path.dirname(__file__), "..", "tmp_xlsx")
+        os.makedirs(xlsx_dir, exist_ok=True)
+        xlsx_tmp = tempfile.NamedTemporaryFile(
+            suffix=".xlsx", dir=xlsx_dir, delete=False
+        )
+        try:
+            xlsx_tmp.write(bytes(v["excel_blob"]))
+        finally:
+            xlsx_tmp.close()
+        dl_token = _signer.dumps({"xlsx_path": xlsx_tmp.name, "name": tpl["name"]})
 
     yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
     no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")

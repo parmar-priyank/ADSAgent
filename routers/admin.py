@@ -414,17 +414,23 @@ async def admin_qc_version_save(request: Request, version_id: int, user=Depends(
 @router.get("/db/download")
 def db_download(user=Depends(require_admin)):
     from db.connection import DB_PATH
-    # Use SQLite backup API for a consistent snapshot (safe even while live)
     src = sqlite3.connect(DB_PATH)
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
-    dst = sqlite3.connect(tmp.name)
-    src.backup(dst)
-    dst.close()
-    src.close()
+    try:
+        dst = sqlite3.connect(tmp.name)
+        src.backup(dst)
+        dst.close()
+        src.close()
+        with open(tmp.name, "rb") as f:
+            content = f.read()
+    finally:
+        # Always delete the temp file even if backup or read fails
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
     filename = os.path.basename(DB_PATH).replace(".db", "") + "_backup.db"
-    content = open(tmp.name, "rb").read()
-    os.unlink(tmp.name)
     return Response(
         content=content,
         media_type="application/octet-stream",
@@ -449,7 +455,14 @@ async def db_restore(request: Request, file: UploadFile = File(...), user=Depend
     if os.path.exists(DB_PATH):
         shutil.copy2(DB_PATH, backup_path)
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    tmp.write(data)
-    tmp.close()
-    shutil.move(tmp.name, DB_PATH)
+    try:
+        tmp.write(data)
+        tmp.close()
+        shutil.move(tmp.name, DB_PATH)
+    except Exception:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+        raise
     return RedirectResponse(url="/Excel?restored=1", status_code=303)
