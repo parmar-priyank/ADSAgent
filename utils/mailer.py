@@ -27,20 +27,11 @@ def _cfg():
     return host, port, user, password, from_
 
 
-@property
-def SMTP_CONFIGURED():
-    h, _, u, p, _ = _cfg()
-    return bool(h and u and p)
-
-
-# Module-level property won't work — use a function instead
 def _is_configured():
     h, _, u, p, _ = _cfg()
     return bool(h and u and p)
 
 
-# Keep SMTP_CONFIGURED as a simple check for import-time use in routes
-# (re-evaluated each time the function is called)
 class _SmtpConfiguredProxy:
     def __bool__(self):
         return _is_configured()

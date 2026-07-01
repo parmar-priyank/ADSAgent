@@ -156,12 +156,6 @@ def get_user(user_id: int):
     return _safe_user(row) if row else None
 
 
-def get_user_by_username(username: str):
-    with get_db() as conn:
-        row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    return _safe_user(row) if row else None
-
-
 def get_user_by_email(email: str):
     with get_db() as conn:
         row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()

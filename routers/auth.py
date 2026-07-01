@@ -10,6 +10,7 @@ Routes:
   POST /toggle-theme
 """
 import re
+import urllib.parse
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -151,7 +152,6 @@ def forgot_password_request(request: Request,
                             email: str = Form("", max_length=254),
                             via: str = Form("admin")):
     """Look up user by verified email, send OTP."""
-    import urllib.parse
     via = via if via in ("admin", "user") else "admin"
     clean_email = email.strip().lower()
     if not clean_email:
@@ -176,7 +176,6 @@ def forgot_password_verify(request: Request,
                            otp: str = Form("", max_length=6),
                            via: str = Form("admin")):
     """Step 2 — validate OTP only, then move to step 3 (reset form)."""
-    import urllib.parse
     via = via if via in ("admin", "user") else "admin"
     clean_email = email.strip().lower()
     email_enc = urllib.parse.quote(clean_email)
@@ -196,7 +195,6 @@ def forgot_password_reset(request: Request,
                           new_password: str = Form("", max_length=256),
                           via: str = Form("admin")):
     """Step 3 — set new password using the signed reset token."""
-    import urllib.parse
     via = via if via in ("admin", "user") else "admin"
     try:
         payload = _signer.loads(token, max_age=900)  # 15-minute window
@@ -239,7 +237,6 @@ def user_update_profile(request: Request,
     if not combined_phone and phone_number.strip():
         digits = "".join(c for c in phone_number if c.isdigit())[:15]
         combined_phone = f"{phone_country.strip()} {digits}".strip() if phone_country.strip() else digits
-    import urllib.parse
     err = adb.update_profile(user["id"], clean_name, clean_email, combined_phone[:30])
     if err:
         return RedirectResponse(url=f"/user_home?profile_error={urllib.parse.quote(err)}", status_code=303)
