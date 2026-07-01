@@ -137,20 +137,34 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 _signer = URLSafeTimedSerializer(SECRET_KEY)
 
 # ---------------------------------------------------------------------------
-# Session helpers
+# Session helpers — two separate cookies so admin and user can coexist
 # ---------------------------------------------------------------------------
-COOKIE = "session"
-SESSION_MAX_AGE = 86400 * 7  # 7 days
+COOKIE       = "session_user"   # used by user routes only
+COOKIE_ADMIN = "session_admin"  # used by admin routes only
+SESSION_MAX_AGE = 86400 * 7     # 7 days
+
+
+def _make_token(user: dict) -> str:
+    return _signer.dumps({
+        "id":       user["id"],
+        "username": user["username"],
+        "role":     user["role"],
+    })
+
+
+def _decode_token(token: str):
+    try:
+        return _signer.loads(token, max_age=SESSION_MAX_AGE)
+    except BadSignature:
+        return None
 
 
 def _set_session(response, user: dict):
-    token = _signer.dumps({
-        "id": user["id"],
-        "username": user["username"],
-        "role": user["role"],
-    })
+    """Write the correct cookie based on role."""
+    token  = _make_token(user)
+    cookie = COOKIE_ADMIN if user["role"] == "admin" else COOKIE
     response.set_cookie(
-        COOKIE, token,
+        cookie, token,
         httponly=True,
         samesite="lax",
         secure=COOKIE_SECURE,
@@ -159,14 +173,15 @@ def _set_session(response, user: dict):
 
 
 def _get_session(request: Request):
+    """Read the user cookie (non-admin)."""
     token = request.cookies.get(COOKIE)
-    if not token:
-        return None
-    try:
-        data = _signer.loads(token, max_age=SESSION_MAX_AGE)
-    except BadSignature:
-        return None
-    return data
+    return _decode_token(token) if token else None
+
+
+def _get_admin_session(request: Request):
+    """Read the admin cookie."""
+    token = request.cookies.get(COOKIE_ADMIN)
+    return _decode_token(token) if token else None
 
 
 class _AuthRedirect(Exception):
@@ -175,31 +190,23 @@ class _AuthRedirect(Exception):
 
 
 async def _auth_redirect_handler(request: Request, exc: _AuthRedirect):
-    r = RedirectResponse(url=exc.url, status_code=303)
-    if request.cookies.get(COOKIE):
-        try:
-            _signer.loads(request.cookies.get(COOKIE), max_age=SESSION_MAX_AGE)
-        except BadSignature:
-            r.delete_cookie(COOKIE)
-    return r
+    return RedirectResponse(url=exc.url, status_code=303)
 
 
 def require_login(request: Request):
+    """Guard for user-only routes — reads session_user cookie only."""
     user = _get_session(request)
-    if not user:
+    if not user or user.get("role") != "user":
         raise _AuthRedirect("/login")
-    if user.get("role") == "admin":
-        raise _AuthRedirect("/admin")
-    # Fetch fresh row so profile fields (full_name, email, phone) are current
     fresh = adb.get_user(user["id"])
     return fresh if fresh else user
 
 
 def require_admin(request: Request):
-    user = _get_session(request)
+    """Guard for admin-only routes — reads session_admin cookie only."""
+    user = _get_admin_session(request)
     if not user or user.get("role") != "admin":
         raise _AuthRedirect("/admin-dashboard")
-    # Always fetch fresh user row so profile fields (full_name, email, phone) are current
     fresh = adb.get_user(user["id"])
     return fresh if fresh else user
 

@@ -20,6 +20,7 @@ from config import (
     _NO_CACHE,
     _POST_ONLY_PATHS,
     _get_session,
+    _get_admin_session,
     _login_ctx,
     _resolve_theme,
     _set_session,
@@ -28,6 +29,7 @@ from config import (
     require_login,
     templates,
     COOKIE,
+    COOKIE_ADMIN,
 )
 from utils.mailer import send_otp_email, SMTP_CONFIGURED
 from fastapi.responses import JSONResponse
@@ -45,6 +47,7 @@ def login_user_page(request: Request):
     user = _get_session(request)
     if user and user.get("role") == "user":
         return RedirectResponse(url="/user_home", status_code=302)
+    # Never auto-redirect to admin even if admin cookie exists
     response = templates.TemplateResponse(request, "login_user.html", _login_ctx())
     response.headers.update(_NO_CACHE)
     return response
@@ -81,11 +84,9 @@ def login_user_post(
 @router.get("/admin-dashboard", response_class=HTMLResponse)
 def login_admin_page(request: Request):
     """Secret admin login — URL not publicly linked anywhere."""
-    user = _get_session(request)
+    user = _get_admin_session(request)
     if user and user.get("role") == "admin":
         return RedirectResponse(url="/admin", status_code=302)
-    # If a user (non-admin) session is active, show admin login anyway —
-    # don't redirect them away, they may want to log in as admin separately.
     response = templates.TemplateResponse(request, "login_admin.html", _login_ctx())
     response.headers.update(_NO_CACHE)
     return response
@@ -121,10 +122,12 @@ def login_admin_post(
 
 @router.get("/logout")
 def logout(request: Request):
-    user = _get_session(request)
-    dest = "/admin-dashboard" if (user and user.get("role") == "admin") else "/login"
+    # Determine which panel triggered logout based on which cookie is present
+    admin_user = _get_admin_session(request)
+    dest = "/admin-dashboard" if admin_user else "/login"
     response = RedirectResponse(url=dest, status_code=303)
     response.delete_cookie(COOKIE)
+    response.delete_cookie(COOKIE_ADMIN)
     return response
 
 
