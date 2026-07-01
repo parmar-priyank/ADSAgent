@@ -17,8 +17,8 @@ workers = multiprocessing.cpu_count() * 2
 max_requests = 1000
 max_requests_jitter = 100
 
-# Kill a worker that takes longer than 120 s on one request (large ZIP/PDF uploads)
-timeout = 120
+# Kill a worker that takes longer than 300 s on one request (large ZIP/PDF uploads + AI processing)
+timeout = 300
 
 # Keep idle worker-to-Nginx connections alive for 5 s
 keepalive = 5
