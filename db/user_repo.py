@@ -206,16 +206,32 @@ def verify_otp(user_id: int, purpose: str, otp: str) -> bool:
     return True
 
 
-def update_profile(user_id: int, full_name: str, email: str, phone: str):
+def update_profile(user_id: int, full_name: str, email: str, phone: str) -> str | None:
+    """Update profile. Returns an error string if email/phone already taken, else None."""
     current = get_user(user_id)
-    email_changed = (email or None) != (current.get("email") if current else None)
+    clean_email = email or None
+    clean_phone = phone or None
     with get_db() as conn:
+        if clean_email:
+            row = conn.execute(
+                "SELECT id FROM users WHERE email=? AND id!=?", (clean_email, user_id)
+            ).fetchone()
+            if row:
+                return "This email address is already used by another account."
+        if clean_phone:
+            row = conn.execute(
+                "SELECT id FROM users WHERE phone=? AND id!=?", (clean_phone, user_id)
+            ).fetchone()
+            if row:
+                return "This phone number is already used by another account."
+        email_changed = clean_email != (current.get("email") if current else None)
         conn.execute(
             "UPDATE users SET full_name=?, email=?, phone=?, email_verified=? WHERE id=?",
-            (full_name or None, email or None, phone or None,
+            (full_name or None, clean_email, clean_phone,
              0 if email_changed else (current.get("email_verified", 0) if current else 0),
              user_id),
         )
+    return None
 
 
 def get_user_theme(user_id: int) -> str | None:

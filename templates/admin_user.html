@@ -21,78 +21,101 @@
 </div>
 {% endif %}
 
-<!-- Profile header card -->
-<div class="dash-card" style="margin-bottom:16px;">
-  <div class="dash-card-body" style="padding:20px 24px;">
-    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+<!-- Profile header -->
+<div style="display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start;margin-bottom:16px;">
 
-      <!-- Avatar -->
-      <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;
+  <!-- Left: profile card -->
+  <div class="dash-card" style="margin-bottom:0;">
+    <div class="dash-card-body" style="padding:24px 20px;text-align:center;">
+      <div style="width:64px;height:64px;border-radius:50%;
                   background:linear-gradient(135deg,var(--brand) 0%,#e88c10 100%);
-                  color:#fff;font-size:22px;font-weight:800;
+                  color:#fff;font-size:24px;font-weight:800;
                   display:flex;align-items:center;justify-content:center;
-                  box-shadow:0 4px 14px rgba(222,93,24,.25);">
+                  margin:0 auto 12px;box-shadow:0 4px 14px rgba(222,93,24,.22);">
         {{ target.username[0]|upper }}
       </div>
+      <div style="font-size:15px;font-weight:700;color:var(--ink);">{{ target.full_name or target.username }}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px;">@{{ target.username }}</div>
+      <span class="badge badge-{{ target.role }}" style="font-size:10px;letter-spacing:.05em;margin-top:8px;display:inline-block;">{{ target.role | upper }}</span>
 
-      <!-- Name + badge -->
-      <div style="flex:1;min-width:120px;">
-        <div style="font-size:17px;font-weight:700;color:var(--ink);line-height:1.2;">
-          {{ target.full_name or target.username }}
+      <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px;">
+        {% set meta = [('User ID', '#'~target.id), ('Joined', target.created_at[:10] if target.created_at else '—'), ('QC Runs', qc_history|length)] %}
+        {% for label, val in meta %}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:12.5px;{% if not loop.last %}border-bottom:1px solid var(--line);{% endif %}">
+          <span style="color:var(--muted);font-weight:500;">{{ label }}</span>
+          <span style="color:{% if label == 'QC Runs' %}var(--brand){% else %}var(--ink){% endif %};font-weight:700;">{{ val }}</span>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px;">@{{ target.username }}</div>
-        <span class="badge badge-{{ target.role }}" style="font-size:10px;letter-spacing:.05em;margin-top:6px;display:inline-block;">{{ target.role | upper }}</span>
-      </div>
-
-      <!-- Stats chips -->
-      <div style="display:flex;gap:24px;flex-wrap:wrap;">
-        <div style="text-align:center;">
-          <div style="font-size:18px;font-weight:800;color:var(--ink);">#{{ target.id }}</div>
-          <div style="font-size:11px;color:var(--muted);font-weight:500;">User ID</div>
+        {% endfor %}
+        {% if target.email %}
+        <div style="padding:6px 0;border-top:1px solid var(--line);margin-top:2px;text-align:left;">
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Email</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:12px;color:var(--ink);word-break:break-all;">{{ target.email }}</span>
+            {% if target.email_verified %}
+            <span style="background:#dcfce7;color:#16a34a;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">&#10003; Verified</span>
+            {% else %}
+            <span style="background:#fef9c3;color:#854d0e;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">Unverified</span>
+            {% endif %}
+          </div>
         </div>
-        <div style="text-align:center;">
-          <div style="font-size:18px;font-weight:800;color:var(--brand);">{{ qc_history|length }}</div>
-          <div style="font-size:11px;color:var(--muted);font-weight:500;">QC Runs</div>
+        {% endif %}
+        {% if target.phone %}
+        <div style="padding:6px 0;border-top:1px solid var(--line);text-align:left;">
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Phone</div>
+          <div style="font-size:12px;color:var(--ink);">{{ target.phone }}</div>
         </div>
-        <div style="text-align:center;">
-          <div style="font-size:15px;font-weight:700;color:var(--ink);">{{ target.created_at[:10] if target.created_at else '—' }}</div>
-          <div style="font-size:11px;color:var(--muted);font-weight:500;">Joined</div>
-        </div>
-      </div>
-
-      <!-- Delete button -->
-      {% if target.id != current_user.id %}
-      <form action="/admin/users/{{ target.id }}/delete" method="post"
-            onsubmit="return confirm('Permanently delete {{ target.username }}? This cannot be undone.');"
-            style="margin-left:auto;">
-        <button type="submit" class="link-btn danger" style="padding:6px 14px;font-size:12px;">Delete User</button>
-      </form>
-      {% endif %}
-
-    </div>
-
-    <!-- Contact info row -->
-    {% if target.email or target.phone %}
-    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:28px;flex-wrap:wrap;">
-      {% if target.email %}
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Email</span>
-        <span style="font-size:13px;color:var(--ink);">{{ target.email }}</span>
-        {% if target.email_verified %}
-        <span style="background:#dcfce7;color:#16a34a;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700;">&#10003; Verified</span>
-        {% else %}
-        <span style="background:#fef9c3;color:#854d0e;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700;">Unverified</span>
         {% endif %}
       </div>
-      {% endif %}
-      {% if target.phone %}
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Phone</span>
-        <span style="font-size:13px;color:var(--ink);">{{ target.phone }}</span>
+
+      {% if target.id != current_user.id %}
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <form action="/admin/users/{{ target.id }}/delete" method="post"
+              onsubmit="return confirm('Permanently delete {{ target.username }}? This cannot be undone.');">
+          <button type="submit" class="link-btn danger" style="width:100%;text-align:center;padding:7px 12px;font-size:12px;">Delete User</button>
+        </form>
       </div>
       {% endif %}
     </div>
-    {% endif %}
+  </div>
+
+  <!-- Right: actions -->
+  <div style="display:flex;flex-direction:column;gap:12px;">
+
+    <!-- Change Role -->
+    <div class="dash-card" style="margin-bottom:0;">
+      <div class="dash-card-body" style="padding:16px 20px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:10px;">Change Role</div>
+        {% if target.id != current_user.id %}
+        <form action="/admin/users/{{ target.id }}/change-role" method="post"
+              style="display:flex;gap:8px;align-items:center;">
+          <select name="new_role" style="flex:1;padding:7px 10px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);font-size:13px;">
+            <option value="user"  {% if target.role == 'user'  %}selected{% endif %}>User</option>
+            <option value="admin" {% if target.role == 'admin' %}selected{% endif %}>Admin</option>
+          </select>
+          <button type="submit" style="padding:7px 18px;font-size:13px;white-space:nowrap;">Save</button>
+        </form>
+        <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Promoting to <strong>Admin</strong> grants full dashboard access including user management and all records.</p>
+        {% else %}
+        <p style="font-size:13px;color:var(--muted);margin:0;">You cannot change your own role.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Reset Password -->
+    <div class="dash-card" style="margin-bottom:0;">
+      <div class="dash-card-body" style="padding:16px 20px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:10px;">Reset Password</div>
+        <form action="/admin/users/{{ target.id }}/change-password" method="post"
+              style="display:flex;gap:8px;align-items:center;">
+          <input type="password" name="new_password" required minlength="8"
+                 placeholder="New password (min. 8 characters)"
+                 style="flex:1;padding:7px 10px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
+          <button type="submit" style="padding:7px 18px;font-size:13px;white-space:nowrap;">Set</button>
+        </form>
+        <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">User must use this password on their next login.</p>
+      </div>
+    </div>
+
   </div>
 </div>
 

@@ -232,7 +232,10 @@ def user_update_profile(request: Request,
     if not combined_phone and phone_number.strip():
         digits = "".join(c for c in phone_number if c.isdigit())[:15]
         combined_phone = f"{phone_country.strip()} {digits}".strip() if phone_country.strip() else digits
-    adb.update_profile(user["id"], clean_name, clean_email, combined_phone[:30])
+    import urllib.parse
+    err = adb.update_profile(user["id"], clean_name, clean_email, combined_phone[:30])
+    if err:
+        return RedirectResponse(url=f"/user_home?profile_error={urllib.parse.quote(err)}", status_code=303)
     ref = request.headers.get("referer", "/user_home")
     origin = str(request.base_url).rstrip("/")
     dest = ref if ref.startswith(origin) else "/user_home"
