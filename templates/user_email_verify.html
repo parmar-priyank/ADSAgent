@@ -179,10 +179,11 @@
       <!-- Attachments table -->
       <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;" id="eml-results-table">
         <colgroup>
-          <col style="width:28%;">
-          <col style="width:9%;">
-          <col style="width:14%;">
-          <col style="width:49%;">
+          <col style="width:26%;">
+          <col style="width:12%;">
+          <col style="width:16%;">
+          <col style="width:38%;">
+          <col style="width:8%;">
         </colgroup>
         <thead>
           <tr style="border-bottom:2px solid var(--line2);">
@@ -190,6 +191,7 @@
             <th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--ink);">Size</th>
             <th style="text-align:center;padding:8px 10px;font-weight:700;color:var(--ink);">Status</th>
             <th style="text-align:left;padding:8px 10px;font-weight:700;color:var(--ink);">Finding / Remark</th>
+            <th style="text-align:center;padding:8px 10px;font-weight:700;color:var(--ink);">Save</th>
           </tr>
         </thead>
         <tbody id="eml-results-tbody">
@@ -211,7 +213,7 @@
               {% endif %}
               <span title="{{ r.name }}">{{ r.name }}</span>
             </td>
-            <td style="padding:10px;color:var(--muted);white-space:nowrap;">{{ r.size_kb }} KB</td>
+            <td style="padding:10px;color:var(--muted);white-space:nowrap;font-size:12px;">{{ r.size_kb }} KB</td>
 
             <!-- Status cell: view badge + edit dropdown -->
             <td style="padding:10px;text-align:center;">
@@ -268,6 +270,19 @@
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                 </svg>
               </button>
+            </td>
+
+            <!-- Save cell: hidden in view mode, shown in edit mode -->
+            <td style="padding:10px;text-align:center;vertical-align:middle;">
+              <button type="button" class="eml-row-save-btn"
+                      style="display:none;padding:5px 10px;border:none;border-radius:6px;
+                             background:var(--brand);color:#fff;font-size:11px;font-weight:700;
+                             cursor:pointer;white-space:nowrap;"
+                      onclick="emlSaveRow(this)">
+                Save
+              </button>
+              <!-- View mode: checkmark shown after row is saved -->
+              <span class="eml-row-saved-tick" style="display:none;color:#16a34a;font-size:14px;font-weight:700;">&#10003;</span>
             </td>
           </tr>
           {% endfor %}
@@ -385,10 +400,12 @@ function emlEnterEditMode() {
   document.getElementById('eml-modify-btn').style.display = 'none';
   document.getElementById('eml-edit-bar').style.display = 'flex';
   document.querySelectorAll('#eml-results-tbody tr').forEach(function(tr) {
-    tr.querySelector('.eml-status-view').style.display    = 'none';
-    tr.querySelector('.eml-status-edit').style.display    = 'block';
-    tr.querySelector('.eml-remark-view').style.display    = 'none';
+    tr.querySelector('.eml-status-view').style.display     = 'none';
+    tr.querySelector('.eml-status-edit').style.display     = 'block';
+    tr.querySelector('.eml-remark-view').style.display     = 'none';
     tr.querySelector('.eml-remark-edit-btn').style.display = 'flex';
+    tr.querySelector('.eml-row-save-btn').style.display    = 'inline-block';
+    tr.querySelector('.eml-row-saved-tick').style.display  = 'none';
   });
 }
 
@@ -402,11 +419,67 @@ function emlCancelEditMode() {
     sel.value = tr.dataset.status;
     inp.value = tr.dataset.remark || '';
     tr.querySelector('.eml-remark-btn-preview').textContent = tr.dataset.remark || 'Click to add remark…';
-    tr.querySelector('.eml-status-view').style.display = 'block';
+    tr.querySelector('.eml-status-view').style.display     = 'block';
     sel.style.display = 'none';
-    tr.querySelector('.eml-remark-view').style.display = 'block';
+    tr.querySelector('.eml-remark-view').style.display     = 'block';
     tr.querySelector('.eml-remark-edit-btn').style.display = 'none';
+    tr.querySelector('.eml-row-save-btn').style.display    = 'none';
+    tr.querySelector('.eml-row-saved-tick').style.display  = 'none';
   });
+}
+
+// Save a single row inline — updates data attrs, badges, and syncs hidden fields
+function emlSaveRow(btn) {
+  var tr = btn.closest('tr');
+  var sel = tr.querySelector('.eml-status-edit');
+  var inp = tr.querySelector('.eml-remark-edit-val');
+  var newStatus = sel.value;
+  var newRemark = inp.value;
+
+  // Persist to data attrs
+  tr.dataset.status = newStatus;
+  tr.dataset.remark = newRemark;
+
+  // Update status badge
+  var _badges = {
+    'Yes': '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(52,211,153,.12);color:#16a34a;border:1px solid rgba(52,211,153,.35);">&#10003; Match</span>',
+    'No':  '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(248,113,113,.12);color:#dc2626;border:1px solid rgba(248,113,113,.35);">&#10007; Mismatch</span>',
+    'N/A': '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:var(--surface3);color:var(--muted);border:1px solid var(--line2);">— N/A</span>',
+  };
+  var statusView = tr.querySelector('.eml-status-view');
+  statusView.innerHTML = _badges[newStatus] || _badges['N/A'];
+
+  // Update remark view
+  var rv = tr.querySelector('.eml-remark-view');
+  rv.textContent = newRemark || '—';
+  rv.title = newRemark || '';
+  rv.style.cursor = newRemark ? 'pointer' : '';
+  tr.querySelector('.eml-remark-btn-preview').textContent = newRemark || 'Click to add remark…';
+
+  // Show tick, hide Save button briefly to confirm
+  btn.style.display = 'none';
+  var tick = tr.querySelector('.eml-row-saved-tick');
+  tick.style.display = 'inline';
+  setTimeout(function() {
+    tick.style.display = 'none';
+    btn.style.display = 'inline-block';
+  }, 1200);
+
+  // Recount summary chips
+  var yes = 0, no = 0, na = 0;
+  document.querySelectorAll('#eml-results-tbody tr').forEach(function(r) {
+    var s = r.dataset.status;
+    if (s === 'Yes') yes++; else if (s === 'No') no++; else na++;
+  });
+  document.getElementById('cnt-yes').textContent = yes;
+  document.getElementById('cnt-no').textContent  = no;
+  document.getElementById('cnt-na').textContent  = na;
+
+  // Sync hidden proceed field
+  var el = document.getElementById('eml-proceed-json');
+  if (el) el.value = JSON.stringify(_emlCollect());
+  var local = document.getElementById('eml-results-json');
+  if (local) local.value = JSON.stringify(_emlCollect());
 }
 
 function emlSaveEdits() {
@@ -446,6 +519,8 @@ function emlSaveEdits() {
     var editBtn = tr.querySelector('.eml-remark-edit-btn');
     editBtn.querySelector('.eml-remark-btn-preview').textContent = newRemark || 'Click to add remark…';
     editBtn.style.display = 'none';
+    tr.querySelector('.eml-row-save-btn').style.display   = 'none';
+    tr.querySelector('.eml-row-saved-tick').style.display = 'none';
 
     if (newStatus === 'Yes') yes++; else if (newStatus === 'No') no++; else na++;
   });
