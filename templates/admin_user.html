@@ -58,6 +58,37 @@
         </div>
       </div>
 
+      <!-- Contact info -->
+      {% if target.full_name or target.email or target.phone %}
+      <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px;text-align:left;">
+        {% if target.full_name %}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:12.5px;border-bottom:1px solid var(--line);">
+          <span style="color:var(--muted);font-weight:500;">Full Name</span>
+          <span style="color:var(--ink);font-weight:600;font-size:12px;text-align:right;max-width:130px;word-break:break-word;">{{ target.full_name }}</span>
+        </div>
+        {% endif %}
+        {% if target.email %}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:12.5px;border-bottom:1px solid var(--line);gap:8px;">
+          <span style="color:var(--muted);font-weight:500;white-space:nowrap;">Email</span>
+          <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink);text-align:right;word-break:break-all;">
+            {{ target.email }}
+            {% if target.email_verified %}
+            <span style="background:#dcfce7;color:#16a34a;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">&#10003; Verified</span>
+            {% else %}
+            <span style="background:#fef9c3;color:#854d0e;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">Unverified</span>
+            {% endif %}
+          </span>
+        </div>
+        {% endif %}
+        {% if target.phone %}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:12.5px;">
+          <span style="color:var(--muted);font-weight:500;">Phone</span>
+          <span style="color:var(--ink);font-size:12px;">{{ target.phone }}</span>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
       <!-- Delete -->
       {% if target.id != current_user.id %}
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
