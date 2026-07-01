@@ -24,6 +24,7 @@ from config import (
     _login_ctx,
     _resolve_theme,
     _set_session,
+    _signer,
     _verify_recaptcha,
     limiter,
     require_login,
