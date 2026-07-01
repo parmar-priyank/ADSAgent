@@ -11,127 +11,138 @@
 {% block content %}
 
 {% if success %}
-<div style="background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:10px;padding:11px 18px;margin-bottom:18px;font-size:13px;font-weight:500;">
-  &#10003; {{ success }}
-</div>
+<div style="background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:10px;padding:11px 18px;margin-bottom:18px;font-size:13px;font-weight:500;">&#10003; {{ success }}</div>
 {% endif %}
 {% if error %}
-<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:11px 18px;margin-bottom:18px;font-size:13px;font-weight:500;">
-  &#9888; {{ error }}
-</div>
+<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:11px 18px;margin-bottom:18px;font-size:13px;font-weight:500;">&#9888; {{ error }}</div>
 {% endif %}
 
-<div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start;margin-bottom:16px;">
+<!-- ── Top banner card ── -->
+<div class="dash-card" style="margin-bottom:16px;overflow:hidden;">
+  <!-- colour band -->
+  <div style="height:6px;background:linear-gradient(90deg,var(--brand) 0%,#e88c10 100%);"></div>
+  <div class="dash-card-body" style="padding:24px 28px;">
+    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
 
-  <!-- Left: profile card -->
-  <div class="dash-card" style="margin-bottom:0;">
-    <div class="dash-card-body" style="padding:24px 20px;text-align:center;">
-      <div style="width:64px;height:64px;border-radius:50%;
+      <!-- Avatar -->
+      <div style="width:72px;height:72px;border-radius:50%;flex-shrink:0;
                   background:linear-gradient(135deg,var(--brand) 0%,#e88c10 100%);
-                  color:#fff;font-size:24px;font-weight:800;
+                  color:#fff;font-size:28px;font-weight:800;
                   display:flex;align-items:center;justify-content:center;
-                  margin:0 auto 12px;box-shadow:0 4px 14px rgba(222,93,24,.22);">
+                  box-shadow:0 4px 16px rgba(222,93,24,.28);">
         {{ target.username[0]|upper }}
       </div>
-      <div style="font-size:15px;font-weight:700;color:var(--ink);">{{ target.full_name or target.username }}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px;">@{{ target.username }}</div>
-      <span class="badge badge-{{ target.role }}" style="font-size:10px;letter-spacing:.05em;margin-top:8px;display:inline-block;">{{ target.role | upper }}</span>
 
-      <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px;text-align:left;">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:12.5px;border-bottom:1px solid var(--line);">
-          <span style="color:var(--muted);font-weight:500;">User ID</span>
-          <span style="color:var(--ink);font-weight:700;">#{{ target.id }}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:12.5px;border-bottom:1px solid var(--line);">
-          <span style="color:var(--muted);font-weight:500;">Joined</span>
-          <span style="color:var(--ink);font-weight:600;">{{ target.created_at[:10] if target.created_at else '—' }}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:12.5px;">
-          <span style="color:var(--muted);font-weight:500;">QC Runs</span>
-          <span style="background:var(--brand);color:#fff;border-radius:20px;padding:1px 10px;font-size:11px;font-weight:700;">{{ qc_history|length }}</span>
-        </div>
-
-        {% if target.email %}
-        <div style="padding:8px 0;border-top:1px solid var(--line);margin-top:4px;">
-          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Email</div>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:12px;color:var(--ink);word-break:break-all;">{{ target.email }}</span>
-            {% if target.email_verified %}
-            <span style="background:#dcfce7;color:#16a34a;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">&#10003; Verified</span>
-            {% else %}
-            <span style="background:#fef9c3;color:#854d0e;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">Unverified</span>
-            {% endif %}
-          </div>
-        </div>
-        {% endif %}
-
-        {% if target.phone %}
-        <div style="padding:8px 0;border-top:1px solid var(--line);">
-          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Phone</div>
-          <div style="font-size:12px;color:var(--ink);">{{ target.phone }}</div>
-        </div>
-        {% endif %}
+      <!-- Identity -->
+      <div style="flex:1;min-width:160px;">
+        <div style="font-size:19px;font-weight:800;color:var(--ink);line-height:1.15;">{{ target.full_name or target.username }}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">@{{ target.username }}</div>
+        <span class="badge badge-{{ target.role }}" style="font-size:10px;letter-spacing:.06em;margin-top:8px;display:inline-block;">{{ target.role | upper }}</span>
       </div>
 
+      <!-- Stat chips -->
+      <div style="display:flex;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;flex-shrink:0;">
+        <div style="padding:12px 20px;text-align:center;border-right:1px solid var(--line);">
+          <div style="font-size:17px;font-weight:800;color:var(--ink);">#{{ target.id }}</div>
+          <div style="font-size:10.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">User ID</div>
+        </div>
+        <div style="padding:12px 20px;text-align:center;border-right:1px solid var(--line);">
+          <div style="font-size:17px;font-weight:800;color:var(--brand);">{{ qc_history|length }}</div>
+          <div style="font-size:10.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">QC Runs</div>
+        </div>
+        <div style="padding:12px 20px;text-align:center;">
+          <div style="font-size:14px;font-weight:800;color:var(--ink);">{{ target.created_at[:10] if target.created_at else '—' }}</div>
+          <div style="font-size:10.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Joined</div>
+        </div>
+      </div>
+
+      <!-- Delete -->
       {% if target.id != current_user.id %}
-      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
-        <form action="/admin/users/{{ target.id }}/delete" method="post"
-              onsubmit="return confirm('Permanently delete {{ target.username }}? This cannot be undone.');">
-          <button type="submit" class="link-btn danger" style="width:100%;text-align:center;padding:7px 12px;font-size:12px;">Delete User</button>
-        </form>
+      <form action="/admin/users/{{ target.id }}/delete" method="post"
+            onsubmit="return confirm('Permanently delete {{ target.username }}? This cannot be undone.');">
+        <button type="submit" class="link-btn danger" style="padding:8px 16px;font-size:12.5px;">Delete User</button>
+      </form>
+      {% endif %}
+
+    </div>
+
+    <!-- Contact row -->
+    {% if target.email or target.phone %}
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);display:flex;gap:32px;flex-wrap:wrap;">
+      {% if target.email %}
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;">Email</span>
+        <span style="font-size:13px;color:var(--ink);">{{ target.email }}</span>
+        {% if target.email_verified %}
+        <span style="background:#dcfce7;color:#16a34a;border-radius:20px;padding:2px 9px;font-size:10.5px;font-weight:700;">&#10003; Verified</span>
+        {% else %}
+        <span style="background:#fef9c3;color:#854d0e;border-radius:20px;padding:2px 9px;font-size:10.5px;font-weight:700;">Unverified</span>
+        {% endif %}
       </div>
+      {% endif %}
+      {% if target.phone %}
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;">Phone</span>
+        <span style="font-size:13px;color:var(--ink);">{{ target.phone }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Action cards ── -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+
+  <!-- Change Role -->
+  <div class="dash-card" style="margin-bottom:0;">
+    <div class="dash-card-body" style="padding:20px 22px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <div style="width:30px;height:30px;border-radius:8px;background:rgba(222,93,24,.1);display:flex;align-items:center;justify-content:center;font-size:14px;">🔑</div>
+        <span style="font-size:13px;font-weight:700;color:var(--ink);">Change Role</span>
+      </div>
+      {% if target.id != current_user.id %}
+      <form action="/admin/users/{{ target.id }}/change-role" method="post"
+            style="display:flex;gap:8px;align-items:center;">
+        <select name="new_role" style="flex:1;padding:8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;">
+          <option value="user"  {% if target.role == 'user'  %}selected{% endif %}>User</option>
+          <option value="admin" {% if target.role == 'admin' %}selected{% endif %}>Admin</option>
+        </select>
+        <button type="submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Save</button>
+      </form>
+      <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5;">Promoting to <strong>Admin</strong> grants full dashboard access including user management and all records.</p>
+      {% else %}
+      <p style="font-size:13px;color:var(--muted);margin:0;">You cannot change your own role.</p>
       {% endif %}
     </div>
   </div>
 
-  <!-- Right: actions -->
-  <div style="display:flex;flex-direction:column;gap:12px;">
-
-    <!-- Change Role -->
-    <div class="dash-card" style="margin-bottom:0;">
-      <div class="dash-card-body" style="padding:16px 20px;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:10px;">Change Role</div>
-        {% if target.id != current_user.id %}
-        <form action="/admin/users/{{ target.id }}/change-role" method="post"
-              style="display:flex;gap:8px;align-items:center;">
-          <select name="new_role" style="flex:1;padding:7px 10px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);font-size:13px;">
-            <option value="user"  {% if target.role == 'user'  %}selected{% endif %}>User</option>
-            <option value="admin" {% if target.role == 'admin' %}selected{% endif %}>Admin</option>
-          </select>
-          <button type="submit" style="padding:7px 18px;font-size:13px;white-space:nowrap;">Save</button>
-        </form>
-        <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Promoting to <strong>Admin</strong> grants full dashboard access including user management and all records.</p>
-        {% else %}
-        <p style="font-size:13px;color:var(--muted);margin:0;">You cannot change your own role.</p>
-        {% endif %}
+  <!-- Reset Password -->
+  <div class="dash-card" style="margin-bottom:0;">
+    <div class="dash-card-body" style="padding:20px 22px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <div style="width:30px;height:30px;border-radius:8px;background:rgba(222,93,24,.1);display:flex;align-items:center;justify-content:center;font-size:14px;">🔒</div>
+        <span style="font-size:13px;font-weight:700;color:var(--ink);">Reset Password</span>
       </div>
+      <form action="/admin/users/{{ target.id }}/change-password" method="post"
+            style="display:flex;gap:8px;align-items:center;">
+        <input type="password" name="new_password" required minlength="8"
+               placeholder="New password (min. 8 characters)"
+               style="flex:1;padding:8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
+        <button type="submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Set</button>
+      </form>
+      <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5;">User must use this password on their next login. Minimum 8 characters.</p>
     </div>
-
-    <!-- Reset Password -->
-    <div class="dash-card" style="margin-bottom:0;">
-      <div class="dash-card-body" style="padding:16px 20px;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:10px;">Reset Password</div>
-        <form action="/admin/users/{{ target.id }}/change-password" method="post"
-              style="display:flex;gap:8px;align-items:center;">
-          <input type="password" name="new_password" required minlength="8"
-                 placeholder="New password (min. 8 characters)"
-                 style="flex:1;padding:7px 10px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
-          <button type="submit" style="padding:7px 18px;font-size:13px;white-space:nowrap;">Set</button>
-        </form>
-        <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">User must use this password on their next login.</p>
-      </div>
-    </div>
-
   </div>
+
 </div>
 
-<!-- QC Activity -->
+<!-- ── QC Activity ── -->
 <div class="dash-card">
   <div class="dash-card-header">
     <div class="dash-card-title">QC Activity</div>
     <span class="dash-card-count">{{ qc_history|length }} run{{ 's' if qc_history|length != 1 }}</span>
   </div>
-
   {% if qc_history %}
   <div style="overflow-x:auto;">
     <table class="dash-table" style="width:100%;">
@@ -156,9 +167,7 @@
           <td style="font-weight:600;color:var(--ink);font-size:13px;">{{ qc.customer_name or '—' }}</td>
           <td style="font-size:12px;color:var(--ink2);">{{ qc.quote_number or '—' }}</td>
           <td style="font-size:12px;color:var(--ink2);">{{ qc.template_name or '—' }}</td>
-          <td style="font-size:12px;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ qc.zip_filename }}">
-            {{ qc.zip_filename or '—' }}
-          </td>
+          <td style="font-size:12px;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ qc.zip_filename }}">{{ qc.zip_filename or '—' }}</td>
           <td style="text-align:center;">
             <span style="display:inline-flex;gap:4px;align-items:center;">
               <span style="background:#16a34a;color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">&#10003; {{ qc.yes_count }}</span>
@@ -170,8 +179,7 @@
             {% if qc.confirmed_at %}{{ qc.confirmed_at[:16] }}{% elif qc.saved_at %}{{ qc.saved_at[:16] }}{% else %}—{% endif %}
           </td>
           <td style="text-align:right;" onclick="event.stopPropagation();">
-            <a href="/admin/qc-version/{{ qc.id }}"
-               style="font-size:12px;font-weight:600;color:var(--brand);text-decoration:none;">View &rsaquo;</a>
+            <a href="/admin/qc-version/{{ qc.id }}" style="font-size:12px;font-weight:600;color:var(--brand);text-decoration:none;">View &rsaquo;</a>
           </td>
         </tr>
         {% endfor %}
