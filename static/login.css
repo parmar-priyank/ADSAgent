@@ -20,6 +20,7 @@
   height: 100%;
   object-fit: cover;
   object-position: center;
+  background: #0a0a0a;
 }
 .login-bg-overlay {
   position: absolute; inset: 0;

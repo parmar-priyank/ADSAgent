@@ -133,12 +133,14 @@ def logout(request: Request):
 
 @router.get("/forgot-password", response_class=HTMLResponse)
 def forgot_password_page(request: Request, error: str = None, success: str = None,
-                         step: str = "request", via: str = "admin", email: str = ""):
+                         step: str = "request", via: str = "admin",
+                         email: str = "", token: str = ""):
     return templates.TemplateResponse(request, "forgot_password.html", {
         "error": error, "success": success, "step": step,
         "smtp_configured": bool(SMTP_CONFIGURED),
         "via": via,
         "saved_email": email,
+        "reset_token": token,
     })
 
 
@@ -171,28 +173,48 @@ def forgot_password_request(request: Request,
 def forgot_password_verify(request: Request,
                            email: str = Form("", max_length=254),
                            otp: str = Form("", max_length=6),
-                           new_password: str = Form("", max_length=256),
                            via: str = Form("admin")):
+    """Step 2 — validate OTP only, then move to step 3 (reset form)."""
     import urllib.parse
     via = via if via in ("admin", "user") else "admin"
     clean_email = email.strip().lower()
     email_enc = urllib.parse.quote(clean_email)
     user = adb.get_user_by_email(clean_email)
-    if not user:
+    if not user or not adb.verify_otp(user["id"], "reset", otp.strip()):
         return RedirectResponse(url=f"/forgot-password?step=otp&via={via}&email={email_enc}&error=Invalid+or+expired+OTP.", status_code=303)
-    if not adb.verify_otp(user["id"], "reset", otp.strip()):
-        return RedirectResponse(url=f"/forgot-password?step=otp&via={via}&email={email_enc}&error=Invalid+or+expired+OTP.", status_code=303)
+    # OTP valid — issue a short-lived reset token and go to step 3
+    reset_token = _signer.dumps({"uid": user["id"], "purpose": "reset"})
+    token_enc = urllib.parse.quote(reset_token, safe="")
+    return RedirectResponse(url=f"/forgot-password?step=reset&via={via}&email={email_enc}&token={token_enc}", status_code=303)
+
+
+@router.post("/forgot-password/reset")
+@limiter.limit("10/minute")
+def forgot_password_reset(request: Request,
+                          token: str = Form("", max_length=500),
+                          new_password: str = Form("", max_length=256),
+                          via: str = Form("admin")):
+    """Step 3 — set new password using the signed reset token."""
+    import urllib.parse
+    via = via if via in ("admin", "user") else "admin"
+    try:
+        payload = _signer.loads(token, max_age=900)  # 15-minute window
+        assert payload.get("purpose") == "reset"
+        uid = payload["uid"]
+    except Exception:
+        return RedirectResponse(url=f"/forgot-password?via={via}&error=Reset+link+expired.+Please+start+again.", status_code=303)
     strong = (len(new_password) >= 8 and
               any(c.isupper() for c in new_password) and
               any(c.islower() for c in new_password) and
               any(c.isdigit() for c in new_password) and
               any(not c.isalnum() for c in new_password))
     if not strong:
+        token_enc = urllib.parse.quote(token, safe="")
         return RedirectResponse(
-            url=f"/forgot-password?step=otp&via={via}&email={email_enc}&error=Password+must+be+8%2B+chars+with+upper%2C+lower%2C+number+and+symbol.",
+            url=f"/forgot-password?step=reset&via={via}&token={token_enc}&error=Password+must+be+8%2B+chars+with+upper%2C+lower%2C+number+and+symbol.",
             status_code=303,
         )
-    adb.change_password(user["id"], new_password)
+    adb.change_password(uid, new_password)
     dest = "/admin-dashboard" if via == "admin" else "/login"
     return RedirectResponse(url=f"{dest}?success=Password+reset+successfully.", status_code=303)
 
