@@ -81,7 +81,12 @@ def upload_get(request: Request, id: int = None, user=Depends(require_email_veri
 
 @router.post("/user_upload", response_class=HTMLResponse)
 @limiter.limit("10/minute")
-async def upload(request: Request, file: UploadFile = File(...), user=Depends(require_email_verified)):
+async def upload(
+    request: Request,
+    file: UploadFile = File(...),
+    preferred_install_date: str = Form(""),
+    user=Depends(require_email_verified),
+):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Please upload a PDF file.")
 
@@ -109,6 +114,7 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
             "existing": existing_data,
             "pending_token": pending_token,
             "filename": file.filename,
+            "preferred_install_date": preferred_install_date.strip(),
         })
         resp.headers.update(_NO_CACHE)
         return resp
@@ -139,6 +145,7 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
         resp.headers.update(_NO_CACHE)
         return resp
 
+    data["preferred_install_date"] = preferred_install_date.strip()
     quote_id = db.save_extraction(file.filename, data)
     return RedirectResponse(url=f"/user_upload?id={quote_id}", status_code=303)
 
@@ -149,6 +156,7 @@ async def upload_confirm(
     action: str = Form(...),
     pending_token: str = Form(...),
     existing_id: int = Form(...),
+    preferred_install_date: str = Form(""),
     user=Depends(require_email_verified),
 ):
     if action == "keep":
@@ -193,6 +201,7 @@ async def upload_confirm(
         resp.headers.update(_NO_CACHE)
         return resp
 
+    data["preferred_install_date"] = preferred_install_date.strip()
     quote_id = db.save_extraction(filename, data)
     return RedirectResponse(url=f"/user_upload?id={quote_id}", status_code=303)
 

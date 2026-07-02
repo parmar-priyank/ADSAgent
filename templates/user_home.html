@@ -218,6 +218,22 @@
           <div class="filename" id="filename"></div>
           <input type="file" name="file" id="fileInput" accept="application/pdf" required>
         </label>
+
+        <div style="margin-top:16px;">
+          <label for="preferred_install_date" style="display:block;font-size:11px;font-weight:700;
+                 text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">
+            Preferred Installation Date <span style="font-weight:400;text-transform:none;">(optional)</span>
+          </label>
+          <input type="date" name="preferred_install_date" id="preferred_install_date"
+                 min="{{ today }}"
+                 style="width:100%;padding:10px 13px;border:1.5px solid var(--line2);border-radius:9px;
+                        font-size:14px;color:var(--ink);background:var(--surface2);outline:none;
+                        box-sizing:border-box;">
+          <div style="font-size:11px;color:var(--muted);margin-top:5px;">
+            Let us know if you'd like installation earlier or later than the date on your agreement.
+          </div>
+        </div>
+
         <button type="submit" style="width:100%;margin-top:14px;padding:13px;font-size:0.95rem;">
           Upload &amp; Extract
         </button>

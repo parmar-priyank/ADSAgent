@@ -254,6 +254,7 @@ def _index_context(user=None, **extra):
         "saved_templates": saved,
         "current_user": user,
         "theme": _resolve_theme(user) if user else "dark",
+        "today": datetime.now().strftime("%Y-%m-%d"),
     }
     base.update(extra)
     return base
@@ -266,7 +267,8 @@ def _login_ctx(error=None) -> dict:
 def _build_install_map(records: list) -> str:
     install_map: dict = {}
     for r in records:
-        raw = (r.get("install_date") or "").strip()
+        preferred = (r.get("preferred_install_date") or "").strip()
+        raw = preferred or (r.get("install_date") or "").strip()
         if not raw:
             continue
         dt = None
@@ -280,10 +282,11 @@ def _build_install_map(records: list) -> str:
             continue
         key = dt.strftime("%Y-%m-%d")
         install_map.setdefault(key, []).append({
-            "id":       r.get("id") or "",
-            "customer": r.get("customer_name") or "",
-            "quote":    r.get("quote_number")  or "",
-            "address":  r.get("delivery_address") or "",
+            "id":         r.get("id") or "",
+            "customer":   r.get("customer_name") or "",
+            "quote":      r.get("quote_number")  or "",
+            "address":    r.get("delivery_address") or "",
+            "preferred":  bool(preferred),
         })
     return json.dumps(install_map)
 

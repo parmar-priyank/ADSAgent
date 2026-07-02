@@ -43,7 +43,9 @@
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#aaa;margin-bottom:8px;">Quote No.</div>
       <div style="font-size:15px;font-weight:800;color:#1a1a1a;margin-bottom:14px;">{{ record['quote_number'] or '—' }}</div>
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#aaa;margin-bottom:5px;">Install Date</div>
-      <div style="font-size:14px;font-weight:700;color:#1a1a1a;">{{ record['install_date'] or '—' }}</div>
+      <div style="font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:14px;">{{ record['install_date'] or '—' }}</div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#aaa;margin-bottom:5px;">Preferred Date</div>
+      <div style="font-size:14px;font-weight:700;color:{{ '#c45010' if record['preferred_install_date'] else '#1a1a1a' }};">{{ record['preferred_install_date'] or '—' }}</div>
     </div>
 
     <!-- Payment breakdown -->

@@ -60,6 +60,7 @@
         <input type="hidden" name="action"        value="keep">
         <input type="hidden" name="pending_token" value="{{ pending_token }}">
         <input type="hidden" name="existing_id"   value="{{ existing.get('id','') }}">
+        <input type="hidden" name="preferred_install_date" value="{{ preferred_install_date or '' }}">
         <button type="submit" style="width:100%;padding:12px 16px;font-size:0.9rem;
                 background:var(--surface3);border:1px solid var(--line2);color:var(--ink);
                 border-radius:10px;font-weight:600;cursor:pointer;display:flex;
@@ -77,6 +78,7 @@
         <input type="hidden" name="action"        value="reextract">
         <input type="hidden" name="pending_token" value="{{ pending_token }}">
         <input type="hidden" name="existing_id"   value="{{ existing.get('id','') }}">
+        <input type="hidden" name="preferred_install_date" value="{{ preferred_install_date or '' }}">
         <button type="submit" id="reextract-btn"
                 style="width:100%;padding:12px 16px;font-size:0.9rem;
                        background:var(--brand);color:#fff;border:none;

@@ -17,6 +17,9 @@ QUOTE_FIELDS = [
     "system_price", "stc_incentive", "vic_rebate", "battery_rebate",
     "total_price", "deposit", "balance", "payment_terms", "install_date",
     "balance_due_date", "notes",
+    # User-requested installation date (set by customer at upload time,
+    # distinct from install_date which is AI-extracted from the PDF)
+    "preferred_install_date",
 ]
 
 
@@ -40,6 +43,8 @@ def init_db():
         cols = [r[1] for r in conn.execute("PRAGMA table_info(quotes)").fetchall()]
         if "qc_excel" not in cols:
             conn.execute("ALTER TABLE quotes ADD COLUMN qc_excel BLOB")
+        if "preferred_install_date" not in cols:
+            conn.execute("ALTER TABLE quotes ADD COLUMN preferred_install_date TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS qc_versions (
