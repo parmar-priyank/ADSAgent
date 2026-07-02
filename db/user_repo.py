@@ -201,23 +201,29 @@ def verify_otp(user_id: int, purpose: str, otp: str) -> bool:
 
 
 def update_profile(user_id: int, full_name: str, email: str, phone: str) -> str | None:
-    """Update profile. Returns an error string if email/phone already taken, else None."""
+    """Update profile. Saves whichever of email/phone are not taken by another
+    account, and returns a combined error string naming only the field(s) that
+    collided — a bad phone must not block saving a valid email, or vice versa.
+    """
     current = get_user(user_id)
     clean_email = email or None
     clean_phone = phone or None
+    errors = []
     with get_db() as conn:
         if clean_email:
             row = conn.execute(
                 "SELECT id FROM users WHERE email=? AND id!=?", (clean_email, user_id)
             ).fetchone()
             if row:
-                return "This email address is already used by another account."
+                errors.append("This email address is already used by another account.")
+                clean_email = current.get("email") if current else None
         if clean_phone:
             row = conn.execute(
                 "SELECT id FROM users WHERE phone=? AND id!=?", (clean_phone, user_id)
             ).fetchone()
             if row:
-                return "This phone number is already used by another account."
+                errors.append("This phone number is already used by another account.")
+                clean_phone = current.get("phone") if current else None
         email_changed = clean_email != (current.get("email") if current else None)
         conn.execute(
             "UPDATE users SET full_name=?, email=?, phone=?, email_verified=? WHERE id=?",
@@ -225,7 +231,7 @@ def update_profile(user_id: int, full_name: str, email: str, phone: str) -> str 
              0 if email_changed else (current.get("email_verified", 0) if current else 0),
              user_id),
         )
-    return None
+    return " ".join(errors) if errors else None
 
 
 def get_user_theme(user_id: int) -> str | None:
