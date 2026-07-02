@@ -234,6 +234,24 @@ def update_profile(user_id: int, full_name: str, email: str, phone: str) -> str 
     return " ".join(errors) if errors else None
 
 
+def save_email_only(user_id: int, email: str) -> str | None:
+    """Save just the email address, leaving name/phone untouched. Returns an
+    error string if the email is already used by another account, else None.
+    """
+    clean_email = email.strip()
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE email=? AND id!=?", (clean_email, user_id)
+        ).fetchone()
+        if row:
+            return "This email address is already used by another account."
+        conn.execute(
+            "UPDATE users SET email=?, email_verified=0 WHERE id=?",
+            (clean_email, user_id),
+        )
+    return None
+
+
 def get_user_theme(user_id: int) -> str | None:
     with get_db() as conn:
         row = conn.execute("SELECT theme FROM users WHERE id = ?", (user_id,)).fetchone()

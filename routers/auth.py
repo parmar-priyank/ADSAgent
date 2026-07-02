@@ -246,6 +246,21 @@ def user_update_profile(request: Request,
     return RedirectResponse(url=dest, status_code=303)
 
 
+@router.post("/user/email/save")
+def user_save_email_only(request: Request,
+                         email: str = Form("", max_length=254),
+                         user=Depends(require_login)):
+    """Save just the email address — used by the inline verify-email banner,
+    which must not require touching name/phone to unblock verification."""
+    clean_email = email.strip()
+    if not clean_email or not _EMAIL_RE.match(clean_email):
+        return JSONResponse({"ok": False, "error": "Please enter a valid email address."})
+    err = adb.save_email_only(user["id"], clean_email)
+    if err:
+        return JSONResponse({"ok": False, "error": err})
+    return JSONResponse({"ok": True})
+
+
 @router.post("/user/email/send-otp")
 def user_send_email_otp(request: Request, user=Depends(require_login)):
     email = user.get("email")
@@ -266,11 +281,11 @@ def user_verify_email_otp(request: Request,
                            otp: str = Form(..., max_length=6),
                            user=Depends(require_login)):
     if not otp.strip().isdigit() or len(otp.strip()) != 6:
-        return RedirectResponse(url="/user_home?profile_error=Invalid+OTP+format.", status_code=303)
+        return JSONResponse({"ok": False, "error": "Invalid OTP format."})
     if not adb.verify_otp(user["id"], "verify", otp.strip()):
-        return RedirectResponse(url="/user_home?profile_error=Invalid+or+expired+OTP.", status_code=303)
+        return JSONResponse({"ok": False, "error": "Invalid or expired OTP."})
     adb.set_email_verified(user["id"])
-    return RedirectResponse(url="/user_home?profile_ok=Email+verified+successfully.", status_code=303)
+    return JSONResponse({"ok": True})
 
 
 @router.post("/user/change-password")

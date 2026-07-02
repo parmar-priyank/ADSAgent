@@ -175,8 +175,10 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
         cell.font = bold
         cell.alignment = center
         cell.border = BORDER
+    ws.row_dimensions[8].height = 20
 
     r = 9
+    MIN_ROW_HEIGHT = 30
 
     # ── Email Verification section (only when Step 2 results are present) ──────
     if email_results:
@@ -220,6 +222,7 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
             if ai_status and status != ai_status:
                 yn_c.fill = changed_fill
 
+            ws.row_dimensions[r].height = MIN_ROW_HEIGHT
             r += 1
 
     for it in items:
@@ -263,6 +266,8 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
             if ai_status and fv.get("status", "") != ai_status:
                 yn_cell.fill = changed_fill
 
+        if not is_section:
+            ws.row_dimensions[r].height = MIN_ROW_HEIGHT
         r += 1
 
     widths = {"A": 7.4, "B": 61.3, "C": 11.0, "D": 9.0, "E": 67.1}

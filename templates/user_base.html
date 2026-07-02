@@ -509,8 +509,15 @@
       }
       var fd = new FormData();
       fd.append('otp', otp);
-      fetch('/user/email/verify-otp', { method:'POST', body:fd, credentials:'same-origin', redirect:'manual' })
-        .then(function() { window.location.reload(); })
+      fetch('/user/email/verify-otp', { method:'POST', body:fd, credentials:'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(d) {
+          if (d.ok) {
+            window.location.reload();
+          } else {
+            msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent = d.error || 'Verification failed.';
+          }
+        })
         .catch(function() {
           msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent='Network error.';
         });
