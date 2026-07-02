@@ -207,13 +207,16 @@
             <td colspan="6">{{ row.text }}</td>
           </tr>
           {% else %}
+          {% set _changed = row.ai_status and row.status != row.ai_status %}
           <tr data-status="{{ row.status }}"
+              data-ai-status="{{ row.ai_status or '' }}"
               data-position="{{ row.position }}"
               data-sno="{{ row.sno }}"
               data-text="{{ row.text | e }}"
               data-reference="{{ row.reference or '' }}"
               data-prompt="{{ row.prompt or '' }}"
-              data-remark="{{ row.remark or '' | e }}">
+              data-remark="{{ row.remark or '' | e }}"
+              {% if _changed %}style="background:#fffbea;box-shadow:inset 3px 0 0 #f59e0b;"{% endif %}>
             <td class="checklist-sno-cell">{{ row.sno }}</td>
             <td>{{ row.text }}</td>
             <td class="checklist-ref-cell">{{ row.reference or '—' }}</td>
@@ -423,10 +426,23 @@
         prompt:     tr.dataset.prompt     || '',
         status:     statusEl ? statusEl.value : (tr.dataset.status || 'N/A'),
         remark:     remarkEl ? remarkEl.value : (tr.dataset.remark || ''),
+        ai_status:  tr.dataset.aiStatus   || '',
         is_section: false,
       });
     });
     return rows;
+  }
+
+  // Amber highlight reflects "differs from AI's original decision" — persists across saves/reloads
+  function _refreshChangedHighlight(tr) {
+    var aiStatus = tr.dataset.aiStatus || '';
+    if (aiStatus && tr.dataset.status !== aiStatus) {
+      tr.style.background = '#fffbea';
+      tr.style.boxShadow   = 'inset 3px 0 0 #f59e0b';
+    } else {
+      tr.style.background = '';
+      tr.style.boxShadow   = '';
+    }
   }
 
   // Push current rows + counts into all form hidden fields
@@ -542,8 +558,15 @@
   function enterEditMode() {
     _editMode = true;
     _card.classList.add('is-edit-mode');
+    document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
+      tr.dataset.savedStatus = tr.dataset.status;
+    });
     document.querySelectorAll('.status-edit').forEach(function(sel) {
-      sel.addEventListener('change', function() { sel.closest('tr').dataset.status = sel.value; });
+      sel.addEventListener('change', function() {
+        var tr = sel.closest('tr');
+        tr.dataset.status = sel.value;
+        _refreshChangedHighlight(tr);
+      });
     });
   }
 
@@ -551,11 +574,13 @@
     _editMode = false;
     _card.classList.remove('is-edit-mode');
     document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
+      tr.dataset.status = tr.dataset.savedStatus || tr.dataset.status;
       tr.querySelector('.status-edit').value = tr.dataset.status;
       var inp = tr.querySelector('.remark-edit');
       var btn = tr.querySelector('.remark-edit-btn');
       inp.value = tr.dataset.remark || '';
       btn.querySelector('.remark-btn-preview').textContent = tr.dataset.remark || '';
+      _refreshChangedHighlight(tr);
     });
   }
 
@@ -589,6 +614,7 @@
         tr.querySelector('.remark-view').textContent = newRemark;
         var btn = tr.querySelector('.remark-edit-btn');
         if (btn) btn.querySelector('.remark-btn-preview').textContent = newRemark;
+        _refreshChangedHighlight(tr);
       });
 
       var counts = _syncForms(rows);

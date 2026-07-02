@@ -202,6 +202,20 @@ def require_login(request: Request):
     return fresh if fresh else user
 
 
+def require_email_verified(request: Request):
+    """Guard for routes that require a verified email address.
+    Builds on require_login — redirects to user_home with a prompt if email is not verified.
+    """
+    user = _get_session(request)
+    if not user or user.get("role") != "user":
+        raise _AuthRedirect("/login")
+    fresh = adb.get_user(user["id"])
+    resolved = fresh if fresh else user
+    if not resolved.get("email_verified"):
+        raise _AuthRedirect("/user_home?verify_required=1")
+    return resolved
+
+
 def require_admin(request: Request):
     """Guard for admin-only routes — reads session_admin cookie only."""
     user = _get_admin_session(request)

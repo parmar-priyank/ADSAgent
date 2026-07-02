@@ -386,7 +386,11 @@ async def admin_qc_version_save(request: Request, version_id: int, user=Depends(
     filled = {}
     for row in rows:
         if not row.get("is_section") and row.get("position") is not None:
-            filled[row["position"]] = {"status": row.get("status", "N/A"), "remark": row.get("remark", "")}
+            filled[row["position"]] = {
+                "status": row.get("status", "N/A"),
+                "remark": row.get("remark", ""),
+                "ai_status": row.get("ai_status", ""),
+            }
 
     xlsx_blob = build_xlsx(rows, filled=filled)
     yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")

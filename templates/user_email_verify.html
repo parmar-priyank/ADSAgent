@@ -196,12 +196,14 @@
         </thead>
         <tbody id="eml-results-tbody">
           {% for r in results %}
+          {% set _changed = r.ai_status and r.status != r.ai_status %}
           <tr data-idx="{{ loop.index0 }}"
               data-name="{{ r.name | e }}"
               data-size="{{ r.size_kb }}"
               data-status="{{ r.status }}"
+              data-ai-status="{{ r.ai_status or '' }}"
               data-remark="{{ r.remark | e }}"
-              style="border-bottom:1px solid var(--line2);vertical-align:top;">
+              style="border-bottom:1px solid var(--line2);vertical-align:top;{% if _changed %}background:#fffbea;box-shadow:inset 3px 0 0 #f59e0b;{% endif %}">
             <td style="padding:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
               {% set ext = r.name.rsplit('.',1)[-1].lower() %}
               {% if ext == 'pdf' %}
@@ -379,13 +381,26 @@ function _emlCollect() {
     var sel = tr.querySelector('.eml-status-edit');
     var inp = tr.querySelector('.eml-remark-edit-val');
     rows.push({
-      name:    tr.dataset.name    || '',
-      size_kb: parseFloat(tr.dataset.size) || 0,
-      status:  sel ? sel.value : (tr.dataset.status || 'N/A'),
-      remark:  inp ? inp.value : (tr.dataset.remark || ''),
+      name:      tr.dataset.name    || '',
+      size_kb:   parseFloat(tr.dataset.size) || 0,
+      status:    sel ? sel.value : (tr.dataset.status || 'N/A'),
+      remark:    inp ? inp.value : (tr.dataset.remark || ''),
+      ai_status: tr.dataset.aiStatus || '',
     });
   });
   return rows;
+}
+
+// Amber highlight reflects "differs from AI's original decision" — persists across saves/reloads
+function _emlRefreshChangedHighlight(tr) {
+  var aiStatus = tr.dataset.aiStatus || '';
+  if (aiStatus && tr.dataset.status !== aiStatus) {
+    tr.style.background = '#fffbea';
+    tr.style.boxShadow   = 'inset 3px 0 0 #f59e0b';
+  } else {
+    tr.style.background = '';
+    tr.style.boxShadow   = '';
+  }
 }
 
 // Sync the hidden proceed field with latest edits, then submit
@@ -456,6 +471,8 @@ function emlSaveRow(btn) {
   rv.style.cursor = newRemark ? 'pointer' : '';
   tr.querySelector('.eml-remark-btn-preview').textContent = newRemark || 'Click to add remark…';
 
+  _emlRefreshChangedHighlight(tr);
+
   // Show tick, hide Save button briefly to confirm
   btn.style.display = 'none';
   var tick = tr.querySelector('.eml-row-saved-tick');
@@ -521,6 +538,8 @@ function emlSaveEdits() {
     editBtn.style.display = 'none';
     tr.querySelector('.eml-row-save-btn').style.display   = 'none';
     tr.querySelector('.eml-row-saved-tick').style.display = 'none';
+
+    _emlRefreshChangedHighlight(tr);
 
     if (newStatus === 'Yes') yes++; else if (newStatus === 'No') no++; else na++;
   });

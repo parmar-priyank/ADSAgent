@@ -30,6 +30,7 @@ from config import (
     _resolve_theme,
     limiter,
     require_login,
+    require_email_verified,
     templates,
 )
 
@@ -50,8 +51,11 @@ def root_redirect(request: Request):
 
 
 @router.get("/user_home", response_class=HTMLResponse)
-def home(request: Request, user=Depends(require_login)):
-    response = templates.TemplateResponse(request, "user_home.html", _index_context(user=user))
+def home(request: Request, verify_required: int = 0, user=Depends(require_login)):
+    ctx = _index_context(user=user)
+    if verify_required:
+        ctx["verify_required"] = True
+    response = templates.TemplateResponse(request, "user_home.html", ctx)
     response.headers.update(_NO_CACHE)
     return response
 
@@ -61,7 +65,7 @@ def home(request: Request, user=Depends(require_login)):
 # ---------------------------------------------------------------------------
 
 @router.get("/user_upload", response_class=HTMLResponse)
-def upload_get(request: Request, id: int = None, user=Depends(require_login)):
+def upload_get(request: Request, id: int = None, user=Depends(require_email_verified)):
     result = None
     if id is not None:
         record = db.get_quote(id)
@@ -77,7 +81,7 @@ def upload_get(request: Request, id: int = None, user=Depends(require_login)):
 
 @router.post("/user_upload", response_class=HTMLResponse)
 @limiter.limit("10/minute")
-async def upload(request: Request, file: UploadFile = File(...), user=Depends(require_login)):
+async def upload(request: Request, file: UploadFile = File(...), user=Depends(require_email_verified)):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Please upload a PDF file.")
 
@@ -126,6 +130,15 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(re
         resp.headers.update(_NO_CACHE)
         return resp
 
+    _key_fields = ("customer_name", "quote_number", "total_price", "billing_address")
+    if not any(str(data.get(f) or "").strip() for f in _key_fields):
+        resp = templates.TemplateResponse(
+            request, "user_home.html",
+            _index_context(user=user, error="No agreement data could be extracted from this PDF. Please upload a valid signed solar agreement."),
+        )
+        resp.headers.update(_NO_CACHE)
+        return resp
+
     quote_id = db.save_extraction(file.filename, data)
     return RedirectResponse(url=f"/user_upload?id={quote_id}", status_code=303)
 
@@ -136,7 +149,7 @@ async def upload_confirm(
     action: str = Form(...),
     pending_token: str = Form(...),
     existing_id: int = Form(...),
-    user=Depends(require_login),
+    user=Depends(require_email_verified),
 ):
     if action == "keep":
         db.pop_pending_pdf(pending_token)
@@ -167,6 +180,15 @@ async def upload_confirm(
         resp = templates.TemplateResponse(
             request, "user_home.html",
             _index_context(user=user, error="AI service error. Please try again in a moment."),
+        )
+        resp.headers.update(_NO_CACHE)
+        return resp
+
+    _key_fields = ("customer_name", "quote_number", "total_price", "billing_address")
+    if not any(str(data.get(f) or "").strip() for f in _key_fields):
+        resp = templates.TemplateResponse(
+            request, "user_home.html",
+            _index_context(user=user, error="No agreement data could be extracted from this PDF. Please upload a valid signed solar agreement."),
         )
         resp.headers.update(_NO_CACHE)
         return resp

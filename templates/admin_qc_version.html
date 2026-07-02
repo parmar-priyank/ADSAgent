@@ -137,7 +137,7 @@
     </thead>
     <tbody>
       {% for er in email_results %}
-      <tr style="border-top:1px solid #f0ece8;{% if loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}">
+      <tr style="border-top:1px solid #f0ece8;{% if er.ai_status and er.status != er.ai_status %}background:#fff7d6;{% elif loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}">
         <td style="padding:8px 16px;color:#1a1a1a;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ er.name }}">{{ er.name }}</td>
         <td style="padding:8px 12px;text-align:center;white-space:nowrap;">
           {% if er.status == 'Yes' %}
@@ -202,14 +202,16 @@
         <td colspan="4" style="background:#fdf0e8;color:#c45010;border-top:1px solid #f0ddd0;border-bottom:1px solid #f0ddd0;font-weight:700;font-size:11px;padding:8px 20px;letter-spacing:.06em;text-transform:uppercase;">{{ row.text }}</td>
       </tr>
       {% else %}
+      {% set _changed = row.ai_status and row.status != row.ai_status %}
       <tr data-position="{{ row.position }}"
           data-status="{{ row.status }}"
+          data-ai-status="{{ row.ai_status or '' }}"
           data-remark="{{ row.remark or '' | e }}"
           data-sno="{{ row.sno }}"
           data-text="{{ row.text | e }}"
           data-reference="{{ row.reference or '' }}"
           data-prompt="{{ row.prompt or '' }}"
-          style="border-top:1px solid #f0ece8;{% if loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}">
+          style="border-top:1px solid #f0ece8;{% if _changed %}background:#fffbea;border-left:3px solid #f59e0b;{% elif loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}">
         <!-- Sno -->
         <td style="font-weight:700;font-size:13px;color:#555;text-align:center;padding:8px 20px;vertical-align:middle;">{{ row.sno }}</td>
         <!-- Checklist item -->
@@ -317,15 +319,24 @@
   }
 
   function _markModified(row) {
-    row.dataset.modified = '1';
     row.style.background = '#fffbea';
     row.style.borderLeft = '3px solid #f59e0b';
   }
 
   function _clearModified(row) {
-    delete row.dataset.modified;
     row.style.background = '';
     row.style.borderLeft = '';
+  }
+
+  // Highlight is driven by "does status differ from the AI's original decision",
+  // not by "was it touched this session" — so it survives reloads and revisits.
+  function _refreshChangedHighlight(row) {
+    var aiStatus = row.dataset.aiStatus || '';
+    if (aiStatus && row.dataset.status !== aiStatus) {
+      _markModified(row);
+    } else {
+      _clearModified(row);
+    }
   }
 
   function enterEditMode() {
@@ -338,21 +349,14 @@
       row.querySelector('.remark-view').style.display = 'none';
       row.querySelector('.remark-edit').style.display = 'flex';
 
-      var origStatus = row.dataset.status;
-      var origRemark = row.dataset.remark || '';
+      // Snapshot the saved status so Cancel can restore it exactly —
+      // dataset.status gets mutated live as the dropdown changes below.
+      row.dataset.savedStatus = row.dataset.status;
 
       row.querySelector('.status-edit').addEventListener('change', function() {
         var tr = this.closest('tr');
         tr.dataset.status = this.value;
-        _markModified(tr);
-      });
-      row.querySelector('.remark-edit-input').addEventListener('input', function() {
-        var tr = this.closest('tr');
-        if (this.value !== origRemark) {
-          _markModified(tr);
-        } else if (tr.querySelector('.status-edit').value === origStatus) {
-          _clearModified(tr);
-        }
+        _refreshChangedHighlight(tr);
       });
     });
   }
@@ -362,13 +366,14 @@
     document.getElementById('edit-bar').style.display = 'none';
     document.getElementById('modify-btn').style.display = '';
     document.querySelectorAll('#qc-tbody tr[data-position]').forEach(function(row) {
+      row.dataset.status = row.dataset.savedStatus || row.dataset.status;
       row.querySelector('.status-edit').value = row.dataset.status;
       row.querySelector('.remark-edit-input').value = row.dataset.remark || '';
       row.querySelector('.status-view').style.display = '';
       row.querySelector('.status-edit').style.display = 'none';
       row.querySelector('.remark-view').style.display = '';
       row.querySelector('.remark-edit').style.display = 'none';
-      _clearModified(row);
+      _refreshChangedHighlight(row);
     });
   }
 
@@ -390,6 +395,7 @@
         prompt:    row.dataset.prompt || '',
         status:    newStatus,
         remark:    newRemark,
+        ai_status: row.dataset.aiStatus || '',
         is_section: false,
       });
     });
@@ -416,7 +422,6 @@
         var inp       = row.querySelector('.remark-edit-input');
         var newStatus = sel.value;
         var newRemark = inp.value;
-        var wasModified = row.dataset.modified === '1';
         row.dataset.status = newStatus;
         row.dataset.remark = newRemark;
 
@@ -434,11 +439,8 @@
           rv.style.display = '';
         }
 
-        // Keep amber highlight on modified rows after save so admins can spot changes
-        if (wasModified) {
-          row.style.background = '#fffbea';
-          row.style.borderLeft = '3px solid #f59e0b';
-        }
+        // Amber highlight reflects "differs from AI's original decision" — persists across saves/reloads
+        _refreshChangedHighlight(row);
       });
 
       document.getElementById('chip-yes').textContent = '✓ ' + data.yes_count + ' Yes';

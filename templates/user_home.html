@@ -23,7 +23,41 @@
     <div class="upload-loading-sub">Claude AI is reading your agreement &mdash; please wait</div>
   </div>
 
-  {% if not result %}
+  {% if verify_required or (not current_user.email_verified) %}
+  {# ── Email verification required banner ── #}
+  <div class="user-upload-wrap">
+    <div style="width:100%;max-width:620px;">
+      <div style="background:linear-gradient(135deg,#fff7ed 0%,#fef3c7 100%);border:1.5px solid #f59e0b;border-radius:14px;padding:28px 28px 24px;text-align:center;">
+        <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ef4444);display:grid;place-items:center;margin:0 auto 16px;box-shadow:0 4px 16px rgba(245,158,11,.3);">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+        </div>
+        <div style="font-size:18px;font-weight:800;color:#92400e;letter-spacing:-.02em;margin-bottom:8px;">Verify Your Email to Continue</div>
+        <div style="font-size:13px;color:#78350f;line-height:1.6;margin-bottom:20px;">
+          Your account requires email verification before you can upload agreements or start QC reviews.<br>
+          Open your profile, add your email address, and click <strong>Verify Email</strong>.
+        </div>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <button type="button"
+                  onclick="openUserProfileModal()"
+                  style="padding:11px 28px;background:#f59e0b;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:-.01em;"
+                  onmouseover="this.style.background='#d97706'" onmouseout="this.style.background='#f59e0b'">
+            Open Profile &amp; Verify
+          </button>
+        </div>
+        {% if not current_user.email %}
+        <div style="margin-top:14px;font-size:12px;color:#b45309;font-weight:500;">
+          &#9432; You haven't added an email address yet. Add it in your profile first.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if not result and current_user.email_verified %}
   {# ── Step 1: Upload ── #}
   <div class="user-upload-wrap">
 
@@ -197,12 +231,19 @@
       </div>
     </div>
 
+    {% set _has_data = result.get('customer_name') or result.get('quote_number') or result.get('total_price') %}
+    {% if _has_data %}
     <div style="text-align:center;margin:8px 0 32px;">
       <a href="/email-verify?quote_id={{ result.get('id','') }}"
          style="display:inline-block;padding:13px 48px;font-size:1rem;background:var(--brand);color:#fff;border-radius:10px;font-weight:700;text-decoration:none;letter-spacing:-.01em;">
         Start QC Review &rarr;
       </a>
     </div>
+    {% else %}
+    <div style="text-align:center;margin:8px 0 32px;padding:14px 24px;background:var(--surface2);border:1px solid var(--line2);border-radius:10px;color:var(--muted);font-size:13px;">
+      No agreement details were found in this PDF. Please upload a valid signed solar agreement.
+    </div>
+    {% endif %}
 
   </div>
   {% endif %}

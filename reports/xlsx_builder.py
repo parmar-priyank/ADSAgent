@@ -148,8 +148,9 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
     title_font = Font(name="Calibri", size=16, bold=True)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left = Alignment(horizontal="left", vertical="center", wrap_text=True)
-    section_fill = PatternFill("solid", fgColor="E8590C")
-    section_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    section_fill  = PatternFill("solid", fgColor="E8590C")
+    section_font  = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    changed_fill  = PatternFill("solid", fgColor="FFE58A")
 
     ws.merge_cells("A1:E1")
     c = ws.cell(1, 1, title)
@@ -194,9 +195,10 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
         r += 1
 
         for idx, er in enumerate(email_results, start=1):
-            name   = er.get("name", "")
-            status = er.get("status", "N/A")
-            remark = er.get("remark", "")
+            name      = er.get("name", "")
+            status    = er.get("status", "N/A")
+            ai_status = er.get("ai_status", "")
+            remark    = er.get("remark", "")
 
             sno_c    = ws.cell(r, 1, str(idx))
             text_c   = ws.cell(r, 2, name)
@@ -214,6 +216,9 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
             yn_c.alignment   = center
             remark_c.alignment = left
             prompt_c.alignment = left
+
+            if ai_status and status != ai_status:
+                yn_c.fill = changed_fill
 
             r += 1
 
@@ -254,6 +259,9 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
         if fv:
             yn_cell.value     = fv.get("status", "")
             remark_cell.value = fv.get("remark", "")
+            ai_status = fv.get("ai_status", "")
+            if ai_status and fv.get("status", "") != ai_status:
+                yn_cell.fill = changed_fill
 
         r += 1
 

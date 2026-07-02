@@ -49,7 +49,7 @@ from config import (
     _get_claude,
     _resolve_theme,
     _signer,
-    require_login,
+    require_email_verified,
     templates,
 )
 
@@ -259,7 +259,7 @@ def _match_attachment_with_claude(client, attachment: dict, reference_text: str)
 
 
 @router.get("/email-verify", response_class=HTMLResponse)
-def email_verify_page(request: Request, quote_id: str = "", user=Depends(require_login)):
+def email_verify_page(request: Request, quote_id: str = "", user=Depends(require_email_verified)):
     resp = templates.TemplateResponse(request, "user_email_verify.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
@@ -278,7 +278,7 @@ async def email_verify_post(
     request: Request,
     eml_file: UploadFile = File(...),
     quote_id: str = Form(""),
-    user=Depends(require_login),
+    user=Depends(require_email_verified),
 ):
     def _err(msg: str):
         resp = templates.TemplateResponse(request, "user_email_verify.html", {
@@ -356,6 +356,7 @@ async def email_verify_post(
         *[asyncio.to_thread(_match_attachment_with_claude, client, att, reference_text)
           for att in attachments]
     )
+    results = [{**r, "ai_status": r.get("status")} for r in results]
 
     resp = templates.TemplateResponse(request, "user_email_verify.html", {
         "current_user": user,
@@ -375,7 +376,7 @@ async def email_verify_post(
 # ---------------------------------------------------------------------------
 
 @router.get("/qc-check", response_class=HTMLResponse)
-def qc_check_page(request: Request, quote_id: str = "", user=Depends(require_login)):
+def qc_check_page(request: Request, quote_id: str = "", user=Depends(require_email_verified)):
     saved = tdb.list_templates()
     resp = templates.TemplateResponse(request, "user_qc.html", {
         "current_user": user,
@@ -394,7 +395,7 @@ def qc_check_page_with_email(
     request: Request,
     quote_id: str = Form(""),
     email_results_json: str = Form(""),
-    user=Depends(require_login),
+    user=Depends(require_email_verified),
 ):
     """Arrive from Step 2 (email verify) carrying the edited email results."""
     saved = tdb.list_templates()
@@ -421,7 +422,7 @@ async def upload_zip(
     quote_id: str = Form(""),
     template_id: int = Form(...),
     email_results_json: str = Form(""),
-    user=Depends(require_login),
+    user=Depends(require_email_verified),
 ):
     uid = user["id"]
     if uid in _active_jobs:
@@ -626,11 +627,12 @@ async def upload_zip(
     next_ns  = next(ns_iter, None)
     for i, item in enumerate(items):
         if item.get("is_section"):
-            checklist_rows.append({**item, "status": "", "remark": ""})
+            checklist_rows.append({**item, "status": "", "remark": "", "ai_status": ""})
         else:
             (_, _item), result = next_ns
             filled[item["position"]] = result
-            checklist_rows.append({**item, "status": result["status"], "remark": result["remark"]})
+            checklist_rows.append({**item, "status": result["status"], "remark": result["remark"],
+                                    "ai_status": result["status"]})
             next_ns = next(ns_iter, None)
 
     # Parse email verify results passed from Step 2 (may be empty if step was skipped)
@@ -691,7 +693,7 @@ async def upload_zip(
 # ---------------------------------------------------------------------------
 
 @router.get("/checklist-result", response_class=HTMLResponse)
-def checklist_result(request: Request, token: str, user=Depends(require_login)):
+def checklist_result(request: Request, token: str, user=Depends(require_email_verified)):
     payload = fetch_pending_result(token)
     if not payload:
         raise HTTPException(400, "Result link has expired. Please re-run the checklist.")
@@ -713,7 +715,7 @@ def checklist_result(request: Request, token: str, user=Depends(require_login)):
 
 
 @router.post("/checklist-save-edits")
-async def checklist_save_edits(request: Request, _auth=Depends(require_login)):
+async def checklist_save_edits(request: Request, _auth=Depends(require_email_verified)):
     body       = await request.json()
     rows       = body.get("rows", [])
     tpl        = body.get("tpl", {})
@@ -743,6 +745,7 @@ async def checklist_save_edits(request: Request, _auth=Depends(require_login)):
             filled[row["position"]] = {
                 "status": row.get("status", "N/A"),
                 "remark": row.get("remark", ""),
+                "ai_status": row.get("ai_status", ""),
             }
 
     xlsx_blob = build_xlsx(rows, headers, note_text, filled=filled, email_results=email_results)
@@ -763,7 +766,7 @@ async def checklist_save_edits(request: Request, _auth=Depends(require_login)):
 
 
 @router.get("/checklist-download", response_class=Response)
-def checklist_download(token: str, _auth=Depends(require_login)):
+def checklist_download(token: str, _auth=Depends(require_email_verified)):
     try:
         payload = _signer.loads(token, max_age=7200)
     except BadSignature:
@@ -803,7 +806,7 @@ def checklist_confirm(
     na_count: int = Form(0),
     rows_json: str = Form(""),
     email_results_json: str = Form(""),
-    user=Depends(require_login),
+    user=Depends(require_email_verified),
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
     zip_filename = zip_filename[:260].replace("\n", "").replace("\r", "")
@@ -879,7 +882,7 @@ def checklist_save_draft(
     na_count: int = Form(0),
     rows_json: str = Form(""),
     email_results_json: str = Form(""),
-    user=Depends(require_login),
+    user=Depends(require_email_verified),
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
     zip_filename = zip_filename[:260].replace("\n", "").replace("\r", "")
@@ -928,7 +931,7 @@ def checklist_save_draft(
 # ---------------------------------------------------------------------------
 
 @router.get("/user/history", response_class=HTMLResponse)
-def user_history(request: Request, user=Depends(require_login)):
+def user_history(request: Request, user=Depends(require_email_verified)):
     history = db.get_qc_history_for_user(user["id"])
     resp = templates.TemplateResponse(request, "user_history.html", {
         "current_user": user,
@@ -940,7 +943,7 @@ def user_history(request: Request, user=Depends(require_login)):
 
 
 @router.get("/user/qc-version/{version_id}", response_class=HTMLResponse)
-def user_qc_version_revisit(request: Request, version_id: int, user=Depends(require_login)):
+def user_qc_version_revisit(request: Request, version_id: int, user=Depends(require_email_verified)):
     with get_db() as conn:
         row = conn.execute(
             """SELECT qv.*, q.customer_name, q.quote_number, q.install_date
