@@ -273,10 +273,32 @@ def email_verify_page(request: Request, quote_id: str = "", user=Depends(require
     return resp
 
 
+def _decode_email_field(raw_val: str) -> str:
+    """Decode RFC-2047 encoded header (e.g. =?Windows-1252?Q?...?=) to plain text."""
+    from email.header import decode_header as _decode_header
+    if not raw_val:
+        return ""
+    parts = _decode_header(raw_val)
+    decoded = []
+    for part, enc in parts:
+        if isinstance(part, bytes):
+            decoded.append(part.decode(enc or "utf-8", errors="replace"))
+        else:
+            decoded.append(part)
+    return "".join(decoded).strip()
+
+
+def _extract_email_address(from_header: str) -> str:
+    """Pull just the bare address out of a From header for dedup matching."""
+    import email.utils as _eutils
+    _, addr = _eutils.parseaddr(from_header or "")
+    return addr.strip().lower()
+
+
 @router.post("/email-verify", response_class=HTMLResponse)
 async def email_verify_post(
     request: Request,
-    eml_file: UploadFile = File(...),
+    eml_files: list[UploadFile] = File(..., alias="eml_file"),
     quote_id: str = Form(""),
     user=Depends(require_email_verified),
 ):
@@ -289,44 +311,15 @@ async def email_verify_post(
             "error": msg,
             "email_subject": None,
             "email_from": None,
+            "emails": None,
         })
         resp.headers.update(_NO_CACHE)
         return resp
 
-    if not eml_file.filename.lower().endswith(".eml"):
-        return _err("Please upload a valid .eml file (Outlook email format).")
-
-    raw = await eml_file.read()
-    if len(raw) > 50 * 1024 * 1024:  # 50 MB cap for email files
-        return _err("Email file is too large. Maximum allowed size is 50 MB.")
-
-    # Extract email metadata
     import email as _email_mod
     import email.policy as _policy
-    from email.header import decode_header as _decode_header
-    msg = _email_mod.message_from_bytes(raw, policy=_policy.compat32)
 
-    def _decode_field(raw_val: str) -> str:
-        """Decode RFC-2047 encoded header (e.g. =?Windows-1252?Q?...?=) to plain text."""
-        if not raw_val:
-            return ""
-        parts = _decode_header(raw_val)
-        decoded = []
-        for part, enc in parts:
-            if isinstance(part, bytes):
-                decoded.append(part.decode(enc or "utf-8", errors="replace"))
-            else:
-                decoded.append(part)
-        return "".join(decoded).strip()
-
-    email_subject = _decode_field(msg.get("Subject", "")) or "(no subject)"
-    email_from    = _decode_field(msg.get("From", ""))    or "(unknown sender)"
-
-    attachments = _parse_eml(raw)
-    if not attachments:
-        return _err("No attachments found in this email. Please check the .eml file.")
-
-    # Build reference text from the linked quote
+    # Build reference text from the linked quote (shared across all emails)
     reference_text = ""
     if quote_id:
         try:
@@ -351,12 +344,63 @@ async def email_verify_post(
 
     client = _get_claude()
 
-    # Analyse all attachments concurrently
-    results = await asyncio.gather(
+    emails_meta = []   # [{subject, from, address}] — one per uploaded .eml
+    all_attachments = []  # flattened, each tagged with its source email index
+    for idx, eml_file in enumerate(eml_files):
+        if not eml_file.filename.lower().endswith(".eml"):
+            return _err(f"'{eml_file.filename}' is not a valid .eml file (Outlook email format).")
+
+        raw = await eml_file.read()
+        if len(raw) > 50 * 1024 * 1024:  # 50 MB cap per email file
+            return _err(f"'{eml_file.filename}' is too large. Maximum allowed size is 50 MB per email.")
+
+        msg = _email_mod.message_from_bytes(raw, policy=_policy.compat32)
+        subject = _decode_email_field(msg.get("Subject", "")) or "(no subject)"
+        from_hdr = _decode_email_field(msg.get("From", "")) or "(unknown sender)"
+        emails_meta.append({
+            "subject": subject,
+            "from": from_hdr,
+            "address": _extract_email_address(from_hdr),
+        })
+
+        attachments = _parse_eml(raw)
+        for att in attachments:
+            all_attachments.append((idx, att))
+
+    if not all_attachments:
+        noun = "email" if len(eml_files) == 1 else "emails"
+        return _err(f"No attachments found in the uploaded {noun}. Please check the .eml file(s).")
+
+    # Analyse all attachments (across all emails) concurrently
+    analysed = await asyncio.gather(
         *[asyncio.to_thread(_match_attachment_with_claude, client, att, reference_text)
-          for att in attachments]
+          for _, att in all_attachments]
     )
-    results = [{**r, "ai_status": r.get("status")} for r in results]
+
+    results = []
+    for (idx, _att), r in zip(all_attachments, analysed):
+        results.append({
+            **r,
+            "ai_status": r.get("status"),
+            "source_email": emails_meta[idx]["from"],
+            "source_subject": emails_meta[idx]["subject"],
+            "source_address": emails_meta[idx]["address"],
+        })
+
+    # Dedup exact duplicates: same sender address AND same attachment name.
+    # Different attachments from the same sender (e.g. contract vs warranty
+    # doc in separate emails) are kept — only true re-uploads collapse into
+    # a single unified answer.
+    seen_keys: set = set()
+    deduped = []
+    for r in results:
+        key = ((r.get("source_address") or ""), (r.get("name") or "").strip().lower())
+        if key[0] and key[1] and key in seen_keys:
+            continue
+        if key[0] and key[1]:
+            seen_keys.add(key)
+        deduped.append(r)
+    results = deduped
 
     resp = templates.TemplateResponse(request, "user_email_verify.html", {
         "current_user": user,
@@ -364,8 +408,11 @@ async def email_verify_post(
         "quote_id": quote_id,
         "results": list(results),
         "error": None,
-        "email_subject": email_subject,
-        "email_from": email_from,
+        # Backward-compatible top-level vars — reflect the first email when
+        # only one was uploaded (unchanged single-email behavior).
+        "email_subject": emails_meta[0]["subject"] if emails_meta else None,
+        "email_from": emails_meta[0]["from"] if emails_meta else None,
+        "emails": emails_meta if len(emails_meta) > 1 else None,
     })
     resp.headers.update(_NO_CACHE)
     return resp
@@ -538,6 +585,38 @@ async def upload_zip(
         if _mime_of(fname, fdata) == "application/pdf":
             pdf_cache[fname] = _render_pdf(fname, fdata)
 
+    def _analyse_eml_item(eml_parts: list, context: str) -> dict:
+        """
+        Roll up a checklist item whose reference resolves to one or more .eml
+        files inside the ZIP into a single Yes/No/N/A verdict, by extracting
+        each email's attachments and matching them against the reference
+        text — same logic the standalone "Verify Email" step (Step 2) uses.
+        """
+        all_atts = []
+        for fname, fdata in eml_parts:
+            atts = _parse_eml(fdata)
+            if not atts:
+                continue
+            all_atts.extend(atts)
+
+        if not all_atts:
+            return {"status": "N/A", "remark": "No attachments found in the referenced .eml file(s)."}
+
+        att_results = [
+            _match_attachment_with_claude(_claude_client, att, reference_pdf_text)
+            for att in all_atts
+        ]
+
+        no_hits  = [r for r in att_results if r.get("status") == "No"]
+        yes_hits = [r for r in att_results if r.get("status") == "Yes"]
+        if no_hits:
+            names = ", ".join(r["name"] for r in no_hits)
+            return {"status": "No", "remark": f"Mismatch in attachment(s): {names}. " + no_hits[0].get("remark", "")}
+        if yes_hits:
+            names = ", ".join(r["name"] for r in yes_hits)
+            return {"status": "Yes", "remark": f"Attachment(s) match agreement: {names}."}
+        return {"status": "N/A", "remark": att_results[0].get("remark", "Could not verify email attachments.")}
+
     def _analyse_item(item: dict) -> dict:
         ref         = (item.get("reference") or "").strip()
         prompt_text = (item.get("prompt") or "").strip()
@@ -567,8 +646,11 @@ async def upload_zip(
         context = f"Checklist item: {item['text']}\nRequirement: {prompt_text}{ref_section}{missing_note}"
 
         try:
-            pdf_parts, image_parts, unsupported = [], [], []
+            eml_parts, pdf_parts, image_parts, unsupported = [], [], [], []
             for fname, fdata in resolved:
+                if fname.lower().endswith(".eml"):
+                    eml_parts.append((fname, fdata))
+                    continue
                 mime = _mime_of(fname, fdata)
                 if mime == "application/pdf":
                     pdf_parts.append((fname, fdata))
@@ -576,6 +658,9 @@ async def upload_zip(
                     image_parts.append((fname, fdata, mime))
                 else:
                     unsupported.append(fname)
+
+            if eml_parts:
+                return _analyse_eml_item(eml_parts, context)
 
             if unsupported:
                 return {"status": "N/A", "remark": f"Unsupported file type: {', '.join(unsupported)}"}
@@ -647,6 +732,24 @@ async def upload_zip(
                 ]
         except Exception:
             pass
+
+    # Dedup exact duplicates: same sender address AND same attachment name
+    # (same guard as the Step 2 upload handler) — keeps a single unified
+    # answer per attachment even if results were re-submitted with repeats.
+    if email_results:
+        _seen_keys: set = set()
+        _deduped = []
+        for r in email_results:
+            _key = (
+                (r.get("source_address") or "").strip().lower(),
+                (r.get("name") or "").strip().lower(),
+            )
+            if _key[0] and _key[1] and _key in _seen_keys:
+                continue
+            if _key[0] and _key[1]:
+                _seen_keys.add(_key)
+            _deduped.append(r)
+        email_results = _deduped
 
     headers = {
         "customer_label": tpl.get("customer_label"),

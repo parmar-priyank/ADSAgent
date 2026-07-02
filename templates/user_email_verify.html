@@ -73,7 +73,7 @@
       <input type="hidden" name="quote_id" value="{{ quote_id }}">
 
       <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;">
-        Outlook Email File (.eml)
+        Outlook Email File(s) (.eml)
       </label>
 
       <label class="dropzone" id="eml-dropzone" style="min-height:160px;">
@@ -85,10 +85,10 @@
             <polyline points="22,6 12,13 2,6"/>
           </svg>
         </div>
-        <div class="prompt">Drop a <strong>.eml</strong> file here, or <strong>browse</strong></div>
-        <div class="hint">Export from Outlook: File → Save As → Outlook Message Format (.eml)</div>
+        <div class="prompt">Drop one or more <strong>.eml</strong> files here, or <strong>browse</strong></div>
+        <div class="hint">Export from Outlook: File → Save As → Outlook Message Format (.eml) — multiple files supported</div>
         <div class="filename" id="eml-filename"></div>
-        <input type="file" name="eml_file" id="emlInput" accept=".eml" required>
+        <input type="file" name="eml_file" id="emlInput" accept=".eml" multiple required>
       </label>
 
       <div class="actions" style="margin-top:20px;">
@@ -105,6 +105,24 @@
     <!-- Results panel -->
     {% if results %}
     <div style="margin-bottom:20px;">
+      {% if emails %}
+      <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:10px;
+                  padding:12px 16px;margin-bottom:14px;font-size:13px;line-height:1.7;">
+        <div style="color:var(--muted);font-weight:600;margin-bottom:6px;">{{ emails|length }} emails uploaded</div>
+        {% for em in emails %}
+        <div style="{% if not loop.first %}margin-top:8px;padding-top:8px;border-top:1px solid var(--line2);{% endif %}">
+          <div style="display:flex;gap:8px;">
+            <span style="color:var(--muted);font-weight:600;min-width:56px;flex-shrink:0;">From</span>
+            <span style="color:var(--ink);word-break:break-all;">{{ em.from }}</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <span style="color:var(--muted);font-weight:600;min-width:56px;flex-shrink:0;">Subject</span>
+            <span style="color:var(--ink);">{{ em.subject }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
       <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:10px;
                   padding:12px 16px;margin-bottom:14px;font-size:13px;line-height:1.7;">
         <div style="display:flex;gap:8px;">
@@ -116,6 +134,7 @@
           <span style="color:var(--ink);">{{ email_subject }}</span>
         </div>
       </div>
+      {% endif %}
 
       <!-- Summary chips + Modify button -->
       {% set yes_c = results | selectattr('status','equalto','Yes') | list | length %}
@@ -203,6 +222,9 @@
               data-status="{{ r.status }}"
               data-ai-status="{{ r.ai_status or '' }}"
               data-remark="{{ r.remark | e }}"
+              data-source-email="{{ r.source_email | e }}"
+              data-source-subject="{{ r.source_subject | e }}"
+              data-source-address="{{ r.source_address | e }}"
               style="border-bottom:1px solid var(--line2);vertical-align:top;{% if _changed %}background:#fffbea;box-shadow:inset 3px 0 0 #f59e0b;{% endif %}">
             <td style="padding:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
               {% set ext = r.name.rsplit('.',1)[-1].lower() %}
@@ -214,6 +236,9 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               {% endif %}
               <span title="{{ r.name }}">{{ r.name }}</span>
+              {% if emails and r.source_email %}
+              <div style="font-size:10px;color:var(--muted);margin-top:2px;margin-left:19px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ r.source_email }}">from {{ r.source_email }}</div>
+              {% endif %}
             </td>
             <td style="padding:10px;color:var(--muted);white-space:nowrap;font-size:12px;">{{ r.size_kb }} KB</td>
 
@@ -312,9 +337,9 @@
               <polyline points="22,6 12,13 2,6"/>
             </svg>
           </div>
-          <div class="prompt">Drop a <strong>.eml</strong> file, or <strong>browse</strong></div>
+          <div class="prompt">Drop one or more <strong>.eml</strong> files, or <strong>browse</strong></div>
           <div class="filename" id="eml-retry-filename"></div>
-          <input type="file" name="eml_file" id="emlRetryInput" accept=".eml" required>
+          <input type="file" name="eml_file" id="emlRetryInput" accept=".eml" multiple required>
         </label>
         <div class="actions" style="margin-top:12px;">
           <button type="submit" id="eml-retry-btn">Re-verify &rarr;</button>
@@ -381,11 +406,14 @@ function _emlCollect() {
     var sel = tr.querySelector('.eml-status-edit');
     var inp = tr.querySelector('.eml-remark-edit-val');
     rows.push({
-      name:      tr.dataset.name    || '',
-      size_kb:   parseFloat(tr.dataset.size) || 0,
-      status:    sel ? sel.value : (tr.dataset.status || 'N/A'),
-      remark:    inp ? inp.value : (tr.dataset.remark || ''),
-      ai_status: tr.dataset.aiStatus || '',
+      name:           tr.dataset.name    || '',
+      size_kb:        parseFloat(tr.dataset.size) || 0,
+      status:         sel ? sel.value : (tr.dataset.status || 'N/A'),
+      remark:         inp ? inp.value : (tr.dataset.remark || ''),
+      ai_status:      tr.dataset.aiStatus || '',
+      source_email:   tr.dataset.sourceEmail   || '',
+      source_subject: tr.dataset.sourceSubject || '',
+      source_address: tr.dataset.sourceAddress || '',
     });
   });
   return rows;
@@ -600,7 +628,13 @@ function emlCloseRemarkModal(save) {
     var load  = document.getElementById(loadingId);
     if (!dz || !input) return;
 
-    function sync() { if (label) label.textContent = input.files.length ? input.files[0].name : ''; }
+    function sync() {
+      if (!label) return;
+      if (!input.files.length) { label.textContent = ''; return; }
+      label.textContent = input.files.length === 1
+        ? input.files[0].name
+        : input.files.length + ' files selected';
+    }
     input.addEventListener('change', sync);
 
     ['dragenter','dragover'].forEach(function(e) {
@@ -620,10 +654,12 @@ function emlCloseRemarkModal(save) {
           alert('Please select a .eml file before submitting.');
           return;
         }
-        if (!input.files[0].name.toLowerCase().endsWith('.eml')) {
-          e.preventDefault();
-          alert('Only .eml files are accepted.');
-          return;
+        for (var i = 0; i < input.files.length; i++) {
+          if (!input.files[i].name.toLowerCase().endsWith('.eml')) {
+            e.preventDefault();
+            alert('Only .eml files are accepted.');
+            return;
+          }
         }
         if (btn)  { btn.disabled = true; btn.style.display = 'none'; }
         if (load) { load.style.display = 'block'; }
