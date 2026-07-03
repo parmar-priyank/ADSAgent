@@ -1,20 +1,30 @@
 """
 utils/mailer.py — SMTP email sender using stdlib smtplib.
 
+Works with any standard SMTP provider (Gmail, Outlook/Office365, etc.) —
+just point SMTP_HOST/PORT/USER/PASSWORD at the provider you're using.
+
 Configure via .env:
-  SMTP_HOST     e.g. smtp.gmail.com
+  SMTP_HOST     e.g. smtp.gmail.com (Gmail) or smtp.office365.com (Outlook/365)
   SMTP_PORT     e.g. 587
   SMTP_USER     sender email address
   SMTP_PASSWORD app password / SMTP password
   SMTP_FROM     optional display name + address, defaults to SMTP_USER
+
+See .env.example for provider-specific setup notes (app passwords, etc.).
 """
 import os
+import re
 import smtplib
 import logging
+import uuid
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate, make_msgid, parseaddr
 
 logger = logging.getLogger(__name__)
+
+_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def _cfg():
@@ -42,6 +52,15 @@ class _SmtpConfiguredProxy:
 SMTP_CONFIGURED = _SmtpConfiguredProxy()
 
 
+def _plaintext_fallback(html_body: str) -> str:
+    """Strip tags for a plaintext alternative part — improves spam scoring
+    (multipart/alternative with only HTML is a common spam-filter signal,
+    especially on stricter Google Workspace / business mail policies)."""
+    text = _TAG_RE.sub("", html_body)
+    lines = [ln.strip() for ln in text.splitlines()]
+    return "\n".join(ln for ln in lines if ln)
+
+
 def send_email(to: str, subject: str, html_body: str) -> bool:
     """Send an HTML email. Returns True on success, False on failure."""
     host, port, user, password, from_ = _cfg()
@@ -50,9 +69,14 @@ def send_email(to: str, subject: str, html_body: str) -> bool:
         return False
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"]    = from_
-        msg["To"]      = to
+        msg["Subject"]    = subject
+        msg["From"]       = from_
+        msg["To"]         = to
+        msg["Date"]       = formatdate(localtime=True)
+        msg["Message-ID"] = make_msgid(domain=(parseaddr(from_)[1].split("@")[-1] or None))
+        # Plaintext part first, HTML second — email clients render the last
+        # (most-preferred) part, and having both reduces spam-filter scoring.
+        msg.attach(MIMEText(_plaintext_fallback(html_body), "plain"))
         msg.attach(MIMEText(html_body, "html"))
         with smtplib.SMTP(host, port, timeout=15) as server:
             server.ehlo()
@@ -72,6 +96,10 @@ def send_otp_email(to: str, otp: str, purpose: str, username: str) -> bool:
         subject = "Verify your email — ADS Agent"
         action  = "verify your email address"
         note    = "This code activates email-based account recovery."
+    elif purpose == "login":
+        subject = "Your login code — ADS Agent"
+        action  = "complete your sign-in"
+        note    = "If you did not attempt to sign in, secure your account by changing your password."
     else:
         subject = "Password reset OTP — ADS Agent"
         action  = "reset your password"

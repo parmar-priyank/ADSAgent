@@ -32,7 +32,8 @@ def init_auth_db():
         except sqlite3.OperationalError:
             pass
         for col in ("full_name TEXT DEFAULT NULL", "email TEXT DEFAULT NULL",
-                    "phone TEXT DEFAULT NULL", "email_verified INTEGER DEFAULT 0"):
+                    "phone TEXT DEFAULT NULL", "email_verified INTEGER DEFAULT 0",
+                    "two_factor_enabled INTEGER DEFAULT 0"):
             try:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except sqlite3.OperationalError:
@@ -165,6 +166,14 @@ def get_user_by_email(email: str):
 def set_email_verified(user_id: int, verified: bool = True):
     with get_db() as conn:
         conn.execute("UPDATE users SET email_verified = ? WHERE id = ?", (1 if verified else 0, user_id))
+
+
+def set_two_factor_enabled(user_id: int, enabled: bool):
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE users SET two_factor_enabled = ? WHERE id = ?",
+            (1 if enabled else 0, user_id),
+        )
 
 
 def create_otp(user_id: int, purpose: str, ttl_seconds: int = 300) -> str:

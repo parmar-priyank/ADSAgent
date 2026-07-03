@@ -40,17 +40,34 @@ router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
+# Login-time 2FA helpers
+# ---------------------------------------------------------------------------
+
+def _start_login_2fa(user: dict, via: str) -> RedirectResponse:
+    """Issue a short-lived pending-2FA token and email an OTP, instead of
+    setting the session cookie immediately. Only reached for users who have
+    opted into two_factor_enabled — everyone else's login is unaffected."""
+    pending_token = _signer.dumps({"uid": user["id"], "purpose": "login2fa", "via": via})
+    email = user.get("email")
+    if email and SMTP_CONFIGURED:
+        otp = adb.create_otp(user["id"], "login")
+        send_otp_email(email, otp, "login", user["username"])
+    token_enc = urllib.parse.quote(pending_token, safe="")
+    return RedirectResponse(url=f"/login/2fa?via={via}&token={token_enc}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
 # Auth routes
 # ---------------------------------------------------------------------------
 
 @router.get("/login", response_class=HTMLResponse)
-def login_user_page(request: Request):
+def login_user_page(request: Request, error: str = None):
     """Public user login page."""
     user = _get_session(request)
     if user and user.get("role") == "user":
         return RedirectResponse(url="/user_home", status_code=302)
     # Never auto-redirect to admin even if admin cookie exists
-    response = templates.TemplateResponse(request, "login_user.html", _login_ctx())
+    response = templates.TemplateResponse(request, "login_user.html", _login_ctx(error))
     response.headers.update(_NO_CACHE)
     return response
 
@@ -78,18 +95,20 @@ def login_user_post(
         )
         resp.headers.update(_NO_CACHE)
         return resp
+    if user.get("two_factor_enabled"):
+        return _start_login_2fa(user, via="user")
     response = RedirectResponse(url="/user_home", status_code=303)
     _set_session(response, user)
     return response
 
 
 @router.get("/admin-dashboard", response_class=HTMLResponse)
-def login_admin_page(request: Request):
+def login_admin_page(request: Request, error: str = None):
     """Secret admin login — URL not publicly linked anywhere."""
     user = _get_admin_session(request)
     if user and user.get("role") == "admin":
         return RedirectResponse(url="/admin", status_code=302)
-    response = templates.TemplateResponse(request, "login_admin.html", _login_ctx())
+    response = templates.TemplateResponse(request, "login_admin.html", _login_ctx(error))
     response.headers.update(_NO_CACHE)
     return response
 
@@ -117,7 +136,61 @@ def login_admin_post(
         )
         resp.headers.update(_NO_CACHE)
         return resp
+    if user.get("two_factor_enabled"):
+        return _start_login_2fa(user, via="admin")
     response = RedirectResponse(url="/admin", status_code=303)
+    _set_session(response, user)
+    return response
+
+
+@router.get("/login/2fa", response_class=HTMLResponse)
+def login_2fa_page(request: Request, via: str = "user", token: str = "", error: str = None):
+    via = via if via in ("admin", "user") else "user"
+    try:
+        payload = _signer.loads(token, max_age=600)  # 10-minute window
+        assert payload.get("purpose") == "login2fa"
+    except Exception:
+        dest = "/admin-dashboard" if via == "admin" else "/login"
+        return RedirectResponse(url=f"{dest}?error=Login+session+expired.+Please+sign+in+again.", status_code=303)
+    response = templates.TemplateResponse(request, "login_2fa.html", {
+        "via": via,
+        "token": token,
+        "error": error,
+    })
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.post("/login/2fa", response_class=HTMLResponse)
+@limiter.limit("10/minute")
+def login_2fa_verify(request: Request,
+                      token: str = Form(..., max_length=500),
+                      otp: str = Form("", max_length=6),
+                      via: str = Form("user")):
+    via = via if via in ("admin", "user") else "user"
+    try:
+        payload = _signer.loads(token, max_age=600)
+        assert payload.get("purpose") == "login2fa"
+        uid = payload["uid"]
+    except Exception:
+        dest = "/admin-dashboard" if via == "admin" else "/login"
+        return RedirectResponse(url=f"{dest}?error=Login+session+expired.+Please+sign+in+again.", status_code=303)
+
+    if not otp.strip().isdigit() or len(otp.strip()) != 6 or not adb.verify_otp(uid, "login", otp.strip()):
+        token_enc = urllib.parse.quote(token, safe="")
+        return RedirectResponse(
+            url=f"/login/2fa?via={via}&token={token_enc}&error=Invalid+or+expired+code.",
+            status_code=303,
+        )
+
+    user = adb.get_user(uid)
+    expected_role = "admin" if via == "admin" else "user"
+    if not user or user.get("role") != expected_role:
+        dest = "/admin-dashboard" if via == "admin" else "/login"
+        return RedirectResponse(url=f"{dest}?error=Invalid+session.+Please+sign+in+again.", status_code=303)
+
+    dest = "/admin" if via == "admin" else "/user_home"
+    response = RedirectResponse(url=dest, status_code=303)
     _set_session(response, user)
     return response
 
@@ -286,6 +359,18 @@ def user_verify_email_otp(request: Request,
         return JSONResponse({"ok": False, "error": "Invalid or expired OTP."})
     adb.set_email_verified(user["id"])
     return JSONResponse({"ok": True})
+
+
+@router.post("/user/2fa/toggle")
+def user_toggle_2fa(request: Request,
+                     enabled: str = Form(""),
+                     user=Depends(require_login)):
+    if enabled == "1" and not (user.get("email") and user.get("email_verified")):
+        return RedirectResponse(
+            url="/user_home?profile_error=Verify+your+email+before+enabling+2FA.", status_code=303
+        )
+    adb.set_two_factor_enabled(user["id"], enabled == "1")
+    return RedirectResponse(url="/user_home?profile_ok=Two-factor+authentication+updated.", status_code=303)
 
 
 @router.post("/user/change-password")

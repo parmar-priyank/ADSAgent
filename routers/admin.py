@@ -234,6 +234,18 @@ def admin_verify_email_otp(request: Request,
     return RedirectResponse(url=base + "?profile_ok=Email+verified+successfully.", status_code=303)
 
 
+@router.post("/admin/2fa/toggle")
+def admin_toggle_2fa(request: Request,
+                      enabled: str = Form(""),
+                      user=Depends(require_admin)):
+    if enabled == "1" and not (user.get("email") and user.get("email_verified")):
+        ref = request.headers.get("referer", "/admin")
+        return RedirectResponse(url=ref.split("?")[0] + "?profile_error=Verify+your+email+before+enabling+2FA.", status_code=303)
+    adb.set_two_factor_enabled(user["id"], enabled == "1")
+    ref = request.headers.get("referer", "/admin")
+    return RedirectResponse(url=ref.split("?")[0] + "?profile_ok=Two-factor+authentication+updated.", status_code=303)
+
+
 @router.post("/admin/users/{user_id}/change-password")
 def admin_change_password(user_id: int, request: Request,
                           old_password: str = Form(...),

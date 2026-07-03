@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Two-Factor Verification — Solar Agreement Extractor</title>
+  <link rel="stylesheet" href="/static/base.css">
+  <link rel="stylesheet" href="/static/login.css">
+</head>
+<body>
+
+  <div class="login-bg">
+    <video class="login-bg-video" autoplay muted loop playsinline preload="auto">
+      <source src="/static/video/bg.mp4" type="video/mp4">
+    </video>
+    <div class="login-bg-overlay"></div>
+  </div>
+
+  <div class="login-split">
+
+    <!-- LEFT: hero -->
+    <div class="login-hero">
+      <div class="login-hero-center">
+        <h1 class="login-hero-title">Energy Saving<br>Renewable Solar</h1>
+        <p class="login-hero-sub">We have become a preferred partner to leading solar companies, retailers, and commodity companies.</p>
+      </div>
+    </div>
+
+    <!-- RIGHT: transparent panel -->
+    <div class="login-panel">
+      <div class="login-card {{ 'admin-card' if via == 'admin' else '' }}">
+
+        <div class="login-logo {{ 'admin-logo' if via == 'admin' else 'blue-logo' }}">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+          </svg>
+        </div>
+
+        <h1>Two-Factor Verification</h1>
+        <p>Enter the 6-digit code we emailed you to finish signing in</p>
+
+        {% if error %}
+        <div class="login-error">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" action="/login/2fa">
+          <input type="hidden" name="token" value="{{ token }}">
+          <input type="hidden" name="via" value="{{ via }}">
+          <div class="login-field">
+            <label>Verification Code</label>
+            <input type="text" name="otp" id="otp" required autofocus
+                   maxlength="6" inputmode="numeric" pattern="[0-9]*"
+                   placeholder="000000"
+                   style="letter-spacing:6px;font-weight:700;text-align:center;">
+          </div>
+          <button type="submit" class="login-btn {{ 'admin-btn' if via == 'admin' else 'blue-btn' }}">Verify &amp; Sign In</button>
+          <div style="text-align:center;margin-top:14px;">
+            <a href="{{ '/admin-dashboard' if via == 'admin' else '/login' }}"
+               style="font-size:12px;color:#c45010;text-decoration:none;font-weight:600;opacity:.8;">
+              &larr; Back to sign in
+            </a>
+          </div>
+        </form>
+
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
