@@ -12,6 +12,7 @@ Routes:
   GET  /admin/users/{user_id}
   POST /admin/users/{user_id}/change-password
   POST /admin/users/{user_id}/change-role
+  POST /admin/users/{user_id}/set-email-verified
   POST /admin/users/{user_id}/delete
   POST /admin/records/{record_id}/delete
   POST /admin/settings/theme
@@ -288,6 +289,22 @@ def admin_change_role(user_id: int, request: Request,
         label = "Admin" if new_role == "admin" else "User"
         return RedirectResponse(url=f"/admin/users/{user_id}?success=Role+changed+to+{label}.", status_code=303)
     return RedirectResponse(url=f"/admin/users/{user_id}?error=Invalid+role.", status_code=303)
+
+
+@router.post("/admin/users/{user_id}/set-email-verified")
+def admin_set_email_verified(user_id: int, request: Request,
+                              verified: str = Form(...),
+                              user=Depends(require_admin)):
+    """Admin override for email verification — lets an admin manually
+    verify a user whose OTP isn't arriving (e.g. spam filtering, provider
+    outage) so they can proceed to the QC flow, or revoke verification if
+    it was granted in error."""
+    target = adb.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "User not found.")
+    adb.set_email_verified(user_id, verified == "1")
+    label = "verified" if verified == "1" else "marked as unverified"
+    return RedirectResponse(url=f"/admin/users/{user_id}?success=Email+{label}.", status_code=303)
 
 
 @router.post("/admin/users/{user_id}/delete")
