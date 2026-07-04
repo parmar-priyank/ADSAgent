@@ -7,6 +7,7 @@ from config import (
     _AuthRedirect,
     _CSP,
     SecurityHeadersMiddleware,
+    InactivityTimeoutMiddleware,
     _FAVICON,
 )
 from slowapi.errors import RateLimitExceeded
@@ -16,6 +17,7 @@ from routers import auth, admin, uploads, qc_checks, checklist_mgmt
 app.add_exception_handler(RateLimitExceeded, _on_rate_limit_exceeded)
 app.add_exception_handler(_AuthRedirect, _auth_redirect_handler)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(InactivityTimeoutMiddleware)
 
 app.include_router(auth.router)
 app.include_router(admin.router)

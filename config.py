@@ -141,22 +141,47 @@ _signer = URLSafeTimedSerializer(SECRET_KEY)
 # ---------------------------------------------------------------------------
 COOKIE       = "session_user"   # used by user routes only
 COOKIE_ADMIN = "session_admin"  # used by admin routes only
-SESSION_MAX_AGE = 86400 * 7     # 7 days
+SESSION_MAX_AGE = 86400 * 7     # 7 days — absolute cap on a session's lifetime
+INACTIVITY_TIMEOUT = 60 * 15    # 15 minutes — session ends early if idle this long
 
 
 def _make_token(user: dict) -> str:
+    now = int(datetime.utcnow().timestamp())
     return _signer.dumps({
-        "id":       user["id"],
-        "username": user["username"],
-        "role":     user["role"],
+        "id":        user["id"],
+        "username":  user["username"],
+        "role":      user["role"],
+        "issued_at": now,   # fixed at login — drives the 7-day absolute cap
+        "activity":  now,   # refreshed on each request — drives the idle timeout
     })
 
 
 def _decode_token(token: str):
+    """Decode a session token, enforcing both the sliding inactivity timeout
+    and the fixed absolute session lifetime. Returns None if either check
+    fails or the signature itself is invalid/tampered.
+
+    Note: max_age is intentionally omitted from _signer.loads() — itsdangerous
+    checks max_age against the token's signing time, which would reset every
+    time the middleware re-signs the payload to refresh "activity", silently
+    extending the absolute cap forever. The 7-day cap is instead enforced
+    manually below, against "issued_at", which is never refreshed.
+    """
     try:
-        return _signer.loads(token, max_age=SESSION_MAX_AGE)
+        payload = _signer.loads(token)
     except BadSignature:
         return None
+
+    now = int(datetime.utcnow().timestamp())
+    issued_at = payload.get("issued_at")
+    if issued_at is not None and now - issued_at > SESSION_MAX_AGE:
+        return None
+
+    activity = payload.get("activity")
+    if activity is not None and now - activity > INACTIVITY_TIMEOUT:
+        return None
+
+    return payload
 
 
 def _set_session(response, user: dict):
@@ -182,6 +207,45 @@ def _get_admin_session(request: Request):
     """Read the admin cookie."""
     token = request.cookies.get(COOKIE_ADMIN)
     return _decode_token(token) if token else None
+
+
+class InactivityTimeoutMiddleware(BaseHTTPMiddleware):
+    """Slides the inactivity window forward on every request that carries a
+    still-valid session cookie, by reissuing it with a fresh "activity"
+    timestamp. The actual timeout/expiry check (both the 15-minute idle
+    limit and the 7-day absolute cap) lives in _decode_token(), which every
+    auth guard already calls — if a cookie has gone idle too long or is past
+    its absolute lifetime, _decode_token() returns None on the very next
+    request and the existing require_login/require_admin guards redirect to
+    login as usual. This middleware only needs to refresh cookies that are
+    still valid right now."""
+
+    async def dispatch(self, request: Request, call_next):
+        now = int(datetime.utcnow().timestamp())
+        refresh_cookies = {}
+
+        for cookie_name in (COOKIE, COOKIE_ADMIN):
+            token = request.cookies.get(cookie_name)
+            if not token:
+                continue
+            payload = _decode_token(token)
+            if not payload:
+                continue
+            payload["activity"] = now
+            refresh_cookies[cookie_name] = _signer.dumps(payload)
+
+        response = await call_next(request)
+
+        for cookie_name, new_token in refresh_cookies.items():
+            response.set_cookie(
+                cookie_name, new_token,
+                httponly=True,
+                samesite="lax",
+                secure=COOKIE_SECURE,
+                max_age=SESSION_MAX_AGE,
+            )
+
+        return response
 
 
 class _AuthRedirect(Exception):
