@@ -18,9 +18,11 @@ import re
 import smtplib
 import logging
 import uuid
+from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate, make_msgid, parseaddr
+from email import encoders
 
 logger = logging.getLogger(__name__)
 
@@ -61,24 +63,41 @@ def _plaintext_fallback(html_body: str) -> str:
     return "\n".join(ln for ln in lines if ln)
 
 
-def send_email(to: str, subject: str, html_body: str) -> bool:
-    """Send an HTML email. Returns True on success, False on failure."""
+def send_email(to: str, subject: str, html_body: str, attachment_path: str = None) -> bool:
+    """Send an HTML email, optionally with one file attached. Returns True
+    on success, False on failure. `attachment_path`, if given, is attached
+    as a generic binary file (its basename is used as the filename)."""
     host, port, user, password, from_ = _cfg()
     if not (host and user and password):
         logger.warning("SMTP not configured — email not sent.")
         return False
     try:
-        msg = MIMEMultipart("alternative")
+        msg = MIMEMultipart("mixed")
         msg["Subject"]    = subject
         msg["From"]       = from_
         msg["To"]         = to
         msg["Date"]       = formatdate(localtime=True)
         msg["Message-ID"] = make_msgid(domain=(parseaddr(from_)[1].split("@")[-1] or None))
+
+        body = MIMEMultipart("alternative")
         # Plaintext part first, HTML second — email clients render the last
         # (most-preferred) part, and having both reduces spam-filter scoring.
-        msg.attach(MIMEText(_plaintext_fallback(html_body), "plain"))
-        msg.attach(MIMEText(html_body, "html"))
-        with smtplib.SMTP(host, port, timeout=15) as server:
+        body.attach(MIMEText(_plaintext_fallback(html_body), "plain"))
+        body.attach(MIMEText(html_body, "html"))
+        msg.attach(body)
+
+        if attachment_path:
+            with open(attachment_path, "rb") as f:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                "Content-Disposition",
+                f'attachment; filename="{os.path.basename(attachment_path)}"',
+            )
+            msg.attach(part)
+
+        with smtplib.SMTP(host, port, timeout=60) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()

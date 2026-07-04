@@ -25,3 +25,10 @@ cd "$BACKUP_DIR"
 ls -1t extractions_*.db 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
 
 echo "Backup written to ${DEST}"
+
+# Email the backup off-server (optional — controlled by BACKUP_EMAIL_TO in
+# .env; skips silently if unset). A failure here does not fail this script —
+# the local backup above already succeeded and is the primary safety net.
+set +e
+"${APP_DIR}/venv/bin/python3" "${APP_DIR}/deploy/email_backup.py" "${DEST}"
+set -e
