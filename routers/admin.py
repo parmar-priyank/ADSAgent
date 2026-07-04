@@ -102,6 +102,14 @@ def admin_templates_page(request: Request, user=Depends(require_admin)):
     return response
 
 
+@router.get("/admin/heartbeat")
+def admin_heartbeat(user=Depends(require_admin)):
+    """No-op ping so genuine reading/thinking time (no clicks) still counts
+    as activity — passing through require_admin lets
+    InactivityTimeoutMiddleware refresh the session's idle timer."""
+    return {"ok": True}
+
+
 @router.get("/admin/api-status")
 def admin_api_status(user=Depends(require_admin)):
     """Ping Claude and return latency + status for the dashboard meter."""

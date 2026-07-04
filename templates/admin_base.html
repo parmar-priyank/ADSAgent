@@ -751,6 +751,20 @@
       if (menu) menu.style.display = 'none';
     }
   });
+
+  /* ── Session heartbeat ────────────────────────────────────────────────────
+     Keeps the 15-minute inactivity timeout from logging out someone who is
+     genuinely reading/thinking (no clicks) but has this tab open and
+     focused. Only pings while the tab is visible — a backgrounded tab
+     should still time out, since that's the whole point of the feature. */
+  (function() {
+    var HEARTBEAT_INTERVAL_MS = 4 * 60 * 1000; // 4 min — well inside the 15-min window
+    function ping() {
+      if (document.visibilityState !== 'visible') return;
+      fetch('/admin/heartbeat', { credentials: 'same-origin' }).catch(function() {});
+    }
+    setInterval(ping, HEARTBEAT_INTERVAL_MS);
+  })();
 </script>
 </body>
 </html>

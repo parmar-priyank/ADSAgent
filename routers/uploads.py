@@ -50,6 +50,14 @@ def root_redirect(request: Request):
     return RedirectResponse(url="/user_home", status_code=302)
 
 
+@router.get("/user/heartbeat")
+def user_heartbeat(request: Request, user=Depends(require_login)):
+    """No-op ping so genuine reading/thinking time (no clicks) still counts
+    as activity — passing through require_login lets
+    InactivityTimeoutMiddleware refresh the session's idle timer."""
+    return {"ok": True}
+
+
 @router.get("/user_home", response_class=HTMLResponse)
 def home(request: Request, verify_required: int = 0, user=Depends(require_login)):
     ctx = _index_context(user=user)
