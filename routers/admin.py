@@ -457,6 +457,28 @@ def db_download(user=Depends(require_admin)):
 
 
 _DB_RESTORE_MAX = 512 * 1024 * 1024  # 512 MB hard cap for DB restore uploads
+_DB_BACKUP_KEEP = 5  # keep only the N most recent pre-restore backups
+
+
+def _prune_old_backups(db_path: str, keep: int = _DB_BACKUP_KEEP):
+    """Delete all but the `keep` most recent pre_restore_backup files, so
+    backups don't accumulate on disk forever."""
+    backup_dir = os.path.dirname(db_path) or "."
+    backup_prefix = os.path.basename(db_path) + ".pre_restore_backup."
+    try:
+        candidates = [
+            os.path.join(backup_dir, f)
+            for f in os.listdir(backup_dir)
+            if f.startswith(backup_prefix)
+        ]
+        candidates.sort(key=os.path.getmtime, reverse=True)
+        for stale in candidates[keep:]:
+            try:
+                os.remove(stale)
+            except OSError as e:
+                logger.warning("DB restore: failed to prune old backup %s (%s)", stale, e)
+    except OSError as e:
+        logger.warning("DB restore: failed to list backups for pruning (%s)", e)
 
 
 @router.post("/db/restore")
@@ -475,6 +497,7 @@ async def db_restore(request: Request, file: UploadFile = File(...), user=Depend
         backup_path = f"{DB_PATH}.pre_restore_backup.{int(time.time())}"
         try:
             shutil.copy2(DB_PATH, backup_path)
+            _prune_old_backups(DB_PATH)
         except OSError as e:
             # The backup is a safety net, not the point of this endpoint —
             # don't let a backup failure block the restore the admin asked for.
