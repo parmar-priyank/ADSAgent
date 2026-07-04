@@ -285,6 +285,18 @@ def update_qc_version(version_id: int, xlsx_bytes: bytes, rows_json: str,
             )
 
 
+def get_confirmed_quote_ids() -> set:
+    """Return the set of quote_ids that have at least one confirmed QC
+    version — used to filter the admin calendar to confirmed installs only,
+    excluding drafts and quotes with no QC run yet."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT quote_id FROM qc_versions "
+            "WHERE COALESCE(status, 'confirmed') = 'confirmed'"
+        ).fetchall()
+    return {r["quote_id"] for r in rows}
+
+
 def get_qc_versions(quote_id: int) -> list:
     with get_db() as conn:
         rows = conn.execute(

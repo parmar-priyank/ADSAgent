@@ -265,8 +265,14 @@ def _login_ctx(error=None) -> dict:
 
 
 def _build_install_map(records: list) -> str:
+    # Only show quotes that have at least one confirmed QC version — a raw
+    # PDF upload alone (no confirmed checklist yet) shouldn't clutter the
+    # calendar or create duplicate-looking entries for the same customer.
+    confirmed_ids = db_quotes.get_confirmed_quote_ids()
     install_map: dict = {}
     for r in records:
+        if r.get("id") not in confirmed_ids:
+            continue
         preferred = (r.get("preferred_install_date") or "").strip()
         raw = preferred or (r.get("install_date") or "").strip()
         if not raw:
