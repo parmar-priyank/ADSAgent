@@ -1,0 +1,13 @@
+[Unit]
+Description=Run ADS Agent database backup weekly
+
+[Timer]
+# Every Sunday at 03:00 server time — low-traffic window
+OnCalendar=Sun *-*-* 03:00:00
+# If the server was off/asleep at the scheduled time, run as soon as it's back
+Persistent=true
+# Spread start slightly to avoid exact-second collisions with other jobs
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

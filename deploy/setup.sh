@@ -9,7 +9,7 @@ REPO_URL="YOUR_GITHUB_REPO_URL"   # e.g. https://github.com/yourname/adsagent.gi
 
 echo "=== [1/8] System update and dependencies ==="
 apt update && apt upgrade -y
-apt install -y python3 python3-pip python3-venv git nginx certbot python3-certbot-nginx ufw
+apt install -y python3 python3-pip python3-venv git nginx certbot python3-certbot-nginx ufw sqlite3
 
 echo "=== [2/8] Create dedicated system user ==="
 if ! id "$APP_USER" &>/dev/null; then

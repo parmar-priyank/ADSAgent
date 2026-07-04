@@ -1,0 +1,10 @@
+[Unit]
+Description=ADS Agent — weekly SQLite database backup
+After=network.target
+
+[Service]
+Type=oneshot
+User=adsagent
+Group=adsagent
+WorkingDirectory=/var/www/adsagent
+ExecStart=/bin/bash /var/www/adsagent/deploy/backup_db.sh
