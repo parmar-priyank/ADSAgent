@@ -38,6 +38,9 @@ RuntimeDirectoryMode=0755
 PrivateTmp=true
 NoNewPrivileges=true
 ProtectSystem=full
+# App directory needs write access for DB backups/restores and the
+# temp-xlsx directory — ProtectSystem=full otherwise blocks new files here.
+ReadWritePaths=/var/www/adsagent
 
 [Install]
 WantedBy=multi-user.target
