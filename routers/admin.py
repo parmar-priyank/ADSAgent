@@ -23,6 +23,7 @@ Routes:
   POST /db/restore
 """
 import json
+import logging
 import os
 import shutil
 import sqlite3
@@ -51,6 +52,7 @@ from config import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -133,8 +135,8 @@ def admin_api_status(user=Depends(require_admin)):
 
 
 @router.get("/admin/database", response_class=HTMLResponse)
-def admin_database_page(request: Request, user=Depends(require_admin)):
-    ctx = _admin_ctx(user)
+def admin_database_page(request: Request, restored: int = 0, user=Depends(require_admin)):
+    ctx = _admin_ctx(user, restored=bool(restored))
     response = templates.TemplateResponse(request, "admin_database.html", ctx)
     response.headers.update(_NO_CACHE)
     return response
@@ -467,9 +469,16 @@ async def db_restore(request: Request, file: UploadFile = File(...), user=Depend
         raise HTTPException(400, "Invalid file — must be a SQLite database.")
     # Snapshot the live DB before overwriting so the admin can recover if the
     # uploaded file turns out to be corrupt despite passing the header check.
-    backup_path = DB_PATH + ".pre_restore_backup"
+    # Each attempt gets its own timestamped filename so it can never collide
+    # with (or inherit bad ownership from) a backup left by a previous run.
     if os.path.exists(DB_PATH):
-        shutil.copy2(DB_PATH, backup_path)
+        backup_path = f"{DB_PATH}.pre_restore_backup.{int(time.time())}"
+        try:
+            shutil.copy2(DB_PATH, backup_path)
+        except OSError as e:
+            # The backup is a safety net, not the point of this endpoint —
+            # don't let a backup failure block the restore the admin asked for.
+            logger.warning("DB restore: pre-restore backup failed (%s), continuing anyway.", e)
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     try:
         tmp.write(data)
@@ -481,4 +490,4 @@ async def db_restore(request: Request, file: UploadFile = File(...), user=Depend
         except OSError:
             pass
         raise
-    return RedirectResponse(url="/Excel?restored=1", status_code=303)
+    return RedirectResponse(url="/admin/database?restored=1", status_code=303)
