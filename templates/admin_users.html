@@ -31,78 +31,16 @@
 </div>
 
 {% set avatar_colors = ['#c45010','#4D96FF','#6BCB77','#C77DFF','#FF6B6B'] %}
-{% set user_count = users | selectattr('role', 'equalto', 'user') | list | length %}
-
-{% if user_count == 0 %}
-<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;text-align:center;padding:60px 20px;color:#bbb;font-size:14px;">
-  No users yet. Click "+ Add User" to create one.
-</div>
-{% else %}
-<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;">
-
-  <!-- Table header -->
-  <div style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:10px 20px;background:#faf8f6;border-bottom:1px solid #f0ece8;">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">#</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">User</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Joined</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Role</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:right;">Actions</div>
-  </div>
-
-  {% for u in users if u.role != 'admin' %}
-  <div onclick="window.location='/admin/users/{{ u.id }}'"
-       style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:13px 20px;border-top:1px solid #f0ece8;cursor:pointer;align-items:center;transition:background .12s;{% if loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}"
-       onmouseover="this.style.background='#faf5f0'" onmouseout="this.style.background='{% if loop.index is even %}#fdfcfb{% else %}#fff{% endif %}'">
-
-    <!-- Index -->
-    <div style="font-size:12px;font-weight:700;color:#bbb;">{{ loop.index }}</div>
-
-    <!-- Avatar + name -->
-    <div style="display:flex;align-items:center;gap:12px;">
-      <div style="width:36px;height:36px;border-radius:50%;background:{{ avatar_colors[loop.index0 % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <span style="font-size:14px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:-.5px;">{{ u.username[0] }}{{ u.username[1] if u.username|length > 1 else '' }}</span>
-      </div>
-      <div>
-        <div style="font-size:14px;font-weight:700;color:#1a1a1a;">{{ u.username }}</div>
-        <div style="font-size:11px;color:#aaa;margin-top:1px;">User account</div>
-      </div>
-    </div>
-
-    <!-- Joined -->
-    <div style="font-size:12px;color:#777;">{{ u.created_at[:10] }}</div>
-
-    <!-- Role -->
-    <div>
-      <span style="font-size:11px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:20px;padding:3px 12px;letter-spacing:.04em;">User</span>
-    </div>
-
-    <!-- Actions -->
-    <div style="display:flex;justify-content:flex-end;gap:6px;" onclick="event.stopPropagation();">
-      <a href="/admin/users/{{ u.id }}"
-         style="font-size:12px;font-weight:600;color:#555;background:#fff;border:1.5px solid #ddd;border-radius:7px;padding:4px 12px;text-decoration:none;transition:border-color .12s;"
-         onmouseover="this.style.borderColor='#c45010';this.style.color='#c45010'" onmouseout="this.style.borderColor='#ddd';this.style.color='#555'">View</a>
-      {% if u.id != current_user.id %}
-      <form action="/admin/users/{{ u.id }}/delete" method="post"
-            onsubmit="return confirm('Delete {{ u.username }}? This cannot be undone.');" style="margin:0;">
-        <button type="submit"
-                style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:7px;padding:4px 12px;cursor:pointer;">
-          Delete
-        </button>
-      </form>
-      {% endif %}
-    </div>
-
-  </div>
-  {% endfor %}
-
-</div>
-{% endif %}
-
-<!-- Admins section -->
 {% set admins = users | selectattr('role', 'equalto', 'admin') | list %}
+{% set regular_users = users | selectattr('role', 'equalto', 'user') | list %}
+
+<!-- ═══ Admins ═══ -->
 {% if admins %}
-<div style="margin-top:28px;margin-bottom:12px;font-size:13px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;">Admins</div>
-<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+  <span style="font-size:13px;font-weight:700;color:#1a1a1a;letter-spacing:-.01em;">Admins</span>
+  <span style="font-size:11px;font-weight:700;color:#a35a1a;background:#fdf0e4;border-radius:20px;padding:1px 9px;">{{ admins | length }}</span>
+</div>
+<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;margin-bottom:28px;">
 
   <!-- Table header -->
   <div style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:10px 20px;background:#faf8f6;border-bottom:1px solid #f0ece8;">
@@ -145,6 +83,77 @@
       <a href="/admin/users/{{ u.id }}"
          style="font-size:12px;font-weight:600;color:#555;background:#fff;border:1.5px solid #ddd;border-radius:7px;padding:4px 12px;text-decoration:none;transition:border-color .12s;"
          onmouseover="this.style.borderColor='#c45010';this.style.color='#c45010'" onmouseout="this.style.borderColor='#ddd';this.style.color='#555'">View</a>
+    </div>
+
+  </div>
+  {% endfor %}
+
+</div>
+{% endif %}
+
+<!-- ═══ Users ═══ -->
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+  <span style="font-size:13px;font-weight:700;color:#1a1a1a;letter-spacing:-.01em;">Users</span>
+  <span style="font-size:11px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border-radius:20px;padding:1px 9px;">{{ regular_users | length }}</span>
+</div>
+
+{% if regular_users | length == 0 %}
+<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;text-align:center;padding:60px 20px;color:#bbb;font-size:14px;">
+  No users yet. Click "+ Add User" to create one.
+</div>
+{% else %}
+<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;">
+
+  <!-- Table header -->
+  <div style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:10px 20px;background:#faf8f6;border-bottom:1px solid #f0ece8;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">#</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">User</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Joined</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Role</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:right;">Actions</div>
+  </div>
+
+  {% for u in regular_users %}
+  <div onclick="window.location='/admin/users/{{ u.id }}'"
+       style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:13px 20px;border-top:1px solid #f0ece8;cursor:pointer;align-items:center;transition:background .12s;{% if loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}"
+       onmouseover="this.style.background='#faf5f0'" onmouseout="this.style.background='{% if loop.index is even %}#fdfcfb{% else %}#fff{% endif %}'">
+
+    <!-- Index -->
+    <div style="font-size:12px;font-weight:700;color:#bbb;">{{ loop.index }}</div>
+
+    <!-- Avatar + name -->
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:36px;height:36px;border-radius:50%;background:{{ avatar_colors[loop.index0 % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <span style="font-size:14px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:-.5px;">{{ u.username[0] }}{{ u.username[1] if u.username|length > 1 else '' }}</span>
+      </div>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#1a1a1a;">{{ u.username }}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:1px;">User account</div>
+      </div>
+    </div>
+
+    <!-- Joined -->
+    <div style="font-size:12px;color:#777;">{{ u.created_at[:10] }}</div>
+
+    <!-- Role -->
+    <div>
+      <span style="font-size:11px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:20px;padding:3px 12px;letter-spacing:.04em;">User</span>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;justify-content:flex-end;gap:6px;" onclick="event.stopPropagation();">
+      <a href="/admin/users/{{ u.id }}"
+         style="font-size:12px;font-weight:600;color:#555;background:#fff;border:1.5px solid #ddd;border-radius:7px;padding:4px 12px;text-decoration:none;transition:border-color .12s;"
+         onmouseover="this.style.borderColor='#c45010';this.style.color='#c45010'" onmouseout="this.style.borderColor='#ddd';this.style.color='#555'">View</a>
+      {% if u.id != current_user.id %}
+      <form action="/admin/users/{{ u.id }}/delete" method="post"
+            onsubmit="return confirm('Delete {{ u.username }}? This cannot be undone.');" style="margin:0;">
+        <button type="submit"
+                style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:7px;padding:4px 12px;cursor:pointer;">
+          Delete
+        </button>
+      </form>
+      {% endif %}
     </div>
 
   </div>
