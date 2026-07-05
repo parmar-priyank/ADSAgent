@@ -23,7 +23,7 @@
     <div class="upload-loading-sub">Claude AI is reading your agreement &mdash; please wait</div>
   </div>
 
-  {% if verify_required or (not current_user.email_verified) %}
+  {% if current_user.role != 'admin' and (verify_required or (not current_user.email_verified)) %}
   {# ── Email verification required banner (fully self-contained, no modal needed) ── #}
   <div class="user-upload-wrap">
     <div style="width:100%;max-width:460px;">
@@ -159,7 +159,7 @@
   </script>
   {% endif %}
 
-  {% if not result and current_user.email_verified %}
+  {% if not result and (current_user.role == 'admin' or current_user.email_verified) %}
   {# ── Step 1: Upload ── #}
   <div class="user-upload-wrap">
 

@@ -30,7 +30,7 @@ from config import (
     _resolve_theme,
     limiter,
     require_login,
-    require_email_verified,
+    require_qc_access,
     templates,
 )
 
@@ -73,7 +73,7 @@ def home(request: Request, verify_required: int = 0, user=Depends(require_login)
 # ---------------------------------------------------------------------------
 
 @router.get("/user_upload", response_class=HTMLResponse)
-def upload_get(request: Request, id: int = None, user=Depends(require_email_verified)):
+def upload_get(request: Request, id: int = None, user=Depends(require_qc_access)):
     result = None
     if id is not None:
         record = db.get_quote(id)
@@ -93,7 +93,7 @@ async def upload(
     request: Request,
     file: UploadFile = File(...),
     preferred_install_date: str = Form(""),
-    user=Depends(require_email_verified),
+    user=Depends(require_qc_access),
 ):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Please upload a PDF file.")
@@ -165,7 +165,7 @@ async def upload_confirm(
     pending_token: str = Form(...),
     existing_id: int = Form(...),
     preferred_install_date: str = Form(""),
-    user=Depends(require_email_verified),
+    user=Depends(require_qc_access),
 ):
     if action == "keep":
         db.pop_pending_pdf(pending_token)
@@ -219,7 +219,7 @@ async def upload_confirm(
 # ---------------------------------------------------------------------------
 
 @router.get("/pdf", response_class=HTMLResponse)
-def quote_detail(request: Request, id: int = None, user=Depends(require_login)):
+def quote_detail(request: Request, id: int = None, user=Depends(require_qc_access)):
     all_records = db.get_recent()
     if id is None:
         if not all_records:
@@ -251,5 +251,5 @@ def quote_detail(request: Request, id: int = None, user=Depends(require_login)):
 
 
 @router.get("/quotes/{quote_id}", response_class=HTMLResponse)
-def quote_detail_legacy(request: Request, quote_id: int, user=Depends(require_login)):
+def quote_detail_legacy(request: Request, quote_id: int, user=Depends(require_qc_access)):
     return RedirectResponse(url=f"/pdf?id={quote_id}", status_code=302)

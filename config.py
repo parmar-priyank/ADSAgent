@@ -301,6 +301,37 @@ def require_admin(request: Request):
     return fresh if fresh else user
 
 
+def require_qc_access(request: Request):
+    """Guard for the QC flow (upload/verify-email/checklist/confirm routes),
+    letting both a logged-in user AND a logged-in admin through — same
+    checks, same route bodies, same save/history behavior either way.
+
+    - role='user': identical to require_email_verified (session_user
+      cookie, must have a verified email).
+    - role='admin': identical to require_admin (session_admin cookie),
+      but does NOT require email_verified — admin accounts have no
+      email-verification UI at all (admin_set_email_verified blocks
+      changing another admin's status by design), so this check would
+      otherwise be an unpassable dead end for admins. Admin accounts are
+      already a higher trust level than the email-verification gate is
+      meant to enforce for regular users.
+    """
+    user = _get_session(request)
+    if user and user.get("role") == "user":
+        fresh = adb.get_user(user["id"])
+        resolved = fresh if fresh else user
+        if not resolved.get("email_verified"):
+            raise _AuthRedirect("/user_home?verify_required=1")
+        return resolved
+
+    admin_user = _get_admin_session(request)
+    if admin_user and admin_user.get("role") == "admin":
+        fresh = adb.get_user(admin_user["id"])
+        return fresh if fresh else admin_user
+
+    raise _AuthRedirect("/login")
+
+
 _FAVICON = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
     'fill="none" stroke="#e8590c" stroke-width="2" stroke-linecap="round" '
