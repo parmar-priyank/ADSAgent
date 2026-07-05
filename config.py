@@ -236,7 +236,19 @@ class InactivityTimeoutMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
+        # If the route handler itself already set a Set-Cookie header for
+        # one of these cookies (e.g. logout's delete_cookie(), or
+        # _set_session() issuing a fresh token on login), don't overwrite
+        # it with our stale pre-request refresh — otherwise a just-deleted
+        # cookie gets silently re-added by this middleware, so logout
+        # never actually ends the session.
+        already_set = {
+            existing.split("=", 1)[0]
+            for existing in response.headers.getlist("set-cookie")
+        }
         for cookie_name, new_token in refresh_cookies.items():
+            if cookie_name in already_set:
+                continue
             response.set_cookie(
                 cookie_name, new_token,
                 httponly=True,
