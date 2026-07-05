@@ -197,9 +197,11 @@ def login_2fa_verify(request: Request,
 
 @router.get("/logout")
 def logout(request: Request):
-    # Determine which panel triggered logout based on which cookie is present
-    admin_user = _get_admin_session(request)
-    dest = "/admin-dashboard" if admin_user else "/login"
+    # Determine which panel triggered logout based on which cookie is
+    # present — check presence, not validity, so this still redirects
+    # correctly even if the session had already gone idle/expired (e.g.
+    # the 15-minute inactivity timeout) by the time Sign Out is clicked.
+    dest = "/admin-dashboard" if request.cookies.get(COOKIE_ADMIN) else "/login"
     response = RedirectResponse(url=dest, status_code=303)
     response.delete_cookie(COOKIE)
     response.delete_cookie(COOKIE_ADMIN)
