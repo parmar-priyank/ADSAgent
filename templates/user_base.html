@@ -253,14 +253,6 @@
         </div>
       </form>
 
-      {#
-      Two-Factor Authentication — hidden for now (OTP delivery via Outlook
-      is blocked at the tenant level: SmtpClientAuthentication disabled;
-      Gmail fallback works but 2FA isn't needed since user-side login is
-      already restricted to the office IP allowlist). Re-enable by
-      un-commenting this block once Outlook SMTP auth is sorted, or if 2FA
-      is wanted again for another reason. Nothing else needs to change —
-      the routes/DB column/login branch are all still intact.
       <div style="padding:0 24px 24px;">
         <div style="height:1px;background:#f0ece8;margin-bottom:18px;"></div>
         <form action="/user/2fa/toggle" method="post">
@@ -291,7 +283,6 @@
           {% endif %}
         </form>
       </div>
-      #}
     </div>
   </div>
 
