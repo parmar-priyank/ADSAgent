@@ -315,9 +315,14 @@ def user_update_profile(request: Request,
     err = adb.update_profile(user["id"], clean_name, clean_email, combined_phone[:30])
     if err:
         return RedirectResponse(url=f"/user_home?profile_error={urllib.parse.quote(err)}", status_code=303)
-    ref = request.headers.get("referer", "/user_home")
-    origin = str(request.base_url).rstrip("/")
-    dest = ref if ref.startswith(origin) else "/user_home"
+    ref = request.headers.get("referer", "")
+    # Compare only the path (not scheme/host) — request.base_url can resolve
+    # with the wrong scheme behind this app's reverse-proxy setup (confirmed:
+    # base_url reports http:// even though the site is https-only), which
+    # would make a full-origin comparison against the browser's real https
+    # referer always fail.
+    ref_path = urllib.parse.urlparse(ref).path if ref else ""
+    dest = ref if ref_path else "/user_home"
     return RedirectResponse(url=dest, status_code=303)
 
 
@@ -396,10 +401,24 @@ async def toggle_theme(request: Request, user=Depends(require_login)):
     adb.set_user_theme(user["id"], "light" if current == "dark" else "dark")
     form = await request.form()
     next_url = form.get("next", "")
-    origin = str(request.base_url).rstrip("/")
-    if next_url and next_url.startswith(origin) and not any(next_url.startswith(origin + p) for p in _POST_ONLY_PATHS):
+
+    # Compare only the URL PATH, not scheme/host — request.base_url can
+    # resolve with the wrong scheme behind this app's reverse-proxy setup
+    # (confirmed: base_url reports http:// even though the site is
+    # https-only), which would make a full-origin comparison against the
+    # browser's real https next_url/referer always fail.
+    def _safe_path(url: str) -> str:
+        if not url:
+            return ""
+        path = urllib.parse.urlparse(url).path
+        if any(path.startswith(p) for p in _POST_ONLY_PATHS):
+            return ""
+        return path
+
+    next_path = _safe_path(next_url)
+    if next_path:
         dest = next_url
     else:
         referer = request.headers.get("referer", "")
-        dest = referer if (referer.startswith(origin) and not any(referer.startswith(origin + p) for p in _POST_ONLY_PATHS)) else "/user_home"
+        dest = referer if _safe_path(referer) else "/user_home"
     return RedirectResponse(url=dest, status_code=303)

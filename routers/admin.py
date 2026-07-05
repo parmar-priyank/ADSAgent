@@ -75,7 +75,6 @@ def _redirect_back_to_admin(request: Request, fallback: str = "/admin") -> str:
     `fallback` instead of back to the originating page.
     """
     ref = request.headers.get("referer", "")
-    logger.warning("DEBUG _redirect_back_to_admin: base_url=%r referer=%r", str(request.base_url), ref)
     if not ref:
         return fallback
     path = urllib.parse.urlparse(ref).path
