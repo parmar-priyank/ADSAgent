@@ -14,7 +14,7 @@ from datetime import datetime
 import anthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
@@ -132,6 +132,40 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if _HSTS_ENABLED:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
+
+
+# ---------------------------------------------------------------------------
+# User-side login IP allowlist — runtime on/off toggle (admin-controlled)
+# ---------------------------------------------------------------------------
+LOGIN_IP_ALLOWLIST_SETTING = "user_login_ip_restricted"
+LOGIN_ALLOWED_IPS = {"103.233.116.210", "139.5.251.232"}
+
+
+def is_login_ip_restricted() -> bool:
+    return adb.get_setting(LOGIN_IP_ALLOWLIST_SETTING, "0") == "1"
+
+
+def set_login_ip_restricted(enabled: bool):
+    adb.set_setting(LOGIN_IP_ALLOWLIST_SETTING, "1" if enabled else "0")
+
+
+class UserLoginIPRestrictionMiddleware(BaseHTTPMiddleware):
+    """Blocks POST/GET /login from outside LOGIN_ALLOWED_IPS, but only when
+    the admin has turned the restriction on (is_login_ip_restricted()).
+    Off by default — matches the fact this used to be an nginx-only
+    restriction the admin had to ask a developer to toggle; now it's a
+    plain DB flag they can flip themselves from the admin panel.
+
+    Only /login is restricted — /login/2fa and /admin-dashboard are never
+    touched here, same scope as the nginx rule this replaces.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/login" and is_login_ip_restricted():
+            client_ip = get_remote_address(request)
+            if client_ip not in LOGIN_ALLOWED_IPS:
+                return PlainTextResponse("403 Forbidden", status_code=403)
+        return await call_next(request)
 
 
 _signer = URLSafeTimedSerializer(SECRET_KEY)

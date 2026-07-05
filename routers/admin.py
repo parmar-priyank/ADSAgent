@@ -16,6 +16,7 @@ Routes:
   POST /admin/users/{user_id}/delete
   POST /admin/records/{record_id}/delete
   POST /admin/settings/theme
+  POST /admin/settings/login-ip-restriction
   GET  /admin/qc-download/{quote_id}
   GET  /admin/qc-version/{version_id}/download
   GET  /admin/qc-version/{version_id}
@@ -48,7 +49,9 @@ from config import (
     _anthropic_client,
     _build_install_map,
     _resolve_theme,
+    is_login_ip_restricted,
     require_admin,
+    set_login_ip_restricted,
     templates,
 )
 
@@ -81,6 +84,7 @@ def admin_users_page(request: Request, user=Depends(require_admin), success: str
         users=adb.list_users(),
         success="User created successfully." if success else None,
         error=None,
+        login_ip_restricted=is_login_ip_restricted(),
     )
     response = templates.TemplateResponse(request, "admin_users.html", ctx)
     response.headers.update(_NO_CACHE)
@@ -346,6 +350,20 @@ def admin_set_theme(request: Request, theme: str = Form(...), user=Depends(requi
                     referer: str = None):
     if theme in ("dark", "light"):
         adb.set_setting("user_panel_theme", theme)
+    ref = request.headers.get("referer", "")
+    origin = str(request.base_url).rstrip("/")
+    dest = ref if (ref.startswith(origin + "/admin")) else "/admin"
+    return RedirectResponse(url=dest, status_code=303)
+
+
+@router.post("/admin/settings/login-ip-restriction")
+def admin_set_login_ip_restriction(request: Request, enabled: str = Form(...),
+                                    user=Depends(require_admin)):
+    """Toggle whether /login (the user-side login page) is restricted to
+    the office IP allowlist. Off = anyone can reach /login from any
+    network. On = only LOGIN_ALLOWED_IPS can. Admin login is never
+    affected by this either way."""
+    set_login_ip_restricted(enabled == "1")
     ref = request.headers.get("referer", "")
     origin = str(request.base_url).rstrip("/")
     dest = ref if (ref.startswith(origin + "/admin")) else "/admin"

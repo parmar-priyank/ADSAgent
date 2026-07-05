@@ -20,6 +20,34 @@
 </div>
 {% endif %}
 
+<!-- User login network restriction toggle -->
+<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);padding:18px 22px;margin-bottom:20px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:13px;font-weight:700;color:#1a1a1a;">Restrict User Login to Office Network</div>
+      <div style="font-size:11.5px;color:#888;margin-top:3px;line-height:1.5;">
+        {% if login_ip_restricted %}
+        <strong style="color:#16a34a;">On</strong> — only office network IPs can sign in at the user login page. Admin login is never affected.
+        {% else %}
+        <strong style="color:#a35a1a;">Off</strong> — users can sign in from any network.
+        {% endif %}
+      </div>
+    </div>
+    <form action="/admin/settings/login-ip-restriction" method="post" style="flex-shrink:0;">
+      <input type="hidden" name="enabled" value="{{ '0' if login_ip_restricted else '1' }}">
+      <button type="submit"
+              style="padding:8px 18px;font-size:13px;font-weight:700;white-space:nowrap;border-radius:8px;cursor:pointer;
+                     {% if login_ip_restricted %}
+                     background:#fff;border:1.5px solid #e2dbd4;color:#555;
+                     {% else %}
+                     background:#c45010;border:none;color:#fff;
+                     {% endif %}">
+        Turn {{ 'Off' if login_ip_restricted else 'On' }}
+      </button>
+    </form>
+  </div>
+</div>
+
 <!-- Page header row -->
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
   <div></div>
