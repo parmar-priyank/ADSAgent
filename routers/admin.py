@@ -31,6 +31,7 @@ import shutil
 import sqlite3
 import tempfile
 import time
+import urllib.parse
 
 import db.user_repo as adb
 import db.quote_repo as db
@@ -57,6 +58,31 @@ from config import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _redirect_back_to_admin(request: Request, fallback: str = "/admin") -> str:
+    """Return the referer's path+query (so a settings toggle redirects back
+    to whatever admin page the form was submitted from), or `fallback` if
+    there's no usable referer.
+
+    Only compares the URL PATH, not scheme/host — request.base_url can't be
+    trusted to match the referer's scheme here, since this app sits behind
+    an nginx reverse proxy over a Unix socket and gunicorn's UvicornWorker
+    doesn't have proxy-header trust configured for that transport, so
+    request.base_url may resolve to "http://..." even when the site is only
+    ever served over https. Comparing full origins (scheme+host) against
+    the referer would then never match, silently sending every redirect to
+    `fallback` instead of back to the originating page.
+    """
+    ref = request.headers.get("referer", "")
+    logger.warning("DEBUG _redirect_back_to_admin: base_url=%r referer=%r", str(request.base_url), ref)
+    if not ref:
+        return fallback
+    path = urllib.parse.urlparse(ref).path
+    if path.startswith("/admin"):
+        parsed = urllib.parse.urlparse(ref)
+        return urllib.parse.urlunparse(("", "", parsed.path, "", parsed.query, ""))
+    return fallback
 
 
 # ---------------------------------------------------------------------------
@@ -213,10 +239,7 @@ def admin_update_profile(user_id: int, request: Request,
         digits = "".join(c for c in phone_number if c.isdigit())
         combined_phone = f"{phone_country.strip()} {digits}".strip() if phone_country.strip() else digits
     adb.update_profile(user_id, full_name.strip(), email.strip(), combined_phone)
-    ref = request.headers.get("referer", "")
-    origin = str(request.base_url).rstrip("/")
-    dest = ref if ref.startswith(origin + "/admin") else "/admin"
-    return RedirectResponse(url=dest, status_code=303)
+    return RedirectResponse(url=_redirect_back_to_admin(request), status_code=303)
 
 
 @router.post("/admin/email/send-otp")
@@ -350,10 +373,7 @@ def admin_set_theme(request: Request, theme: str = Form(...), user=Depends(requi
                     referer: str = None):
     if theme in ("dark", "light"):
         adb.set_setting("user_panel_theme", theme)
-    ref = request.headers.get("referer", "")
-    origin = str(request.base_url).rstrip("/")
-    dest = ref if (ref.startswith(origin + "/admin")) else "/admin"
-    return RedirectResponse(url=dest, status_code=303)
+    return RedirectResponse(url=_redirect_back_to_admin(request), status_code=303)
 
 
 @router.post("/admin/settings/login-ip-restriction")
@@ -364,10 +384,7 @@ def admin_set_login_ip_restriction(request: Request, enabled: str = Form(...),
     network. On = only LOGIN_ALLOWED_IPS can. Admin login is never
     affected by this either way."""
     set_login_ip_restricted(enabled == "1")
-    ref = request.headers.get("referer", "")
-    origin = str(request.base_url).rstrip("/")
-    dest = ref if (ref.startswith(origin + "/admin")) else "/admin"
-    return RedirectResponse(url=dest, status_code=303)
+    return RedirectResponse(url=_redirect_back_to_admin(request), status_code=303)
 
 
 # ---------------------------------------------------------------------------
