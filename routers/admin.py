@@ -298,10 +298,13 @@ def admin_set_email_verified(user_id: int, request: Request,
     """Admin override for email verification — lets an admin manually
     verify a user whose OTP isn't arriving (e.g. spam filtering, provider
     outage) so they can proceed to the QC flow, or revoke verification if
-    it was granted in error."""
+    it was granted in error. Admin accounts (including the caller's own)
+    cannot be targeted — only role='user' accounts."""
     target = adb.get_user(user_id)
     if not target:
         raise HTTPException(404, "User not found.")
+    if target.get("role") == "admin":
+        raise HTTPException(403, "Cannot change email verification on an admin account.")
     adb.set_email_verified(user_id, verified == "1")
     label = "verified" if verified == "1" else "marked as unverified"
     return RedirectResponse(url=f"/admin/users/{user_id}?success=Email+{label}.", status_code=303)
@@ -311,6 +314,11 @@ def admin_set_email_verified(user_id: int, request: Request,
 def admin_delete_user(user_id: int, request: Request, user=Depends(require_admin)):
     if user_id == user["id"]:
         raise HTTPException(400, "Cannot delete your own account.")
+    target = adb.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "User not found.")
+    if target.get("role") == "admin":
+        raise HTTPException(403, "Cannot delete another admin account.")
     adb.delete_user(user_id)
     return RedirectResponse(url="/admin/users", status_code=303)
 

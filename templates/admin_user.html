@@ -56,8 +56,8 @@
         </div>
       </div>
 
-      <!-- Delete -->
-      {% if target.id != current_user.id %}
+      <!-- Delete: admin accounts (including your own) cannot be deleted from the UI -->
+      {% if target.id != current_user.id and target.role != 'admin' %}
       <form action="/admin/users/{{ target.id }}/delete" method="post"
             onsubmit="return confirm('Permanently delete {{ target.username }}? This cannot be undone.');">
         <button type="submit" class="link-btn danger" style="padding:8px 16px;font-size:12.5px;">Delete User</button>
@@ -144,6 +144,16 @@
       </div>
       {% if not target.email %}
       <p style="font-size:13px;color:var(--muted);margin:0;">This user has no email address on file yet.</p>
+      {% elif target.role == 'admin' %}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:13px;color:var(--ink);">{{ target.email }}</span>
+        {% if target.email_verified %}
+        <span style="background:#dcfce7;color:#16a34a;border-radius:20px;padding:2px 9px;font-size:10.5px;font-weight:700;">&#10003; Verified</span>
+        {% else %}
+        <span style="background:#fef9c3;color:#854d0e;border-radius:20px;padding:2px 9px;font-size:10.5px;font-weight:700;">Unverified</span>
+        {% endif %}
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);margin:6px 0 0;line-height:1.5;">Admin accounts' email verification cannot be changed from the UI.</p>
       {% else %}
       <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
         <div>

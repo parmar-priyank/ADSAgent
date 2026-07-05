@@ -98,6 +98,61 @@
 </div>
 {% endif %}
 
+<!-- Admins section -->
+{% set admins = users | selectattr('role', 'equalto', 'admin') | list %}
+{% if admins %}
+<div style="margin-top:28px;margin-bottom:12px;font-size:13px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;">Admins</div>
+<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;">
+
+  <!-- Table header -->
+  <div style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:10px 20px;background:#faf8f6;border-bottom:1px solid #f0ece8;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">#</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">User</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Joined</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Role</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:right;">Actions</div>
+  </div>
+
+  {% for u in admins %}
+  <div onclick="window.location='/admin/users/{{ u.id }}'"
+       style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:13px 20px;border-top:1px solid #f0ece8;cursor:pointer;align-items:center;transition:background .12s;{% if loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}"
+       onmouseover="this.style.background='#faf5f0'" onmouseout="this.style.background='{% if loop.index is even %}#fdfcfb{% else %}#fff{% endif %}'">
+
+    <!-- Index -->
+    <div style="font-size:12px;font-weight:700;color:#bbb;">{{ loop.index }}</div>
+
+    <!-- Avatar + name -->
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:36px;height:36px;border-radius:50%;background:{{ avatar_colors[loop.index0 % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <span style="font-size:14px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:-.5px;">{{ u.username[0] }}{{ u.username[1] if u.username|length > 1 else '' }}</span>
+      </div>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#1a1a1a;">{{ u.username }}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:1px;">Admin account</div>
+      </div>
+    </div>
+
+    <!-- Joined -->
+    <div style="font-size:12px;color:#777;">{{ u.created_at[:10] }}</div>
+
+    <!-- Role -->
+    <div>
+      <span style="font-size:11px;font-weight:700;color:#a35a1a;background:#fdf0e4;border:1.5px solid #f0d3ae;border-radius:20px;padding:3px 12px;letter-spacing:.04em;">Admin</span>
+    </div>
+
+    <!-- Actions: admin accounts cannot be deleted or otherwise modified from the UI -->
+    <div style="display:flex;justify-content:flex-end;gap:6px;" onclick="event.stopPropagation();">
+      <a href="/admin/users/{{ u.id }}"
+         style="font-size:12px;font-weight:600;color:#555;background:#fff;border:1.5px solid #ddd;border-radius:7px;padding:4px 12px;text-decoration:none;transition:border-color .12s;"
+         onmouseover="this.style.borderColor='#c45010';this.style.color='#c45010'" onmouseout="this.style.borderColor='#ddd';this.style.color='#555'">View</a>
+    </div>
+
+  </div>
+  {% endfor %}
+
+</div>
+{% endif %}
+
 <!-- Create User Modal -->
 <div id="create-user-overlay"
      onclick="if(event.target===this)closeCreateModal()"
