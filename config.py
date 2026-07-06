@@ -156,8 +156,8 @@ class UserLoginIPRestrictionMiddleware(BaseHTTPMiddleware):
     restriction the admin had to ask a developer to toggle; now it's a
     plain DB flag they can flip themselves from the admin panel.
 
-    Only /login is restricted — /login/2fa and /admin-dashboard are never
-    touched here, same scope as the nginx rule this replaces.
+    Only /login is restricted — /admin-dashboard is never touched here,
+    same scope as the nginx rule this replaces.
     """
 
     async def dispatch(self, request: Request, call_next):

@@ -168,14 +168,6 @@ def set_email_verified(user_id: int, verified: bool = True):
         conn.execute("UPDATE users SET email_verified = ? WHERE id = ?", (1 if verified else 0, user_id))
 
 
-def set_two_factor_enabled(user_id: int, enabled: bool):
-    with get_db() as conn:
-        conn.execute(
-            "UPDATE users SET two_factor_enabled = ? WHERE id = ?",
-            (1 if enabled else 0, user_id),
-        )
-
-
 def create_otp(user_id: int, purpose: str, ttl_seconds: int = 300) -> str:
     """Generate a 6-digit OTP, store it, and return the code."""
     otp = f"{secrets.randbelow(1000000):06d}"

@@ -338,37 +338,6 @@
           <button type="submit" style="flex:2;padding:10px;border-radius:9px;border:none;background:#c45010;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Save Changes</button>
         </div>
       </form>
-
-      <div style="padding:0 24px 24px;">
-        <div style="height:1px;background:#f0ece8;margin-bottom:18px;"></div>
-        <form action="/admin/2fa/toggle" method="post">
-          <input type="hidden" name="enabled" value="{{ '0' if current_user.two_factor_enabled else '1' }}">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
-            <div>
-              <div style="font-size:13px;font-weight:700;color:#1a1a1a;">Two-Factor Authentication</div>
-              <div style="font-size:11px;color:#999;margin-top:2px;">
-                {% if current_user.two_factor_enabled %}
-                Enabled — a code will be emailed to you at each sign-in.
-                {% else %}
-                Require an email code in addition to your password when signing in.
-                {% endif %}
-              </div>
-            </div>
-            <button type="submit"
-                    style="flex-shrink:0;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;
-                           {% if current_user.two_factor_enabled %}
-                           background:#fff;border:1.5px solid #e2dbd4;color:#555;
-                           {% else %}
-                           background:#c45010;border:none;color:#fff;
-                           {% endif %}">
-              {{ 'Disable' if current_user.two_factor_enabled else 'Enable' }}
-            </button>
-          </div>
-          {% if not current_user.email_verified %}
-          <div style="font-size:11px;color:#b45309;margin-top:8px;">Verify your email above before enabling 2FA.</div>
-          {% endif %}
-        </form>
-      </div>
     </div>
   </div>
 
