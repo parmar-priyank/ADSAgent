@@ -312,20 +312,6 @@ def require_login(request: Request):
     return fresh if fresh else user
 
 
-def require_email_verified(request: Request):
-    """Guard for routes that require a verified email address.
-    Builds on require_login — redirects to user_home with a prompt if email is not verified.
-    """
-    user = _get_session(request)
-    if not user or user.get("role") != "user":
-        raise _AuthRedirect("/login")
-    fresh = adb.get_user(user["id"])
-    resolved = fresh if fresh else user
-    if not resolved.get("email_verified"):
-        raise _AuthRedirect("/user_home?verify_required=1")
-    return resolved
-
-
 def require_admin(request: Request):
     """Guard for admin-only routes — reads session_admin cookie only."""
     user = _get_admin_session(request)
@@ -340,23 +326,15 @@ def require_qc_access(request: Request):
     letting both a logged-in user AND a logged-in admin through — same
     checks, same route bodies, same save/history behavior either way.
 
-    - role='user': identical to require_email_verified (session_user
-      cookie, must have a verified email).
-    - role='admin': identical to require_admin (session_admin cookie),
-      but does NOT require email_verified — admin accounts have no
-      email-verification UI at all (admin_set_email_verified blocks
-      changing another admin's status by design), so this check would
-      otherwise be an unpassable dead end for admins. Admin accounts are
-      already a higher trust level than the email-verification gate is
-      meant to enforce for regular users.
+    Does NOT require email_verified for either role. Regular user accounts
+    are created by an admin (not self-registered), so there is no signup
+    step to confirm — and email-OTP delivery to some domains has proven
+    unreliable, so gating the QC flow on it was a real lockout risk.
     """
     user = _get_session(request)
     if user and user.get("role") == "user":
         fresh = adb.get_user(user["id"])
-        resolved = fresh if fresh else user
-        if not resolved.get("email_verified"):
-            raise _AuthRedirect("/user_home?verify_required=1")
-        return resolved
+        return fresh if fresh else user
 
     admin_user = _get_admin_session(request)
     if admin_user and admin_user.get("role") == "admin":

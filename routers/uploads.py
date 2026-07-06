@@ -59,10 +59,8 @@ def user_heartbeat(request: Request, user=Depends(require_login)):
 
 
 @router.get("/user_home", response_class=HTMLResponse)
-def home(request: Request, verify_required: int = 0, user=Depends(require_login)):
+def home(request: Request, user=Depends(require_login)):
     ctx = _index_context(user=user)
-    if verify_required:
-        ctx["verify_required"] = True
     response = templates.TemplateResponse(request, "user_home.html", ctx)
     response.headers.update(_NO_CACHE)
     return response

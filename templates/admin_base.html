@@ -251,48 +251,11 @@
 
           <!-- Email Address -->
           <div>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-              <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;">Email Address</label>
-              {% if current_user.email_verified %}
-              <span style="font-size:11px;font-weight:700;color:#16a34a;background:#f0fdf4;border:1px solid #86efac;border-radius:20px;padding:2px 8px;">&#10003; Verified</span>
-              {% elif current_user.email %}
-              <button type="button" id="send-otp-btn" onclick="sendVerifyOtp()"
-                      style="font-size:11px;font-weight:700;color:#c45010;background:#fff8f5;border:1px solid #f5c9b0;border-radius:20px;padding:2px 10px;cursor:pointer;">
-                Verify Email
-              </button>
-              {% endif %}
-            </div>
+            <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Email Address</label>
             <input type="email" name="email" id="profile-email" placeholder="e.g. admin@example.com"
                    value="{{ current_user.email or '' }}"
                    style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;box-sizing:border-box;"
-                   onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'"
-                   oninput="onEmailChange()">
-            <div id="email-changed-note" style="display:none;font-size:11px;color:#b45309;margin-top:5px;font-weight:500;">
-              ⚠ Saving a new email will require re-verification.
-            </div>
-          </div>
-
-          <!-- OTP verification sub-panel (shown after clicking Verify Email) -->
-          <div id="otp-panel" style="display:none;background:#f8f4ff;border:1.5px solid #d8b4fe;border-radius:10px;padding:14px;">
-            <div style="font-size:12px;font-weight:700;color:#6d28d9;margin-bottom:8px;">
-              Enter the 6-digit code sent to your email
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input type="text" id="otp-input-field" maxlength="6" inputmode="numeric" pattern="[0-9]*"
-                     placeholder="000000"
-                     style="flex:1;padding:9px 12px;border:1.5px solid #d8b4fe;border-radius:8px;font-size:18px;font-weight:700;
-                            color:#6d28d9;letter-spacing:4px;text-align:center;outline:none;background:#fff;box-sizing:border-box;"
-                     onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#d8b4fe'">
-              <button type="button" onclick="submitVerifyOtp()"
-                      style="padding:9px 16px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
-                Confirm
-              </button>
-            </div>
-            <div id="otp-msg" style="display:none;font-size:12px;font-weight:600;margin-top:8px;"></div>
-            <div style="margin-top:8px;font-size:11px;color:#999;">
-              Didn't receive it?
-              <button type="button" onclick="sendVerifyOtp()" style="background:none;border:none;color:#7c3aed;font-size:11px;font-weight:700;cursor:pointer;padding:0;">Resend</button>
-            </div>
+                   onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'">
           </div>
 
           <!-- Phone Number -->
@@ -578,54 +541,6 @@
     return true;
   }
 
-  function onEmailChange() {
-    var note = document.getElementById('email-changed-note');
-    var orig = '{{ current_user.email or "" }}';
-    var cur  = document.getElementById('profile-email').value;
-    if (note) note.style.display = (cur !== orig && cur !== '') ? 'block' : 'none';
-  }
-
-  /* ── Email OTP verification ── */
-  function sendVerifyOtp() {
-    var btn = document.getElementById('send-otp-btn');
-    if (btn) { btn.disabled=true; btn.textContent='Sending…'; }
-    fetch('/admin/email/send-otp', { method:'POST', credentials:'same-origin' })
-      .then(function(r){ return r.json(); })
-      .then(function(d) {
-        if (d.ok) {
-          document.getElementById('otp-panel').style.display = 'block';
-          document.getElementById('otp-input-field').focus();
-          if (btn) { btn.textContent='Resend'; btn.disabled=false; }
-        } else {
-          alert(d.error || 'Failed to send OTP.');
-          if (btn) { btn.textContent='Verify Email'; btn.disabled=false; }
-        }
-      })
-      .catch(function() {
-        alert('Network error sending OTP.');
-        if (btn) { btn.disabled=false; btn.textContent='Verify Email'; }
-      });
-  }
-
-  function submitVerifyOtp() {
-    var otp = document.getElementById('otp-input-field').value.trim();
-    var msg = document.getElementById('otp-msg');
-    if (otp.length !== 6) {
-      msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent='Enter a 6-digit code.';
-      return;
-    }
-    var fd = new FormData();
-    fd.append('otp', otp);
-    fetch('/admin/email/verify-otp', { method:'POST', body:fd, credentials:'same-origin', redirect:'manual' })
-      .then(function(r) {
-        // Server redirects on success/failure — just reload
-        window.location.reload();
-      })
-      .catch(function() {
-        msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent='Network error.';
-      });
-  }
-
   function openProfileModal() {
     document.getElementById('topbar-user-menu').style.display = 'none';
     document.getElementById('profile-modal-overlay').style.display = 'flex';
@@ -646,7 +561,6 @@
   }
   function closeProfileModal() {
     document.getElementById('profile-modal-overlay').style.display = 'none';
-    document.getElementById('otp-panel').style.display = 'none';
   }
   function checkPwdStrength() {
     var v = document.getElementById('pwd-new').value;
