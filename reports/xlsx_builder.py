@@ -8,9 +8,7 @@ import re
 import openpyxl
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
-from openpyxl.utils import get_column_letter  # noqa: F401 — re-exported for callers
 
-ROMAN = re.compile(r"^(?:i{1,3}|iv|v|vi{1,3}|ix|x)$", re.IGNORECASE)
 SECTION_HINT = re.compile(r"DETAILS|CEC|APPROVED|SYSTEM|CUSTOMER", re.IGNORECASE)
 
 THIN = Side(style="thin", color="999999")
@@ -20,7 +18,7 @@ BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
     """
     Read a QC checklist sheet and return (items, header_labels, note_text).
-    items: list of {position, sno, parent_position, is_section, text, active}
+    items: list of {position, sno, is_section, text, active}
     """
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
     if sheet_name and sheet_name in wb.sheetnames:
@@ -33,7 +31,6 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
     note_text = ""
     items = []
     pos = 0
-    last_numbered_pos = None
 
     start_row = None
     col_map = {"sno": 1, "text": 2, "yn": 3, "ref": 4, "prompt": 5}
@@ -95,22 +92,16 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
             bool(text.isupper() and SECTION_HINT.search(text)) or
             (text.isupper() and len(text) > 4 and not sno_str.isdigit())
         )
-        is_sub = bool(ROMAN.match(sno_str)) or sno_str == ""
-        parent = last_numbered_pos if (is_sub and not is_section) else None
 
         items.append({
             "position": pos,
             "sno": sno_str,
-            "parent_position": parent,
             "is_section": is_section,
             "text": text,
             "reference": reference,
             "prompt": prompt_str,
             "active": 1,
         })
-
-        if sno_str.isdigit():
-            last_numbered_pos = pos
 
     header_labels = {
         "customer_label": _label_at(ws, "customer"),

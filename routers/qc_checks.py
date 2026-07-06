@@ -18,7 +18,6 @@ import io
 import json
 import mimetypes
 import os
-import urllib.parse
 import zipfile as zipmod
 from datetime import datetime
 

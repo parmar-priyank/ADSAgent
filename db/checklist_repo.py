@@ -85,15 +85,14 @@ def _insert_items(conn, template_id: int, items: list):
         conn.execute(
             """
             INSERT INTO checklist_items
-                (template_id, position, sno, parent_position, is_section,
+                (template_id, position, sno, is_section,
                  text, reference, prompt, active)
-            VALUES (?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?)
             """,
             (
                 template_id,
                 it.get("position"),
                 it.get("sno", ""),
-                it.get("parent_position"),
                 1 if it.get("is_section") else 0,
                 it.get("text", ""),
                 it.get("reference", ""),
@@ -159,7 +158,7 @@ def add_item(template_id: int, text: str, sno: str = "",
             "and matches the agreement details."
         )
         _insert_items(conn, template_id, [{
-            "position": position, "sno": sno, "parent_position": None,
+            "position": position, "sno": sno,
             "is_section": is_section, "text": text, "reference": reference,
             "prompt": default_prompt, "active": 1,
         }])

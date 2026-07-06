@@ -17,7 +17,6 @@ import os
 import re
 import smtplib
 import logging
-import uuid
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
