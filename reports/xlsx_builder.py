@@ -268,3 +268,94 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
+
+
+def build_template_xlsx(items: list, header_labels: dict = None, note_text: str = "",
+                        title: str = "||  JOB COMPLIANCE CHECKLIST (QC)  ||") -> bytes:
+    """
+    Build a read-only reference .xlsx for the admin Templates page download —
+    shows Sno./Checklist Item/Reference/What to verify (no Yes/No or Remarks,
+    since those are filled in later during an actual QC run, not here).
+    """
+    header_labels = header_labels or {}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+
+    bold = Font(name="Calibri", size=11, bold=True)
+    normal = Font(name="Calibri", size=11)
+    title_font = Font(name="Calibri", size=16, bold=True)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    section_fill  = PatternFill("solid", fgColor="E8590C")
+    section_font  = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+
+    ws.merge_cells("A1:E1")
+    c = ws.cell(1, 1, title)
+    c.font = title_font
+    c.alignment = center
+    ws.row_dimensions[1].height = 22
+
+    ws.merge_cells("A3:C3")
+    ws.cell(3, 1, header_labels.get("customer_label") or "Customer Name  :").font = bold
+    ws.merge_cells("A4:C4")
+    ws.cell(4, 1, header_labels.get("address_label") or "Correct Address  :").font = bold
+    ws.merge_cells("A5:C5")
+    ws.cell(5, 1, "Checked By  :").font = bold
+    ws.merge_cells("A6:C6")
+    ws.cell(6, 1, "Date  :").font = bold
+    ws.merge_cells("A7:E7")
+    ws.cell(7, 1, header_labels.get("job_label") or "Job Details  :").font = bold
+
+    headers = ["Sno.", "Checklist Item", "Reference", "What to verify as per Agreement"]
+    for ci, h in enumerate(headers, start=1):
+        cell = ws.cell(8, ci, h)
+        cell.font = bold
+        cell.alignment = center
+        cell.border = BORDER
+    ws.row_dimensions[8].height = 20
+
+    r = 9
+    MIN_ROW_HEIGHT = 30
+
+    for it in items:
+        if not it.get("active", 1):
+            continue
+        is_section = it.get("is_section")
+
+        sno_cell    = ws.cell(r, 1, it.get("sno", ""))
+        text_cell   = ws.cell(r, 2, it.get("text", ""))
+        ref_cell    = ws.cell(r, 3, it.get("reference", ""))
+        prompt_cell = ws.cell(r, 4, it.get("prompt", ""))
+
+        for cell in (sno_cell, text_cell, ref_cell, prompt_cell):
+            cell.border = BORDER
+
+        if is_section:
+            ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=4)
+            text_cell.font   = section_font
+            text_cell.fill   = section_fill
+            sno_cell.fill    = section_fill
+            ref_cell.fill    = section_fill
+            prompt_cell.fill = section_fill
+        else:
+            sno_cell.font  = bold
+            text_cell.font = normal
+
+        sno_cell.alignment    = center
+        text_cell.alignment   = left
+        ref_cell.alignment    = left
+        prompt_cell.alignment = left
+
+        if not is_section:
+            ws.row_dimensions[r].height = MIN_ROW_HEIGHT
+        r += 1
+
+    widths = {"A": 7.4, "B": 61.3, "C": 30.0, "D": 67.1}
+    for col, w in widths.items():
+        ws.column_dimensions[col].width = w
+
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()

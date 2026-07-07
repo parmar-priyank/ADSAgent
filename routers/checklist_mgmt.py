@@ -18,7 +18,7 @@ Routes:
 import io
 
 import db.checklist_repo as tdb
-from reports.xlsx_builder import build_xlsx, parse_xlsx
+from reports.xlsx_builder import build_template_xlsx, parse_xlsx
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
@@ -176,7 +176,7 @@ def template_download(template_id: int, user=Depends(require_admin)):
         "address_label":  tpl.get("address_label"),
         "job_label":      tpl.get("job_label"),
     }
-    blob = build_xlsx(items, hdrs, tpl.get("note_text", ""))
+    blob = build_template_xlsx(items, hdrs, tpl.get("note_text", ""))
     safe = (tpl["name"] or "checklist").replace(" ", "_")
     safe = "".join(c for c in safe if c.isalnum() or c in "_-")[:80] or "checklist"
     return StreamingResponse(
