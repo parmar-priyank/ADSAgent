@@ -272,6 +272,17 @@
       </div>
 
       {% else %}
+      <!-- Preferred Installation Date: editable here, shared by Save Draft and Confirm -->
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label for="result-preferred-install-date" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">
+          Install Date
+        </label>
+        <input type="date" id="result-preferred-install-date"
+               value="{{ preferred_install_date or '' }}" min="{{ today }}"
+               style="padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;
+                      font-size:13px;color:var(--ink);background:var(--surface2);outline:none;">
+      </div>
+
       <!-- Save Draft -->
       <form method="post" action="/checklist-save-draft" id="save-draft-form">
         <input type="hidden" name="quote_id"           value="{{ quote_id }}">
@@ -283,6 +294,7 @@
         <input type="hidden" name="na_count"           id="draft-na"        value="{{ na_count }}">
         <input type="hidden" name="rows_json"          id="draft-rows-json" value='{{ checklist_rows | tojson }}'>
         <input type="hidden" name="email_results_json" value='{{ email_results | default([]) | tojson }}'>
+        <input type="hidden" name="preferred_install_date" id="draft-preferred-install-date" value="{{ preferred_install_date or '' }}">
         <button type="submit"
                 style="display:flex;align-items:center;gap:7px;padding:9px 20px;
                        background:var(--surface3);border:1px solid var(--line2);
@@ -306,6 +318,7 @@
         <input type="hidden" name="na_count"           id="confirm-na"        value="{{ na_count }}">
         <input type="hidden" name="rows_json"          id="confirm-rows-json" value='{{ checklist_rows | tojson }}'>
         <input type="hidden" name="email_results_json" value='{{ email_results | default([]) | tojson }}'>
+        <input type="hidden" name="preferred_install_date" id="confirm-preferred-install-date" value="{{ preferred_install_date or '' }}">
         <button type="submit"
                 style="display:flex;align-items:center;gap:7px;padding:9px 22px;
                        background:var(--brand);color:#fff;border:none;
@@ -633,8 +646,16 @@
     });
   }
 
-  document.getElementById('save-draft-form').addEventListener('submit', function() { _syncForms(_collectRows()); });
-  document.getElementById('confirm-form').addEventListener('submit',    function() { _syncForms(_collectRows()); });
+  function _syncInstallDate() {
+    var dateInput = document.getElementById('result-preferred-install-date');
+    if (!dateInput) return;
+    ['draft-preferred-install-date','confirm-preferred-install-date'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.value = dateInput.value;
+    });
+  }
+
+  document.getElementById('save-draft-form').addEventListener('submit', function() { _syncForms(_collectRows()); _syncInstallDate(); });
+  document.getElementById('confirm-form').addEventListener('submit',    function() { _syncForms(_collectRows()); _syncInstallDate(); });
   {% endif %}
 </script>
 {% endblock %}

@@ -170,6 +170,14 @@ def get_quote(quote_id: int):
         return _attach_line_items(conn, [dict(row)])[0]
 
 
+def update_preferred_install_date(quote_id: int, value: str):
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE quotes SET preferred_install_date = ? WHERE id = ?",
+            (value, quote_id),
+        )
+
+
 def get_recent(limit: int = 20):
     with get_db() as conn:
         rows = conn.execute(

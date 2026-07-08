@@ -799,17 +799,30 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
     payload = fetch_pending_result(token)
     if not payload:
         raise HTTPException(400, "Result link has expired. Please re-run the checklist.")
+
+    preferred_install_date = ""
+    quote_id = payload["quote_id"]
+    if quote_id:
+        try:
+            record = db.get_quote(int(quote_id))
+        except (ValueError, TypeError):
+            record = db.find_by_quote_number(quote_id)
+        if record:
+            preferred_install_date = record.get("preferred_install_date") or ""
+
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
         "tpl": payload["tpl"],
         "checklist_rows": payload["rows"],
         "dl_token": payload["dl_token"],
-        "quote_id": payload["quote_id"],
+        "quote_id": quote_id,
         "zip_filename": payload.get("zip_filename", ""),
         "yes_count": payload.get("yes_count", 0),
         "no_count": payload.get("no_count", 0),
         "na_count": payload.get("na_count", 0),
         "email_results": payload.get("email_results", []),
+        "preferred_install_date": preferred_install_date,
+        "today": datetime.now().strftime("%Y-%m-%d"),
         "theme": _resolve_theme(user),
     })
     resp.headers.update(_NO_CACHE)
@@ -908,6 +921,7 @@ def checklist_confirm(
     na_count: int = Form(0),
     rows_json: str = Form(""),
     email_results_json: str = Form(""),
+    preferred_install_date: str = Form(""),
     user=Depends(require_qc_access),
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
@@ -919,6 +933,10 @@ def checklist_confirm(
             record = db.get_quote(int(quote_id))
         except (ValueError, TypeError):
             record = db.find_by_quote_number(quote_id)
+
+    if record and preferred_install_date.strip() != (record.get("preferred_install_date") or ""):
+        db.update_preferred_install_date(record["id"], preferred_install_date.strip())
+        record["preferred_install_date"] = preferred_install_date.strip()
 
     if dl_token and record:
         try:
@@ -952,7 +970,8 @@ def checklist_confirm(
         except Exception:
             pass
 
-    install_date = (record or {}).get("install_date", "").strip() if record else ""
+    preferred = (record or {}).get("preferred_install_date", "").strip() if record else ""
+    install_date = preferred or ((record or {}).get("install_date", "").strip() if record else "")
     cal_param = ""
     if install_date:
         for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
@@ -984,6 +1003,7 @@ def checklist_save_draft(
     na_count: int = Form(0),
     rows_json: str = Form(""),
     email_results_json: str = Form(""),
+    preferred_install_date: str = Form(""),
     user=Depends(require_qc_access),
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
@@ -995,6 +1015,9 @@ def checklist_save_draft(
             record = db.get_quote(int(quote_id))
         except (ValueError, TypeError):
             record = db.find_by_quote_number(quote_id)
+
+    if record and preferred_install_date.strip() != (record.get("preferred_install_date") or ""):
+        db.update_preferred_install_date(record["id"], preferred_install_date.strip())
 
     if dl_token and record:
         try:
@@ -1048,7 +1071,8 @@ def user_history(request: Request, user=Depends(require_qc_access)):
 def user_qc_version_revisit(request: Request, version_id: int, user=Depends(require_qc_access)):
     with get_db() as conn:
         row = conn.execute(
-            """SELECT qv.*, q.customer_name, q.quote_number, q.install_date
+            """SELECT qv.*, q.customer_name, q.quote_number, q.install_date,
+                      q.preferred_install_date
                FROM qc_versions qv JOIN quotes q ON q.id = qv.quote_id
                WHERE qv.id = ?""",
             (version_id,),
@@ -1115,6 +1139,8 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         "na_count": na_count,
         "email_results": saved_email_results,
         "revisit_version": v,
+        "preferred_install_date": v.get("preferred_install_date") or "",
+        "today": datetime.now().strftime("%Y-%m-%d"),
     })
     resp.headers.update(_NO_CACHE)
     return resp
