@@ -317,14 +317,49 @@ def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf
 
 @router.get("/email-verify", response_class=HTMLResponse)
 def email_verify_page(request: Request, quote_id: str = "", user=Depends(require_qc_access)):
+    results = None
+    emails_meta = None
+    email_subject = None
+    email_from = None
+
+    draft_json = ""
+    if quote_id:
+        try:
+            draft_json = db.get_draft_email_results(int(quote_id))
+        except (ValueError, TypeError):
+            draft_json = ""
+
+    if draft_json.strip():
+        try:
+            parsed = json.loads(draft_json)
+            if isinstance(parsed, list) and parsed:
+                results = parsed
+                seen = []
+                seen_keys = set()
+                for r in results:
+                    key = (r.get("source_address") or "", r.get("source_subject") or "")
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    seen.append({"from": r.get("source_email", ""), "subject": r.get("source_subject", "")})
+                if len(seen) > 1:
+                    emails_meta = seen
+                elif seen:
+                    email_from = seen[0]["from"]
+                    email_subject = seen[0]["subject"]
+        except Exception:
+            results = None
+
     resp = templates.TemplateResponse(request, "user_email_verify.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
         "quote_id": quote_id,
-        "results": None,
+        "results": results,
         "error": None,
-        "email_subject": None,
-        "email_from": None,
+        "email_subject": email_subject,
+        "email_from": email_from,
+        "emails": emails_meta,
+        "from_draft": bool(results),
     })
     resp.headers.update(_NO_CACHE)
     return resp
@@ -473,6 +508,33 @@ async def email_verify_post(
     })
     resp.headers.update(_NO_CACHE)
     return resp
+
+
+@router.post("/email-verify/save-draft")
+def email_verify_save_draft(
+    quote_id: str = Form(""),
+    email_results_json: str = Form(""),
+    user=Depends(require_qc_access),
+):
+    """Persist Step 2's analyzed attachment results against the quote, so the
+    user doesn't have to re-upload the same .eml file(s) if they come back
+    to this quote later — independent of Continue/proceeding to Step 3."""
+    if not quote_id:
+        raise HTTPException(400, "Missing quote_id.")
+    try:
+        qid = int(quote_id)
+    except (ValueError, TypeError):
+        raise HTTPException(400, "Invalid quote_id.")
+
+    try:
+        parsed = json.loads(email_results_json) if email_results_json.strip() else []
+        if not isinstance(parsed, list):
+            parsed = []
+    except Exception:
+        parsed = []
+
+    db.save_draft_email_results(qid, json.dumps(parsed))
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

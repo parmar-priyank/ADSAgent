@@ -355,7 +355,21 @@
     <!-- Proceed button — only shown once results are available -->
     {% if results %}
     <div style="border-top:1px solid var(--line2);padding-top:18px;margin-top:4px;
-                display:flex;justify-content:flex-end;">
+                display:flex;justify-content:flex-end;gap:10px;align-items:center;">
+      {% if quote_id %}
+      <span id="eml-save-draft-msg" style="font-size:12.5px;color:var(--muted);display:none;">Draft saved</span>
+      <button type="button" id="eml-save-draft-btn" onclick="emlSaveDraft()"
+              style="display:inline-flex;align-items:center;gap:7px;
+                     background:var(--surface3);border:1px solid var(--line2);
+                     color:var(--ink);font-weight:600;
+                     font-size:14px;padding:11px 20px;border-radius:10px;cursor:pointer;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Save Draft
+      </button>
+      {% endif %}
       <form method="post" action="/qc-check-with-email" id="eml-proceed-form">
         <input type="hidden" name="quote_id" value="{{ quote_id }}">
         <input type="hidden" name="email_results_json" id="eml-proceed-json"
@@ -435,6 +449,35 @@ function _emlRefreshChangedHighlight(tr) {
 function emlSyncProceed() {
   var el = document.getElementById('eml-proceed-json');
   if (el) el.value = JSON.stringify(_emlCollect());
+}
+
+// Save the current (possibly edited) results against the quote, so this
+// quote's Verify Email step restores them automatically next time —
+// independent of Continue/proceeding to Step 3.
+function emlSaveDraft() {
+  var btn = document.getElementById('eml-save-draft-btn');
+  var msg = document.getElementById('eml-save-draft-msg');
+  btn.disabled = true;
+  var original = btn.innerHTML;
+  btn.innerHTML = 'Saving…';
+
+  var formData = new URLSearchParams();
+  formData.append('quote_id', {{ (quote_id or '') | tojson }});
+  formData.append('email_results_json', JSON.stringify(_emlCollect()));
+
+  fetch('/email-verify/save-draft', { method: 'POST', body: formData })
+    .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+    .then(function() {
+      btn.innerHTML = original;
+      btn.disabled = false;
+      msg.style.display = 'inline';
+      setTimeout(function() { msg.style.display = 'none'; }, 2500);
+    })
+    .catch(function() {
+      btn.innerHTML = original;
+      btn.disabled = false;
+      alert('Failed to save draft. Please try again.');
+    });
 }
 
 // ── Edit mode ─────────────────────────────────────────────────────────────────

@@ -45,6 +45,8 @@ def init_db():
             conn.execute("ALTER TABLE quotes ADD COLUMN qc_excel BLOB")
         if "preferred_install_date" not in cols:
             conn.execute("ALTER TABLE quotes ADD COLUMN preferred_install_date TEXT")
+        if "draft_email_results_json" not in cols:
+            conn.execute("ALTER TABLE quotes ADD COLUMN draft_email_results_json TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS qc_versions (
@@ -176,6 +178,25 @@ def update_preferred_install_date(quote_id: int, value: str):
             "UPDATE quotes SET preferred_install_date = ? WHERE id = ?",
             (value, quote_id),
         )
+
+
+def save_draft_email_results(quote_id: int, results_json: str):
+    """Persist Step 2 (Verify Email)'s analyzed attachment results against the
+    quote, so reopening that quote's Verify Email step later restores the
+    same Yes/No/remarks without re-uploading the .eml file(s)."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE quotes SET draft_email_results_json = ? WHERE id = ?",
+            (results_json, quote_id),
+        )
+
+
+def get_draft_email_results(quote_id: int) -> str:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT draft_email_results_json FROM quotes WHERE id = ?", (quote_id,)
+        ).fetchone()
+    return (row["draft_email_results_json"] if row else "") or ""
 
 
 def get_recent(limit: int = 20):
