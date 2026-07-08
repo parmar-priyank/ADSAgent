@@ -698,6 +698,69 @@ async def upload_zip(
 
         return (best_name, best_data) if best_data is not None else (name, None)
 
+    def _expected_kind(ref_name: str) -> str:
+        """Guess what kind of file a reference name implies, from its extension."""
+        ext = os.path.splitext(ref_name.lower())[1]
+        if ext == ".eml":
+            return "eml"
+        if ext == ".pdf":
+            return "pdf"
+        if ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
+            return "image"
+        return "other"
+
+    def _actual_kind(fname: str, fdata: bytes) -> str:
+        if fname.lower().endswith(".eml"):
+            return "eml"
+        mime = _mime_of(fname, fdata)
+        if mime == "application/pdf":
+            return "pdf"
+        if mime.startswith("image/"):
+            return "image"
+        return "other"
+
+    # ── Resolve every checklist item's reference file(s) up front, sequentially ──
+    # (must happen before the concurrent AI analysis below, so two items can't
+    # both claim the same fallback-matched file in a race).
+    #
+    # Pass 1: exact-name matching (same as before) — claims files as it goes so
+    # pass 2 knows what's already spoken for.
+    claimed: set[str] = set()
+    item_resolved: dict[int, list[tuple]] = {}
+
+    for i, item in enumerate(items):
+        if item.get("is_section"):
+            continue
+        ref = (item.get("reference") or "").strip()
+        ref_names = [r.strip() for r in ref.split("+") if r.strip()]
+        resolved = []
+        for rname in ref_names:
+            zname, zdata = _resolve_file(rname)
+            if zdata is not None:
+                claimed.add(zname)
+            resolved.append([rname, zname, zdata])
+        item_resolved[i] = resolved
+
+    # Pass 2: for references still unmatched, fall back to the single unclaimed
+    # file left in the ZIP of the same kind (image/pdf/eml) the reference name
+    # implies — only when that leaves exactly one candidate, so it's unambiguous.
+    for i, resolved in item_resolved.items():
+        for entry in resolved:
+            rname, zname, zdata = entry
+            if zdata is not None:
+                continue
+            kind = _expected_kind(rname)
+            if kind == "other":
+                continue
+            candidates = [
+                (fn, fd) for fn, fd in zip_files.items()
+                if fn not in claimed and _actual_kind(fn, fd) == kind
+            ]
+            if len(candidates) == 1:
+                fn, fd = candidates[0]
+                claimed.add(fn)
+                entry[1], entry[2] = fn, fd
+
     # Pre-render every PDF in the ZIP exactly once (cache avoids re-rendering per item)
     pdf_cache: dict[str, tuple[str, list[bytes]]] = {}
     for fname, fdata in zip_files.items():
@@ -736,7 +799,7 @@ async def upload_zip(
             return {"status": "Yes", "remark": f"Attachment(s) match agreement: {names}."}
         return {"status": "N/A", "remark": att_results[0].get("remark", "Could not verify email attachments.")}
 
-    def _analyse_item(item: dict) -> dict:
+    def _analyse_item(i: int, item: dict) -> dict:
         ref         = (item.get("reference") or "").strip()
         prompt_text = (item.get("prompt") or "").strip()
 
@@ -745,11 +808,12 @@ async def upload_zip(
         if not prompt_text:
             return {"status": "N/A", "remark": "No prompt defined for this item."}
 
-        ref_names = [r.strip() for r in ref.split("+") if r.strip()]
-        resolved  = [_resolve_file(r) for r in ref_names]
-
-        missing = [name for name, d in resolved if d is None]
-        found   = [(name, d) for name, d in resolved if d is not None]
+        # resolved entries are [ref_name, matched_zip_name_or_None, data_or_None],
+        # already computed up front in the sequential resolve-and-claim pass above
+        # (both the exact-name match and the same-file-type fallback).
+        resolved_entries = item_resolved.get(i, [])
+        missing = [rname for rname, zname, zdata in resolved_entries if zdata is None]
+        found   = [(zname, zdata) for rname, zname, zdata in resolved_entries if zdata is not None]
         if not found:
             return {"status": "N/A", "remark": f"File not found in ZIP: {', '.join(missing)}"}
         resolved = found
@@ -820,7 +884,7 @@ async def upload_zip(
     _active_jobs.add(uid)
     try:
         results = await asyncio.gather(
-            *[asyncio.to_thread(_analyse_item, item) for _, item in non_section]
+            *[asyncio.to_thread(_analyse_item, i, item) for i, item in non_section]
         )
     finally:
         _active_jobs.discard(uid)
