@@ -234,6 +234,11 @@
                 <option value="No"  {% if row.status == 'No'  %}selected{% endif %}>No</option>
                 <option value="N/A" {% if row.status == 'N/A' %}selected{% endif %}>N/A</option>
               </select>
+              <button type="button" class="file-upload-btn" title="Upload a file to auto-decide Yes/No for this item"
+                      onclick="this.nextElementSibling.click()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </button>
+              <input type="file" class="file-upload-input" style="display:none;" onchange="analyseRowFile(this)">
             </td>
             <td class="remark-cell">
               <span class="remark-view" title="{{ row.remark or '' }}"
@@ -399,6 +404,7 @@
     document.getElementById('remark-view-overlay').style.display = 'flex';
   }
 
+  var _quoteId = {{ (quote_id or '') | tojson }};
   var _activeFilter = 'All';
   var _editMode     = false;
   var _tplData       = {{ tpl | tojson }};
@@ -614,6 +620,49 @@
       if (btn) btn.querySelector('.remark-btn-preview').textContent = newRemark;
       _refreshChangedHighlight(tr);
     });
+  }
+
+  // Per-row single-file upload — analyses just this item's evidence without
+  // re-uploading the whole ZIP. Independent of the manual Yes/No dropdown:
+  // using one does not require or affect the other.
+  function analyseRowFile(input) {
+    var file = input.files[0];
+    if (!file) return;
+    var tr  = input.closest('tr');
+    var btn = tr.querySelector('.file-upload-btn');
+    btn.classList.add('is-busy');
+
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('item_text', tr.dataset.text || '');
+    formData.append('prompt', tr.dataset.prompt || '');
+    formData.append('quote_id', _quoteId || '');
+
+    fetch('/checklist-analyse-file', { method: 'POST', body: formData })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var status = data.status || 'N/A';
+        var remark = data.remark || '';
+
+        tr.querySelector('.status-edit').value = status;
+        tr.dataset.status = status;
+        tr.dataset.aiStatus = status;
+
+        var remarkInp = tr.querySelector('.remark-edit');
+        var remarkBtn = tr.querySelector('.remark-edit-btn');
+        remarkInp.value = remark;
+        tr.dataset.remark = remark;
+        if (remarkBtn) remarkBtn.querySelector('.remark-btn-preview').textContent = remark;
+
+        _refreshChangedHighlight(tr);
+        btn.classList.remove('is-busy');
+        input.value = '';
+      })
+      .catch(function() {
+        btn.classList.remove('is-busy');
+        input.value = '';
+        alert('Failed to analyse the file. Please try again.');
+      });
   }
 
   function saveEdits() {

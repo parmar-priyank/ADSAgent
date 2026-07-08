@@ -5,6 +5,7 @@ Routes:
   GET  /qc-check
   POST /run-checklist
   GET  /checklist-result
+  POST /checklist-analyse-file
   POST /checklist-save-edits
   GET  /checklist-download
   POST /checklist-confirm
@@ -256,6 +257,62 @@ def _match_attachment_with_claude(client, attachment: dict, reference_text: str)
     except Exception as e:
         return {"name": name, "size_kb": size_kb, "mime": mime,
                 "status": "N/A", "remark": f"Error analysing attachment: {e}"}
+
+
+def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf_text: str,
+                         fname: str, fdata: bytes) -> dict:
+    """
+    Analyse one uploaded file against a single checklist item's prompt —
+    the per-row "Upload File" path in the result-page edit mode, so a user
+    can fix one item's evidence without re-uploading the whole ZIP.
+    Mirrors the relevant half of _analyse_item()'s body (run-checklist),
+    minus the ZIP-lookup and multi-file/eml-rollup logic, since here there
+    is always exactly one file already in hand.
+    """
+    ref_section = (
+        f"\n\n--- MAIN REFERENCE PDF (Signed Agreement) ---\n{reference_pdf_text}"
+        if reference_pdf_text else ""
+    )
+    context = f"Checklist item: {item_text}\nRequirement: {prompt_text}{ref_section}"
+
+    try:
+        if fname.lower().endswith(".eml"):
+            atts = _parse_eml(fdata)
+            if not atts:
+                return {"status": "N/A", "remark": "No attachments found in the uploaded .eml file."}
+            att_results = [_match_attachment_with_claude(client, att, reference_pdf_text) for att in atts]
+            no_hits  = [r for r in att_results if r.get("status") == "No"]
+            yes_hits = [r for r in att_results if r.get("status") == "Yes"]
+            if no_hits:
+                names = ", ".join(r["name"] for r in no_hits)
+                return {"status": "No", "remark": f"Mismatch in attachment(s): {names}. " + no_hits[0].get("remark", "")}
+            if yes_hits:
+                names = ", ".join(r["name"] for r in yes_hits)
+                return {"status": "Yes", "remark": f"Attachment(s) match agreement: {names}."}
+            return {"status": "N/A", "remark": att_results[0].get("remark", "Could not verify email attachments.")}
+
+        mime = _mime_of(fname, fdata)
+        user_content = [{"type": "text", "text": context}]
+
+        if mime == "application/pdf":
+            text, pages = _render_pdf(fname, fdata)
+            if text.strip():
+                user_content.append({"type": "text", "text": f"Document text (for reference):{text[:8000]}"})
+            for page_png in pages[:_PDF_MAX_PAGES]:
+                b64 = base64.standard_b64encode(page_png).decode()
+                user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
+            if len(user_content) == 1:
+                return {"status": "N/A", "remark": "No readable content found in the uploaded file."}
+        elif mime.startswith("image/"):
+            b64 = base64.standard_b64encode(fdata).decode()
+            user_content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
+        else:
+            return {"status": "N/A", "remark": f"Unsupported file type: {fname}"}
+
+        return _claude_check(client, user_content)
+
+    except Exception as e:
+        return {"status": "N/A", "remark": f"Error analysing file: {e}"}
 
 
 @router.get("/email-verify", response_class=HTMLResponse)
@@ -828,6 +885,65 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
     })
     resp.headers.update(_NO_CACHE)
     return resp
+
+
+@router.post("/checklist-analyse-file")
+async def checklist_analyse_file(
+    file: UploadFile = File(...),
+    item_text: str = Form(""),
+    prompt: str = Form(""),
+    quote_id: str = Form(""),
+    user=Depends(require_qc_access),
+):
+    """
+    Analyse a single uploaded file against one checklist item's prompt —
+    lets the user fix one row's evidence in edit mode without re-uploading
+    the whole ZIP (which would re-run AI analysis, and cost, on every item).
+    Independent of the manual Yes/No/N/A dropdown — neither depends on the other.
+    """
+    fdata = await file.read()
+    if len(fdata) > MAX_UPLOAD_BYTES:
+        return {"status": "N/A", "remark": "File is too large."}
+
+    reference_pdf_text = ""
+    if quote_id:
+        try:
+            ref_record = db.get_quote(int(quote_id))
+        except (ValueError, TypeError):
+            ref_record = db.find_by_quote_number(quote_id)
+        if ref_record:
+            fields = [
+                ("Quote Number",    ref_record.get("quote_number", "")),
+                ("Customer Name",   ref_record.get("customer_name", "")),
+                ("Install Date",    ref_record.get("install_date", "")),
+                ("System Price",    ref_record.get("system_price", "")),
+                ("STC Incentive",   ref_record.get("stc_incentive", "")),
+                ("VIC Rebate",      ref_record.get("vic_rebate", "")),
+                ("Battery Rebate",  ref_record.get("battery_rebate", "")),
+                ("Total Price",     ref_record.get("total_price", "")),
+                ("Deposit",         ref_record.get("deposit", "")),
+                ("Balance",         ref_record.get("balance", "")),
+                ("Payment Terms",   ref_record.get("payment_terms", "")),
+                ("Billing Address", ref_record.get("billing_address", "")),
+                ("Delivery Address",ref_record.get("delivery_address", "")),
+                ("Roof Type",       ref_record.get("roof_type", "")),
+                ("Email",           ref_record.get("email", "")),
+                ("Phone",           ref_record.get("phone", "")),
+                ("Notes",           ref_record.get("notes", "")),
+            ]
+            reference_pdf_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
+            line_items = ref_record.get("line_items") or []
+            if line_items:
+                reference_pdf_text += "\n\nSystem Components:\n" + "\n".join(
+                    f"- {li.get('item','')}: {li.get('specification','')}"
+                    for li in line_items if li.get("item")
+                )
+
+    client = _get_claude()
+    result = _analyse_single_file(
+        client, item_text, prompt, reference_pdf_text, file.filename or "upload", fdata
+    )
+    return result
 
 
 @router.post("/checklist-save-edits")
