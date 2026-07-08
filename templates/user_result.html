@@ -360,7 +360,6 @@
 </div>
 
 <!-- Remark edit modal (same design as prompt modal) -->
-{% if not is_readonly %}
 <div id="remark-modal-overlay"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center;">
   <div style="background:var(--surface2);border:1px solid var(--line2);border-radius:14px;padding:28px 28px 22px;width:min(580px,92vw);box-shadow:0 24px 60px rgba(0,0,0,.5);">
@@ -386,7 +385,6 @@
     </div>
   </div>
 </div>
-{% endif %}
 
 {% endblock %}
 
