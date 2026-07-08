@@ -11,6 +11,7 @@ Routes:
   POST /checklist-save-draft
   GET  /user/history
   GET  /user/qc-version/{version_id}
+  POST /user/qc-version/{version_id}/save
 """
 import asyncio
 import base64
@@ -1144,3 +1145,57 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
     })
     resp.headers.update(_NO_CACHE)
     return resp
+
+
+@router.post("/user/qc-version/{version_id}/save")
+async def user_qc_version_save(request: Request, version_id: int, user=Depends(require_qc_access)):
+    """Let the user who saved/confirmed a QC version edit it in place —
+    same action the admin panel already offers on any version. Overwrites
+    the existing version row rather than creating a new one."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM qc_versions WHERE id = ?", (version_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "QC version not found.")
+    v = dict(row)
+    if (user.get("role") != "admin"
+            and v.get("saved_by_user_id") != user["id"]
+            and v.get("confirmed_by_user_id") != user["id"]):
+        raise HTTPException(403, "Access denied.")
+
+    body = await request.json()
+    rows = body.get("rows", [])
+    preferred_install_date = (body.get("preferred_install_date") or "").strip()
+
+    filled = {}
+    for r in rows:
+        if not r.get("is_section") and r.get("position") is not None:
+            filled[r["position"]] = {
+                "status": r.get("status", "N/A"),
+                "remark": r.get("remark", ""),
+                "ai_status": r.get("ai_status", ""),
+            }
+
+    xlsx_blob = build_xlsx(rows, filled=filled)
+    yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
+    no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
+    na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
+
+    db.update_qc_version(
+        version_id=version_id,
+        xlsx_bytes=xlsx_blob,
+        rows_json=json.dumps(rows),
+        yes_count=yes_count,
+        no_count=no_count,
+        na_count=na_count,
+        confirm=(v.get("status") == "confirmed"),
+        confirmed_by_user_id=user["id"] if v.get("status") == "confirmed" else None,
+    )
+
+    quote_id = v["quote_id"]
+    record = db.get_quote(quote_id)
+    if record and preferred_install_date != (record.get("preferred_install_date") or ""):
+        db.update_preferred_install_date(quote_id, preferred_install_date)
+
+    return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}

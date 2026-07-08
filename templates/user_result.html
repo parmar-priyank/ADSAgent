@@ -108,11 +108,11 @@
                 style="font-weight:600;">
           &#8635; Upload Another ZIP
         </button>
+        {% endif %}
         <button type="button" class="link-btn" id="modify-btn" onclick="enterEditMode()"
                 style="font-weight:600;">
           &#9998; Modify
         </button>
-        {% endif %}
         <a href="/checklist-download?token={{ dl_token }}" class="link-btn" id="dl-link" style="font-weight:600;">
           &#8595; Download Excel
         </a>
@@ -120,7 +120,6 @@
     </div>
 
     <!-- Edit mode save bar (hidden by default, shown in edit mode) -->
-    {% if not is_readonly %}
     <div id="edit-bar" style="background:var(--brand);color:#fff;border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:12px;">
       <span style="font-size:13px;font-weight:600;">&#9998; Edit mode — change Yes/No and remarks, then save.</span>
       <div style="display:flex;gap:8px;">
@@ -134,7 +133,6 @@
         </button>
       </div>
     </div>
-    {% endif %}
 
     {% if email_results %}
     <!-- ── Email Verification Results panel ── -->
@@ -231,18 +229,15 @@
                   <span class="badge-na">N/A</span>
                 {% endif %}
               </span>
-              {% if not is_readonly %}
               <select class="status-edit" style="font-size:13px;padding:3px 6px;border-radius:5px;border:1.5px solid var(--brand);background:var(--bg);color:var(--text);cursor:pointer;">
                 <option value="Yes" {% if row.status == 'Yes' %}selected{% endif %}>Yes</option>
                 <option value="No"  {% if row.status == 'No'  %}selected{% endif %}>No</option>
                 <option value="N/A" {% if row.status == 'N/A' %}selected{% endif %}>N/A</option>
               </select>
-              {% endif %}
             </td>
             <td class="remark-cell">
               <span class="remark-view" title="{{ row.remark or '' }}"
                     {% if row.remark %}onclick="openRemarkView(this)" style="cursor:pointer;"{% endif %}>{{ row.remark or '' }}</span>
-              {% if not is_readonly %}
               <input class="remark-edit" type="hidden" value="{{ row.remark or '' | e }}">
               <button type="button" class="remark-edit-btn"
                       style="border:1px solid #ccc;background:#f5f5f5;color:#444;"
@@ -250,7 +245,6 @@
                 <span class="remark-btn-preview" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">{{ row.remark or '' }}</span>
                 <svg style="flex-shrink:0;opacity:.4;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
               </button>
-              {% endif %}
             </td>
           </tr>
           {% endif %}
@@ -264,11 +258,21 @@
                 display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
 
       {% if is_readonly %}
-      <!-- Confirmed version: read-only info only (nav back button handles navigation) -->
+      <!-- Confirmed version: values can still be modified in place via the Modify button above -->
       <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Viewing v{{ revisit_version.version }} &bull;
-        <span style="font-weight:600;color:#16a34a;">Confirmed — read only</span>
+        <span style="font-weight:600;color:#16a34a;">Confirmed</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label for="result-preferred-install-date" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">
+          Install Date
+        </label>
+        <input type="date" id="result-preferred-install-date"
+               value="{{ preferred_install_date or '' }}"
+               style="padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;
+                      font-size:13px;color:var(--ink);background:var(--surface2);outline:none;">
       </div>
 
       {% else %}
@@ -387,6 +391,7 @@
 {% endblock %}
 
 {% block scripts %}
+{% set is_readonly = revisit_version and revisit_version.status == 'confirmed' %}
 <script>
   // Email verification remark — reuse existing read-only remark modal
   function openEmlRemark(td) {
@@ -534,7 +539,6 @@
     });
   }
 
-  {% if not is_readonly %}
   // ── Remark modal ─────────────────────────────────────────────────────────
   var _remarkBtn = null;
 
@@ -597,11 +601,55 @@
     });
   }
 
+  var _isReadonly = {{ 'true' if is_readonly else 'false' }};
+
+  function _applyRowsToDom(rows) {
+    document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
+      var newStatus = tr.querySelector('.status-edit').value;
+      var newRemark = tr.querySelector('.remark-edit').value;
+      tr.dataset.status = newStatus;
+      tr.dataset.remark = newRemark;
+      var cls = newStatus === 'Yes' ? 'badge-yes' : (newStatus === 'No' ? 'badge-no' : 'badge-na');
+      tr.querySelector('.status-view').innerHTML = '<span class="' + cls + '">' + newStatus + '</span>';
+      tr.querySelector('.remark-view').textContent = newRemark;
+      var btn = tr.querySelector('.remark-edit-btn');
+      if (btn) btn.querySelector('.remark-btn-preview').textContent = newRemark;
+      _refreshChangedHighlight(tr);
+    });
+  }
+
   function saveEdits() {
     var rows    = _collectRows();
     var saveBtn = document.querySelector('#edit-bar button:last-child');
     saveBtn.disabled    = true;
     saveBtn.textContent = 'Saving…';
+
+    if (_isReadonly) {
+      var dateInput = document.getElementById('result-preferred-install-date');
+      fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: rows, preferred_install_date: dateInput ? dateInput.value : '' }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        _applyRowsToDom(rows);
+        document.getElementById('filter-yes').textContent = '✓ ' + data.yes_count + ' Yes';
+        document.getElementById('filter-no').textContent  = '✗ ' + data.no_count  + ' No';
+        document.getElementById('filter-na').textContent  = '— ' + data.na_count  + ' N/A';
+        _editMode = false;
+        _card.classList.remove('is-edit-mode');
+        setFilter(_activeFilter);
+        saveBtn.disabled    = false;
+        saveBtn.textContent = 'Save Changes';
+      })
+      .catch(function() {
+        saveBtn.disabled    = false;
+        saveBtn.textContent = 'Save Changes';
+        alert('Failed to save changes. Please try again.');
+      });
+      return;
+    }
 
     fetch('/checklist-save-edits', {
       method: 'POST',
@@ -617,18 +665,7 @@
       var dlLink = document.getElementById('dl-link');
       if (dlLink) dlLink.href = '/checklist-download?token=' + encodeURIComponent(data.dl_token);
 
-      document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
-        var newStatus = tr.querySelector('.status-edit').value;
-        var newRemark = tr.querySelector('.remark-edit').value;
-        tr.dataset.status = newStatus;
-        tr.dataset.remark = newRemark;
-        var cls = newStatus === 'Yes' ? 'badge-yes' : (newStatus === 'No' ? 'badge-no' : 'badge-na');
-        tr.querySelector('.status-view').innerHTML = '<span class="' + cls + '">' + newStatus + '</span>';
-        tr.querySelector('.remark-view').textContent = newRemark;
-        var btn = tr.querySelector('.remark-edit-btn');
-        if (btn) btn.querySelector('.remark-btn-preview').textContent = newRemark;
-        _refreshChangedHighlight(tr);
-      });
+      _applyRowsToDom(rows);
 
       var counts = _syncForms(rows);
       document.getElementById('filter-yes').textContent = '✓ ' + counts.yes + ' Yes';
@@ -646,6 +683,7 @@
     });
   }
 
+  {% if not is_readonly %}
   function _syncInstallDate() {
     var dateInput = document.getElementById('result-preferred-install-date');
     if (!dateInput) return;
