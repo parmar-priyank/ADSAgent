@@ -264,18 +264,19 @@
 .result-card.is-edit-mode #modify-btn { display: none !important; }
 /* row cells */
 .result-card .status-view         { display: block; }
-.result-card .status-edit         { display: none; }
+.result-card .status-edit-row     { display: none; }
 .result-card .remark-view         { display: block; }
 .result-card .remark-edit-btn     { display: none; }
-.result-card .file-upload-btn     { display: none; }
 .result-card.is-edit-mode .status-view     { display: none; }
-.result-card.is-edit-mode .status-edit     { display: block; }
+.result-card.is-edit-mode .status-edit-row { display: flex; }
 .result-card.is-edit-mode .remark-view     { display: none; }
 .result-card.is-edit-mode .remark-edit-btn { display: flex; }
-.result-card.is-edit-mode .file-upload-btn { display: inline-flex; }
 
-.file-upload-btn { align-items: center; justify-content: center; width: 26px; height: 26px; margin-top: 4px; border-radius: 5px; border: 1.5px dashed var(--brand); background: transparent; color: var(--brand); cursor: pointer; padding: 0; transition: background .15s; }
-.file-upload-btn:hover { background: rgba(196,80,16,.08); }
+.status-edit-row { align-items: center; gap: 6px; }
+.status-edit-row .status-edit { margin: 0; }
+
+.file-upload-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex-shrink: 0; border-radius: 5px; border: 1px solid var(--line2); background: var(--surface2); color: var(--muted); cursor: pointer; padding: 0; transition: border-color .15s, color .15s; }
+.file-upload-btn:hover { border-color: var(--brand); color: var(--brand); }
 .file-upload-btn.is-busy { opacity: .5; pointer-events: none; }
 .dl-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
 .summary-chips  { display: flex; gap: 8px; flex-wrap: wrap; }
