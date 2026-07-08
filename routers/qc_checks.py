@@ -1039,6 +1039,7 @@ def checklist_confirm(
     rows_json: str = Form(""),
     email_results_json: str = Form(""),
     preferred_install_date: str = Form(""),
+    version_id: str = Form(""),
     user=Depends(require_qc_access),
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
@@ -1070,20 +1071,34 @@ def checklist_confirm(
             else:
                 xlsx_bytes = base64.b64decode(payload["xlsx"])
             db.save_qc_excel(record["id"], xlsx_bytes)
-            db.add_qc_version(
-                quote_id=record["id"],
-                xlsx_bytes=xlsx_bytes,
-                template_name=tpl_name,
-                zip_filename=zip_filename,
-                yes_count=yes_count,
-                no_count=no_count,
-                na_count=na_count,
-                rows_json=rows_json,
-                email_results_json=email_results_json,
-                confirmed_by_user_id=user["id"],
-                saved_by_user_id=user["id"],
-                status="confirmed",
-            )
+            if version_id.strip():
+                # Editing an existing (revisited) version — update it in place
+                # instead of creating a new one.
+                db.update_qc_version(
+                    version_id=int(version_id),
+                    xlsx_bytes=xlsx_bytes,
+                    rows_json=rows_json,
+                    yes_count=yes_count,
+                    no_count=no_count,
+                    na_count=na_count,
+                    confirm=True,
+                    confirmed_by_user_id=user["id"],
+                )
+            else:
+                db.add_qc_version(
+                    quote_id=record["id"],
+                    xlsx_bytes=xlsx_bytes,
+                    template_name=tpl_name,
+                    zip_filename=zip_filename,
+                    yes_count=yes_count,
+                    no_count=no_count,
+                    na_count=na_count,
+                    rows_json=rows_json,
+                    email_results_json=email_results_json,
+                    confirmed_by_user_id=user["id"],
+                    saved_by_user_id=user["id"],
+                    status="confirmed",
+                )
         except Exception:
             pass
 
@@ -1121,6 +1136,7 @@ def checklist_save_draft(
     rows_json: str = Form(""),
     email_results_json: str = Form(""),
     preferred_install_date: str = Form(""),
+    version_id: str = Form(""),
     user=Depends(require_qc_access),
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
@@ -1149,19 +1165,32 @@ def checklist_save_draft(
                     pass
             else:
                 xlsx_bytes = base64.b64decode(payload["xlsx"])
-            db.add_qc_version(
-                quote_id=record["id"],
-                xlsx_bytes=xlsx_bytes,
-                template_name=tpl_name,
-                zip_filename=zip_filename,
-                yes_count=yes_count,
-                no_count=no_count,
-                na_count=na_count,
-                rows_json=rows_json,
-                email_results_json=email_results_json,
-                saved_by_user_id=user["id"],
-                status="draft",
-            )
+            if version_id.strip():
+                # Editing an existing (revisited) draft — update it in place
+                # instead of creating a new one.
+                db.update_qc_version(
+                    version_id=int(version_id),
+                    xlsx_bytes=xlsx_bytes,
+                    rows_json=rows_json,
+                    yes_count=yes_count,
+                    no_count=no_count,
+                    na_count=na_count,
+                    confirm=False,
+                )
+            else:
+                db.add_qc_version(
+                    quote_id=record["id"],
+                    xlsx_bytes=xlsx_bytes,
+                    template_name=tpl_name,
+                    zip_filename=zip_filename,
+                    yes_count=yes_count,
+                    no_count=no_count,
+                    na_count=na_count,
+                    rows_json=rows_json,
+                    email_results_json=email_results_json,
+                    saved_by_user_id=user["id"],
+                    status="draft",
+                )
         except Exception:
             pass
 

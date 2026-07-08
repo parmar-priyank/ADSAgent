@@ -306,6 +306,7 @@
         <input type="hidden" name="rows_json"          id="draft-rows-json" value='{{ checklist_rows | tojson }}'>
         <input type="hidden" name="email_results_json" value='{{ email_results | default([]) | tojson }}'>
         <input type="hidden" name="preferred_install_date" id="draft-preferred-install-date" value="{{ preferred_install_date or '' }}">
+        <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
         <button type="submit"
                 style="display:flex;align-items:center;gap:7px;padding:9px 20px;
                        background:var(--surface3);border:1px solid var(--line2);
@@ -330,6 +331,7 @@
         <input type="hidden" name="rows_json"          id="confirm-rows-json" value='{{ checklist_rows | tojson }}'>
         <input type="hidden" name="email_results_json" value='{{ email_results | default([]) | tojson }}'>
         <input type="hidden" name="preferred_install_date" id="confirm-preferred-install-date" value="{{ preferred_install_date or '' }}">
+        <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
         <button type="submit"
                 style="display:flex;align-items:center;gap:7px;padding:9px 22px;
                        background:var(--brand);color:#fff;border:none;
