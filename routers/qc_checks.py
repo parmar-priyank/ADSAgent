@@ -1313,34 +1313,37 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
     rows = body.get("rows", [])
     preferred_install_date = (body.get("preferred_install_date") or "").strip()
 
-    filled = {}
-    for r in rows:
-        if not r.get("is_section") and r.get("position") is not None:
-            filled[r["position"]] = {
-                "status": r.get("status", "N/A"),
-                "remark": r.get("remark", ""),
-                "ai_status": r.get("ai_status", ""),
-            }
+    try:
+        filled = {}
+        for r in rows:
+            if not r.get("is_section") and r.get("position") is not None:
+                filled[r["position"]] = {
+                    "status": r.get("status", "N/A"),
+                    "remark": r.get("remark", ""),
+                    "ai_status": r.get("ai_status", ""),
+                }
 
-    xlsx_blob = build_xlsx(rows, filled=filled)
-    yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
-    no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
-    na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
+        xlsx_blob = build_xlsx(rows, filled=filled)
+        yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
+        no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
+        na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
 
-    db.update_qc_version(
-        version_id=version_id,
-        xlsx_bytes=xlsx_blob,
-        rows_json=json.dumps(rows),
-        yes_count=yes_count,
-        no_count=no_count,
-        na_count=na_count,
-        confirm=(v.get("status") == "confirmed"),
-        confirmed_by_user_id=user["id"] if v.get("status") == "confirmed" else None,
-    )
+        db.update_qc_version(
+            version_id=version_id,
+            xlsx_bytes=xlsx_blob,
+            rows_json=json.dumps(rows),
+            yes_count=yes_count,
+            no_count=no_count,
+            na_count=na_count,
+            confirm=(v.get("status") == "confirmed"),
+            confirmed_by_user_id=user["id"] if v.get("status") == "confirmed" else None,
+        )
 
-    quote_id = v["quote_id"]
-    record = db.get_quote(quote_id)
-    if record and preferred_install_date != (record.get("preferred_install_date") or ""):
-        db.update_preferred_install_date(quote_id, preferred_install_date)
+        quote_id = v["quote_id"]
+        record = db.get_quote(quote_id)
+        if record and preferred_install_date != (record.get("preferred_install_date") or ""):
+            db.update_preferred_install_date(quote_id, preferred_install_date)
+    except Exception as e:
+        raise HTTPException(500, f"Failed to save: {e}")
 
     return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}

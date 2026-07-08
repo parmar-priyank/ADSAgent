@@ -682,8 +682,14 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rows: rows, preferred_install_date: dateInput ? dateInput.value : '' }),
       })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
+      .then(function(r) {
+        return r.json().then(function(data) { return { ok: r.ok, data: data }; });
+      })
+      .then(function(result) {
+        if (!result.ok) {
+          throw new Error(result.data && result.data.detail ? result.data.detail : 'Failed to save changes.');
+        }
+        var data = result.data;
         _applyRowsToDom(rows);
         document.getElementById('filter-yes').textContent = '✓ ' + data.yes_count + ' Yes';
         document.getElementById('filter-no').textContent  = '✗ ' + data.no_count  + ' No';
@@ -694,10 +700,10 @@
         saveBtn.disabled    = false;
         saveBtn.textContent = 'Save Changes';
       })
-      .catch(function() {
+      .catch(function(err) {
         saveBtn.disabled    = false;
         saveBtn.textContent = 'Save Changes';
-        alert('Failed to save changes. Please try again.');
+        alert(err.message || 'Failed to save changes. Please try again.');
       });
       return;
     }
