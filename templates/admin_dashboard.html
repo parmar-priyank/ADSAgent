@@ -272,9 +272,22 @@
              'View Record</a>' +
              '</div>';
     }).join('');
-    tip.style.display = 'flex';
-    var rect = cell.getBoundingClientRect();
-    tip.style.top  = (rect.bottom + 8) + 'px';
+    tip.style.display   = 'flex';
+    tip.style.maxHeight = '';
+    var rect      = cell.getBoundingClientRect();
+    var margin    = 12;
+    var spaceBelow = window.innerHeight - rect.bottom - margin;
+    var spaceAbove = rect.top - margin;
+
+    if (spaceBelow >= 160 || spaceBelow >= spaceAbove) {
+      tip.style.top    = (rect.bottom + 8) + 'px';
+      tip.style.bottom = '';
+      tip.style.maxHeight = Math.max(120, Math.min(420, spaceBelow - 8)) + 'px';
+    } else {
+      tip.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+      tip.style.top    = '';
+      tip.style.maxHeight = Math.max(120, Math.min(420, spaceAbove - 8)) + 'px';
+    }
     tip.style.left = Math.min(rect.left, window.innerWidth - 320) + 'px';
   }
 
