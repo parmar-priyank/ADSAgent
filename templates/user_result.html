@@ -352,15 +352,11 @@
       <div style="display:flex;gap:8px;align-items:center;">
         {% if revisit_version %}
         <input type="file" id="eml-upload-input" accept=".eml" style="display:none;" onchange="emlUploadFile(this)">
-        <button type="button" id="eml-upload-btn" onclick="document.getElementById('eml-upload-input').click()"
-                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:600;cursor:pointer;">
-          &#128228; Upload Email
-        </button>
-        {% endif %}
         <button type="button" id="eml-modify-btn" onclick="emlEnterEditMode()"
-                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:600;cursor:pointer;{% if not email_results %}display:none;{% endif %}">
+                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:600;cursor:pointer;">
           &#9998; Modify
         </button>
+        {% endif %}
         <button onclick="closeEmailModal()"
                 style="background:transparent;border:1.5px solid var(--line2);color:var(--muted);border-radius:6px;width:26px;height:26px;font-size:16px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;">&times;</button>
       </div>
@@ -371,6 +367,10 @@
     <div id="eml-edit-bar" style="display:none;background:var(--brand-glow);border:1px solid var(--brand-glow);color:var(--brand);border-radius:8px;padding:8px 16px;margin-bottom:12px;align-items:center;gap:16px;">
       <span style="font-size:13px;font-weight:600;flex:1;">&#9998; Edit mode — change status and remarks, then save.</span>
       <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button type="button" id="eml-upload-btn" onclick="document.getElementById('eml-upload-input').click()"
+                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:600;cursor:pointer;">
+          &#128228; Upload Email
+        </button>
         <button type="button" onclick="emlCancelEditMode()"
                 style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;cursor:pointer;">Cancel</button>
         <button type="button" id="eml-save-btn" onclick="emlSaveEdits()"
