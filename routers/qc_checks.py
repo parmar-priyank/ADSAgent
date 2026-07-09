@@ -18,6 +18,7 @@ Routes:
 import asyncio
 import base64
 import io
+import logging
 import json
 import mimetypes
 import os
@@ -56,6 +57,7 @@ from config import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Tracks which user IDs currently have a checklist run in progress.
 # Prevents a user from submitting two overlapping jobs that would race
@@ -84,10 +86,14 @@ def _render_pdf(fname: str, fdata: bytes) -> tuple[str, list[bytes]]:
     except Exception:
         pass
 
-    # Skip image rendering if we already have usable text — saves time and payload size
-    if text.strip():
-        return text, []
-
+    # Always also render page images, not just when text extraction fails —
+    # pdfplumber's extract_text() reads a PDF's content stream in whatever
+    # order the text was drawn, which for table-heavy documents (e.g. an
+    # insurance certificate with a label/value grid) can come out with every
+    # label bunched up front and every value bunched after, unpaired and
+    # useless despite being "non-empty" text. Sending the rendered page image
+    # alongside that text lets Claude actually read the table visually
+    # instead of only getting the scrambled text.
     pages: list[bytes] = []
     if _fitz is not None:
         try:
@@ -121,23 +127,44 @@ def _mime_of(fname: str, fbytes: bytes) -> str:
     return "application/octet-stream"
 
 
-def _claude_check(client, user_content) -> dict:
-    resp = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=300,
-        system=QC_SYSTEM,
-        messages=[{"role": "user", "content": user_content}],
-    )
-    raw = resp.content[0].text.strip()
+def _parse_claude_json(raw: str) -> dict | None:
+    raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.split("```", 2)[1]
         if raw.startswith("json"):
             raw = raw[4:]
         raw = raw.rsplit("```", 1)[0].strip()
     try:
-        r = json.loads(raw)
+        return json.loads(raw)
     except Exception:
-        return {"status": "N/A", "remark": "AI returned an unreadable response."}
+        return None
+
+
+def _claude_check(client, user_content) -> dict:
+    messages = [{"role": "user", "content": user_content}]
+    resp = client.messages.create(
+        model=CLAUDE_MODEL, max_tokens=500, system=QC_SYSTEM, messages=messages,
+    )
+    raw = resp.content[0].text if resp.content else ""
+    r = _parse_claude_json(raw)
+    if r is None:
+        # The model occasionally answers with prose instead of the requested
+        # JSON (e.g. when a document's extracted text is jumbled/hard to
+        # read) — one corrective retry recovers most of these; only give up
+        # and log the raw reply if it fails twice, so a stuck item is
+        # debuggable from the server logs instead of just "N/A" with no trace.
+        messages.append({"role": "assistant", "content": raw})
+        messages.append({"role": "user", "content":
+            'That was not valid JSON. Reply with ONLY the JSON object, nothing else: '
+            '{"status": "Yes", "No", or "N/A", "remark": "one sentence explanation"}'})
+        resp2 = client.messages.create(
+            model=CLAUDE_MODEL, max_tokens=500, system=QC_SYSTEM, messages=messages,
+        )
+        raw2 = resp2.content[0].text if resp2.content else ""
+        r = _parse_claude_json(raw2)
+        if r is None:
+            logger.warning("Claude returned unparseable JSON twice; raw replies: %r / %r", raw, raw2)
+            return {"status": "N/A", "remark": "AI returned an unreadable response."}
     return {"status": r.get("status", "N/A"), "remark": r.get("remark", "")}
 
 
