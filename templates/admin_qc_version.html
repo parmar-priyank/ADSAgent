@@ -383,6 +383,12 @@
                 <option value="No"  {% if row.status == 'No'  %}selected{% endif %}>No</option>
                 <option value="N/A" {% if row.status == 'N/A' %}selected{% endif %}>N/A</option>
               </select>
+              <button type="button" class="file-upload-btn" title="Upload a file to auto-decide Yes/No for this item"
+                      onclick="this.nextElementSibling.click()"
+                      style="display:none;margin-top:4px;width:22px;height:22px;border-radius:5px;border:1px solid #ede8e0;background:#faf8f6;color:#999;cursor:pointer;align-items:center;justify-content:center;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </button>
+              <input type="file" class="file-upload-input" style="display:none;" onchange="analyseRowFile(this)">
             </td>
             <td style="padding:8px 20px 8px 12px;vertical-align:middle;">
               {% if row.remark %}
@@ -597,6 +603,52 @@
     }
   }
 
+  // Per-row single-file upload — analyses just this item's evidence without
+  // re-uploading the whole ZIP. Independent of the manual Yes/No dropdown:
+  // using one does not require or affect the other.
+  function analyseRowFile(input) {
+    var file = input.files[0];
+    if (!file) return;
+    var tr  = input.closest('tr');
+    var btn = tr.querySelector('.file-upload-btn');
+    btn.classList.add('is-busy');
+    btn.style.opacity = '.5';
+    btn.style.pointerEvents = 'none';
+
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('item_text', tr.dataset.text || '');
+    formData.append('prompt', tr.dataset.prompt || '');
+    formData.append('quote_id', '{{ v.quote_id }}');
+
+    fetch('/checklist-analyse-file', { method: 'POST', body: formData })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var status = data.status || 'N/A';
+        var remark = data.remark || '';
+
+        tr.querySelector('.status-edit').value = status;
+        tr.dataset.status = status;
+        tr.dataset.aiStatus = status;
+
+        tr.querySelector('.remark-edit-input').value = remark;
+        tr.dataset.remark = remark;
+
+        _refreshChangedHighlight(tr);
+        btn.classList.remove('is-busy');
+        btn.style.opacity = '';
+        btn.style.pointerEvents = '';
+        input.value = '';
+      })
+      .catch(function() {
+        btn.classList.remove('is-busy');
+        btn.style.opacity = '';
+        btn.style.pointerEvents = '';
+        input.value = '';
+        alert('Failed to analyse the file. Please try again.');
+      });
+  }
+
   // ── ZIP Checklist edit mode ─────────────────────────────────────────────
   function enterEditMode() {
     _editMode = true;
@@ -605,6 +657,7 @@
     document.querySelectorAll('#qc-tbody tr[data-position]').forEach(function(row) {
       row.querySelector('.status-view').style.display = 'none';
       row.querySelector('.status-edit').style.display = '';
+      row.querySelector('.file-upload-btn').style.display = 'inline-flex';
       row.querySelector('.remark-view').style.display = 'none';
       row.querySelector('.remark-edit').style.display = 'flex';
 
@@ -630,6 +683,7 @@
       row.querySelector('.remark-edit-input').value = row.dataset.remark || '';
       row.querySelector('.status-view').style.display = '';
       row.querySelector('.status-edit').style.display = 'none';
+      row.querySelector('.file-upload-btn').style.display = 'none';
       row.querySelector('.remark-view').style.display = '';
       row.querySelector('.remark-edit').style.display = 'none';
       _refreshChangedHighlight(row);
@@ -711,6 +765,7 @@
       document.querySelectorAll('#qc-tbody tr[data-position]').forEach(function(row) {
         row.querySelector('.status-view').style.display = '';
         row.querySelector('.status-edit').style.display = 'none';
+        row.querySelector('.file-upload-btn').style.display = 'none';
         row.querySelector('.remark-view').style.display = '';
         row.querySelector('.remark-edit').style.display = 'none';
       });

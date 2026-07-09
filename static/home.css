@@ -231,14 +231,14 @@
 /* --------------------------------------------------------------------------
    Checklist Result
    -------------------------------------------------------------------------- */
-.checklist-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.checklist-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .checklist-table thead th {
   background: var(--surface3); color: var(--brand); padding: 10px 10px;
-  text-align: left; font-weight: 700; white-space: nowrap;
+  text-align: left; font-weight: 700;
   border-bottom: 2px solid var(--brand-glow);
   position: sticky; top: 0; z-index: 1;
 }
-.checklist-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink2); }
+.checklist-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink2); overflow-wrap: break-word; }
 .checklist-table tr:last-child td { border-bottom: none; }
 .checklist-table tr:hover td { background: var(--surface2); }
 .checklist-table tr.section-row td {
@@ -249,10 +249,12 @@
 .badge-yes { display: inline-block; padding: 2px 10px; border-radius: 20px; background: rgba(52,211,153,.15); color: #34d399; font-size: 12px; font-weight: 700; border: 1px solid rgba(52,211,153,.25); }
 .badge-no  { display: inline-block; padding: 2px 10px; border-radius: 20px; background: rgba(248,113,113,.15); color: #f87171; font-size: 12px; font-weight: 700; border: 1px solid rgba(248,113,113,.25); }
 .badge-na  { display: inline-block; padding: 2px 10px; border-radius: 20px; background: var(--surface3); color: var(--muted); font-size: 12px; font-weight: 700; border: 1px solid var(--line2); }
-.checklist-sno-cell    { width: 56px; text-align: center; font-weight: 700; color: var(--ink); }
-.checklist-ref-cell    { width: 180px; color: var(--muted); font-size: 12px; }
-.checklist-status-cell { width: 110px; text-align: center; }
-.remark-cell           { min-width: 260px; }
+.checklist-sno-cell    { width: 5%; text-align: center; font-weight: 700; color: var(--ink); }
+.checklist-item-cell   { width: 20%; }
+.checklist-ref-cell    { width: 14%; color: var(--muted); font-size: 12px; }
+.checklist-prompt-cell { width: 18%; color: var(--muted); font-size: 12px; }
+.checklist-status-cell { width: 9%; text-align: center; }
+.remark-cell           { width: 34%; }
 .remark-cell .remark-view { display: block; white-space: normal; word-break: break-word; line-height: 1.5; font-size: 12px; color: var(--ink2); max-width: 100%; }
 .remark-edit-btn       { display: none; width: 100%; padding: 4px 6px 4px 8px; border-radius: 5px; border: 1px solid var(--line2); background: var(--surface2); color: var(--ink2); font-size: 12px; cursor: pointer; font-family: inherit; box-sizing: border-box; align-items: center; gap: 5px; min-height: 28px; text-align: left; transition: border-color .15s; }
 .remark-edit-btn:hover { border-color: var(--brand); }

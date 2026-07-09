@@ -494,11 +494,11 @@
         <thead style="position:sticky;top:0;z-index:1;">
           <tr>
             <th class="checklist-sno-cell">Sno.</th>
-            <th>Checklist Item</th>
+            <th class="checklist-item-cell">Checklist Item</th>
             <th class="checklist-ref-cell">Reference</th>
-            <th>Prompt</th>
+            <th class="checklist-prompt-cell">Prompt</th>
             <th class="checklist-status-cell">Yes/No</th>
-            <th>Remark</th>
+            <th class="remark-cell">Remark</th>
           </tr>
         </thead>
         <tbody id="checklist-tbody">
@@ -519,9 +519,9 @@
               data-remark="{{ row.remark or '' | e }}"
               {% if _changed %}style="background:#fffbea;box-shadow:inset 3px 0 0 #f59e0b;"{% endif %}>
             <td class="checklist-sno-cell">{{ row.sno }}</td>
-            <td>{{ row.text }}</td>
+            <td class="checklist-item-cell">{{ row.text }}</td>
             <td class="checklist-ref-cell">{{ row.reference or '—' }}</td>
-            <td style="font-size:12px;color:var(--muted);">{{ row.prompt or '—' }}</td>
+            <td class="checklist-prompt-cell">{{ row.prompt or '—' }}</td>
             <td class="checklist-status-cell status-cell">
               <span class="status-view">
                 {% if row.status == 'Yes' %}
