@@ -202,8 +202,8 @@
 {% if email_results %}
 <div id="email-modal-overlay"
      onclick="if(event.target===this)closeEmailModal()"
-     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 20px;">
-  <div style="background:#fff;border-radius:16px;max-width:900px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 20px;">
+  <div style="background:#fff;border-radius:16px;max-width:min(1400px,96vw);width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 26px;border-bottom:1px solid #f0ece8;flex-wrap:wrap;gap:10px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c45010" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -228,12 +228,12 @@
       </div>
     </div>
 
-    <div style="max-height:65vh;overflow-y:auto;">
+    <div style="max-height:78vh;overflow-y:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
         <colgroup>
-          <col style="width:32%;">
-          <col style="width:14%;">
-          <col style="width:54%;">
+          <col style="width:24%;">
+          <col style="width:10%;">
+          <col style="width:66%;">
         </colgroup>
         <thead style="position:sticky;top:0;z-index:1;">
           <tr style="background:#faf8f6;border-bottom:1px solid #f0ece8;">
@@ -269,11 +269,11 @@
                 <option value="N/A" {% if er.status == 'N/A' or not er.status %}selected{% endif %}>N/A</option>
               </select>
             </td>
-            <td style="padding:8px 16px;overflow:hidden;max-width:0;">
+            <td style="padding:8px 16px;">
               <div class="eml-remark-view" {% if er.remark %}onclick="openRemarkModal(this.querySelector('span'))"{% endif %}
-                   style="display:flex;align-items:center;font-size:12.5px;padding:4px 8px;border-radius:6px;border:1.5px solid #ede8e0;background:#faf8f6;cursor:{% if er.remark %}pointer{% else %}default{% endif %};overflow:hidden;">
+                   style="display:flex;align-items:center;font-size:12.5px;padding:6px 10px;border-radius:6px;border:1.5px solid #ede8e0;background:#faf8f6;cursor:{% if er.remark %}pointer{% else %}default{% endif %};">
                 {% if er.remark %}
-                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333;">{{ er.remark }}</span>
+                <span style="flex:1;white-space:normal;word-break:break-word;line-height:1.5;color:#333;">{{ er.remark }}</span>
                 {% else %}
                 <span style="color:#bbb;font-size:12px;">—</span>
                 {% endif %}
@@ -298,8 +298,8 @@
 {% if rows %}
 <div id="checklist-modal-overlay"
      onclick="if(event.target===this)closeChecklistModal()"
-     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 20px;">
-  <div style="background:#fff;border-radius:16px;max-width:1000px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 20px;">
+  <div style="background:#fff;border-radius:16px;max-width:min(1500px,96vw);width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 26px;border-bottom:1px solid #f0ece8;flex-wrap:wrap;gap:10px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3fc0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -329,13 +329,19 @@
       </div>
     </div>
 
-    <div style="max-height:65vh;overflow-y:auto;">
-      <table style="width:100%;border-collapse:collapse;">
+    <div style="max-height:78vh;overflow-y:auto;">
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+        <colgroup>
+          <col style="width:60px;">
+          <col style="width:22%;">
+          <col style="width:100px;">
+          <col>
+        </colgroup>
         <thead style="position:sticky;top:0;z-index:1;">
           <tr style="background:#faf8f6;border-bottom:1px solid #f0ece8;">
-            <th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:center;padding:10px 20px;width:60px;">Sno.</th>
-            <th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:left;padding:10px 12px;width:30%;">Checklist Item</th>
-            <th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:center;padding:10px 12px;width:100px;">Yes/No</th>
+            <th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:center;padding:10px 20px;">Sno.</th>
+            <th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:left;padding:10px 12px;">Checklist Item</th>
+            <th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:center;padding:10px 12px;">Yes/No</th>
             <th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:left;padding:10px 20px 10px 12px;">Remark</th>
           </tr>
         </thead>
@@ -374,11 +380,11 @@
                 <option value="N/A" {% if row.status == 'N/A' %}selected{% endif %}>N/A</option>
               </select>
             </td>
-            <td style="padding:8px 20px 8px 12px;vertical-align:middle;max-width:0;width:40%;">
+            <td style="padding:8px 20px 8px 12px;vertical-align:middle;">
               {% if row.remark %}
               <div class="remark-view" onclick="openRemarkModal(this.querySelector('span'))"
-                   style="display:flex;align-items:center;font-size:12.5px;padding:5px 10px;border-radius:6px;border:1.5px solid #ede8e0;background:#faf8f6;box-sizing:border-box;cursor:pointer;overflow:hidden;min-height:30px;">
-                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333;font-size:12.5px;">{{ row.remark }}</span>
+                   style="display:flex;align-items:center;font-size:12.5px;padding:6px 10px;border-radius:6px;border:1.5px solid #ede8e0;background:#faf8f6;box-sizing:border-box;cursor:pointer;min-height:30px;">
+                <span style="flex:1;white-space:normal;word-break:break-word;line-height:1.5;color:#333;font-size:12.5px;">{{ row.remark }}</span>
               </div>
               {% else %}
               <div class="remark-view"
