@@ -704,6 +704,7 @@ async def upload_zip(
 
     _ZIP_ENTRY_MAX = 500 * 1024 * 1024
     zip_files: dict[str, bytes] = {}
+    duplicate_basenames: dict[str, list[str]] = {}
     try:
         with zipmod.ZipFile(io.BytesIO(data)) as zf:
             total_uncompressed = sum(e.file_size for e in zf.infolist())
@@ -711,10 +712,32 @@ async def upload_zip(
                 return _qc_error("ZIP contents are too large. Total uncompressed size must not exceed 500 MB.")
             for name in zf.namelist():
                 basename = os.path.basename(name).strip()
-                if basename:
-                    zip_files[basename.lower()] = zf.read(name)
+                if not basename:
+                    continue
+                key = basename.lower()
+                if key in zip_files:
+                    # Same filename appears in more than one folder inside the
+                    # ZIP — matching only ever looks at basenames, so which one
+                    # "wins" would be arbitrary (zip entry order, not anything
+                    # meaningful). Rather than silently picking one and having
+                    # the wrong file get analysed, surface this and let the
+                    # user fix the ZIP instead of guessing.
+                    duplicate_basenames.setdefault(key, [name]).append(name)
+                    continue
+                zip_files[key] = zf.read(name)
     except zipmod.BadZipFile:
         return _qc_error("Uploaded file is not a valid ZIP archive.")
+
+    if duplicate_basenames:
+        lines = "; ".join(
+            f'"{os.path.basename(paths[0])}" appears at: {", ".join(paths)}'
+            for paths in duplicate_basenames.values()
+        )
+        return _qc_error(
+            "This ZIP has the same filename in more than one folder, so it's "
+            "ambiguous which one to check: " + lines +
+            ". Please rename or remove the duplicate and re-upload."
+        )
 
     # Build reference context from the linked quote record
     reference_pdf_text = ""
