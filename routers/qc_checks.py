@@ -13,6 +13,7 @@ Routes:
   GET  /user/history
   GET  /user/qc-version/{version_id}
   POST /user/qc-version/{version_id}/save
+  POST /user/qc-version/{version_id}/add-email
 """
 import asyncio
 import base64
@@ -313,6 +314,47 @@ def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf
 
     except Exception as e:
         return {"status": "N/A", "remark": f"Error analysing file: {e}"}
+
+
+def _build_reference_text(quote_id) -> str:
+    """Build the same 'Quote Number: ...\\nCustomer Name: ...' reference
+    block used when matching an uploaded file against a quote's signed
+    agreement — shared by the "add one more email" endpoints below."""
+    if not quote_id:
+        return ""
+    try:
+        ref_record = db.get_quote(int(quote_id))
+    except (ValueError, TypeError):
+        ref_record = db.find_by_quote_number(quote_id)
+    if not ref_record:
+        return ""
+    fields = [
+        ("Quote Number",    ref_record.get("quote_number", "")),
+        ("Customer Name",   ref_record.get("customer_name", "")),
+        ("Install Date",    ref_record.get("install_date", "")),
+        ("System Price",    ref_record.get("system_price", "")),
+        ("STC Incentive",   ref_record.get("stc_incentive", "")),
+        ("VIC Rebate",      ref_record.get("vic_rebate", "")),
+        ("Battery Rebate",  ref_record.get("battery_rebate", "")),
+        ("Total Price",     ref_record.get("total_price", "")),
+        ("Deposit",         ref_record.get("deposit", "")),
+        ("Balance",         ref_record.get("balance", "")),
+        ("Payment Terms",   ref_record.get("payment_terms", "")),
+        ("Billing Address", ref_record.get("billing_address", "")),
+        ("Delivery Address",ref_record.get("delivery_address", "")),
+        ("Roof Type",       ref_record.get("roof_type", "")),
+        ("Email",           ref_record.get("email", "")),
+        ("Phone",           ref_record.get("phone", "")),
+        ("Notes",           ref_record.get("notes", "")),
+    ]
+    reference_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
+    line_items = ref_record.get("line_items") or []
+    if line_items:
+        reference_text += "\n\nSystem Components:\n" + "\n".join(
+            f"- {li.get('item','')}: {li.get('specification','')}"
+            for li in line_items if li.get("item")
+        )
+    return reference_text
 
 
 def _derive_email_summary(results: list) -> tuple:
@@ -1525,3 +1567,104 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
         raise HTTPException(500, f"Failed to save: {e}")
 
     return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}
+
+
+@router.post("/user/qc-version/{version_id}/add-email")
+async def user_qc_version_add_email(
+    version_id: int,
+    eml_file: UploadFile = File(...),
+    user=Depends(require_qc_access),
+):
+    """Analyse one more .eml file against the signed agreement and append its
+    attachment results to this version's saved email results immediately —
+    independent of the Modify/edit-mode flow, no separate Save step."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM qc_versions WHERE id = ?", (version_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "QC version not found.")
+    v = dict(row)
+    if (user.get("role") != "admin"
+            and v.get("saved_by_user_id") != user["id"]
+            and v.get("confirmed_by_user_id") != user["id"]):
+        raise HTTPException(403, "Access denied.")
+
+    if not eml_file.filename.lower().endswith(".eml"):
+        raise HTTPException(400, f"'{eml_file.filename}' is not a valid .eml file (Outlook email format).")
+
+    raw = await eml_file.read()
+    if len(raw) > 50 * 1024 * 1024:
+        raise HTTPException(400, f"'{eml_file.filename}' is too large. Maximum allowed size is 50 MB.")
+
+    import email as _email_mod
+    import email.policy as _policy
+
+    msg = _email_mod.message_from_bytes(raw, policy=_policy.compat32)
+    subject = _decode_email_field(msg.get("Subject", "")) or "(no subject)"
+    from_hdr = _decode_email_field(msg.get("From", "")) or "(unknown sender)"
+    address = _extract_email_address(from_hdr)
+
+    attachments = _parse_eml(raw)
+    if not attachments:
+        raise HTTPException(400, f"No attachments found in '{eml_file.filename}'. Please check the .eml file.")
+
+    reference_text = _build_reference_text(v["quote_id"])
+    client = _get_claude()
+
+    analysed = await asyncio.gather(
+        *[asyncio.to_thread(_match_attachment_with_claude, client, att, reference_text)
+          for att in attachments]
+    )
+
+    new_results = [
+        {
+            **r,
+            "ai_status": r.get("status"),
+            "source_email": from_hdr,
+            "source_subject": subject,
+            "source_address": address,
+        }
+        for r in analysed
+    ]
+
+    try:
+        existing_results = json.loads(v.get("email_results_json") or "[]") or []
+    except Exception:
+        existing_results = []
+
+    new_keys = {
+        ((r.get("source_address") or ""), (r.get("name") or "").strip().lower())
+        for r in new_results
+    }
+    kept_old = [
+        r for r in existing_results
+        if ((r.get("source_address") or ""), (r.get("name") or "").strip().lower())
+        not in new_keys
+    ]
+    merged_results = kept_old + new_results
+
+    rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
+    filled = {}
+    for r in rows:
+        if not r.get("is_section") and r.get("position") is not None:
+            filled[r["position"]] = {
+                "status": r.get("status", "N/A"),
+                "remark": r.get("remark", ""),
+                "ai_status": r.get("ai_status", ""),
+            }
+    xlsx_blob = build_xlsx(rows, filled=filled, email_results=merged_results)
+
+    was_confirmed = v.get("status") == "confirmed"
+    db.update_qc_version(
+        version_id=version_id,
+        xlsx_bytes=xlsx_blob,
+        rows_json=v["rows_json"] or json.dumps(rows),
+        yes_count=v["yes_count"],
+        no_count=v["no_count"],
+        na_count=v["na_count"],
+        confirm=was_confirmed,
+        confirmed_by_user_id=user["id"] if was_confirmed else None,
+        email_results_json=json.dumps(merged_results),
+    )
+    return {"ok": True, "email_results": merged_results}

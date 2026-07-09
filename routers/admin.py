@@ -20,9 +20,11 @@ Routes:
   GET  /admin/qc-version/{version_id}/download
   GET  /admin/qc-version/{version_id}
   POST /admin/qc-version/{version_id}/save
+  POST /admin/qc-version/{version_id}/add-email
   GET  /db/download
   POST /db/restore
 """
+import asyncio
 import json
 import logging
 import os
@@ -37,6 +39,13 @@ import db.quote_repo as db
 import db.checklist_repo as tdb
 from reports.xlsx_builder import build_xlsx
 from db.connection import get_db
+from routers.qc_checks import (
+    _build_reference_text,
+    _decode_email_field,
+    _extract_email_address,
+    _match_attachment_with_claude,
+    _parse_eml,
+)
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -47,6 +56,7 @@ from config import (
     _admin_ctx,
     _anthropic_client,
     _build_install_map,
+    _get_claude,
     _resolve_theme,
     is_login_ip_restricted,
     require_admin,
@@ -457,6 +467,108 @@ async def admin_qc_version_save(request: Request, version_id: int, user=Depends(
         email_results_json=json.dumps(email_results) if has_email_edit else None,
     )
     return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}
+
+
+@router.post("/admin/qc-version/{version_id}/add-email")
+async def admin_qc_version_add_email(
+    version_id: int,
+    eml_file: UploadFile = File(...),
+    user=Depends(require_admin),
+):
+    """Analyse one more .eml file against the signed agreement and append its
+    attachment results to this version's saved email results immediately —
+    independent of the Modify/edit-mode flow, no separate Save step."""
+    if not eml_file.filename.lower().endswith(".eml"):
+        raise HTTPException(400, f"'{eml_file.filename}' is not a valid .eml file (Outlook email format).")
+
+    raw = await eml_file.read()
+    if len(raw) > 50 * 1024 * 1024:
+        raise HTTPException(400, f"'{eml_file.filename}' is too large. Maximum allowed size is 50 MB.")
+
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id, quote_id, status, rows_json, email_results_json, "
+            "yes_count, no_count, na_count, confirmed_by_user_id "
+            "FROM qc_versions WHERE id = ?",
+            (version_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "QC version not found.")
+    v = dict(row)
+
+    import email as _email_mod
+    import email.policy as _policy
+
+    msg = _email_mod.message_from_bytes(raw, policy=_policy.compat32)
+    subject = _decode_email_field(msg.get("Subject", "")) or "(no subject)"
+    from_hdr = _decode_email_field(msg.get("From", "")) or "(unknown sender)"
+    address = _extract_email_address(from_hdr)
+
+    attachments = _parse_eml(raw)
+    if not attachments:
+        raise HTTPException(400, f"No attachments found in '{eml_file.filename}'. Please check the .eml file.")
+
+    reference_text = _build_reference_text(v["quote_id"])
+    client = _get_claude()
+
+    analysed = await asyncio.gather(
+        *[asyncio.to_thread(_match_attachment_with_claude, client, att, reference_text)
+          for att in attachments]
+    )
+
+    new_results = [
+        {
+            **r,
+            "ai_status": r.get("status"),
+            "source_email": from_hdr,
+            "source_subject": subject,
+            "source_address": address,
+        }
+        for r in analysed
+    ]
+
+    try:
+        existing_results = json.loads(v.get("email_results_json") or "[]") or []
+    except Exception:
+        existing_results = []
+
+    # Same dedup rule as the Step 2 upload flow: a new result replaces an
+    # existing one only if it shares both sender address and attachment name.
+    new_keys = {
+        ((r.get("source_address") or ""), (r.get("name") or "").strip().lower())
+        for r in new_results
+    }
+    kept_old = [
+        r for r in existing_results
+        if ((r.get("source_address") or ""), (r.get("name") or "").strip().lower())
+        not in new_keys
+    ]
+    merged_results = kept_old + new_results
+
+    rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
+    filled = {}
+    for r in rows:
+        if not r.get("is_section") and r.get("position") is not None:
+            filled[r["position"]] = {
+                "status": r.get("status", "N/A"),
+                "remark": r.get("remark", ""),
+                "ai_status": r.get("ai_status", ""),
+            }
+    xlsx_blob = build_xlsx(rows, filled=filled, email_results=merged_results)
+
+    was_confirmed = v.get("status") == "confirmed"
+    db.update_qc_version(
+        version_id=version_id,
+        xlsx_bytes=xlsx_blob,
+        rows_json=v["rows_json"] or json.dumps(rows),
+        yes_count=v["yes_count"],
+        no_count=v["no_count"],
+        na_count=v["na_count"],
+        confirm=was_confirmed,
+        confirmed_by_user_id=v["confirmed_by_user_id"] if was_confirmed else None,
+        email_results_json=json.dumps(merged_results),
+    )
+    return {"ok": True, "email_results": merged_results}
 
 
 # ---------------------------------------------------------------------------
