@@ -1020,6 +1020,7 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
 
     preferred_install_date = ""
     quote_id = payload["quote_id"]
+    record = None
     if quote_id:
         try:
             record = db.get_quote(int(quote_id))
@@ -1042,6 +1043,7 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
         "preferred_install_date": preferred_install_date,
         "today": datetime.now().strftime("%Y-%m-%d"),
         "theme": _resolve_theme(user),
+        "record": record,
     })
     resp.headers.update(_NO_CACHE)
     return resp
@@ -1434,6 +1436,10 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         except Exception:
             pass
 
+    # Full PDF-extracted quote record for the Signed Agreement tile/modal —
+    # same data admin_qc_version_view fetches for its own equivalent block.
+    record = db.get_quote(v["quote_id"])
+
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
@@ -1449,6 +1455,7 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         "revisit_version": v,
         "preferred_install_date": v.get("preferred_install_date") or "",
         "today": datetime.now().strftime("%Y-%m-%d"),
+        "record": record,
     })
     resp.headers.update(_NO_CACHE)
     return resp

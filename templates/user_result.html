@@ -20,6 +20,9 @@
   {% set yes_count = checklist_rows | selectattr('status','equalto','Yes') | list | length %}
   {% set no_count  = checklist_rows | selectattr('status','equalto','No')  | list | length %}
   {% set na_count  = checklist_rows | selectattr('status','equalto','N/A') | list | length %}
+  {% set eml_yes = email_results | selectattr('status','equalto','Yes') | list | length %}
+  {% set eml_no  = email_results | selectattr('status','equalto','No')  | list | length %}
+  {% set eml_na  = email_results | rejectattr('status','equalto','Yes') | rejectattr('status','equalto','No') | list | length %}
 
   <!-- Step tracker -->
   <div class="step-tracker" style="margin-bottom:24px;">
@@ -90,65 +93,290 @@
   </div>
   {% endif %}
 
-  <div class="card result-card">
-    <div class="dl-bar">
-      <div class="summary-chips">
-        <span class="chip chip-yes" onclick="setFilter('Yes')" id="filter-yes"
-              style="cursor:pointer;user-select:none;">&#10003; {{ yes_count }} Yes</span>
-        <span class="chip chip-no" onclick="setFilter('No')" id="filter-no"
-              style="cursor:pointer;user-select:none;">&#10007; {{ no_count }} No</span>
-        <span class="chip chip-na" onclick="setFilter('N/A')" id="filter-na"
-              style="cursor:pointer;user-select:none;">— {{ na_count }} N/A</span>
-        <span class="chip" onclick="setFilter('All')" id="filter-all"
-              style="cursor:pointer;user-select:none;background:var(--brand);color:#fff;">All</span>
+  <!-- Top action row -->
+  <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+    {% if not is_readonly %}
+    <button type="button" class="link-btn" onclick="toggleRerun()" id="rerun-toggle-btn" style="font-weight:600;">
+      &#8635; Upload Another ZIP
+    </button>
+    {% endif %}
+    <a href="/checklist-download?token={{ dl_token }}" class="link-btn" id="dl-link" style="font-weight:600;">
+      &#8595; Download Excel
+    </a>
+  </div>
+
+  <!-- 3 summary tiles — click any tile to open its modal -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:24px;">
+
+    <!-- Tile 1: Signed Agreement -->
+    <div onclick="openAgreementModal()" class="card"
+         style="margin-bottom:0;cursor:pointer;transition:box-shadow .15s,border-color .15s;"
+         onmouseover="this.style.borderColor='#4D96FF'" onmouseout="this.style.borderColor='var(--line2)'">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <div style="width:34px;height:34px;border-radius:9px;background:rgba(77,150,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4D96FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <span style="font-size:14px;font-weight:800;color:var(--ink);">Signed Agreement</span>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        {% if not is_readonly %}
-        <button type="button" class="link-btn" onclick="toggleRerun()" id="rerun-toggle-btn"
-                style="font-weight:600;">
-          &#8635; Upload Another ZIP
+      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:3px;">{{ (record.customer_name if record else '') or '—' }}</div>
+      <div style="font-size:12px;color:var(--muted);">{{ (record.quote_number if record else '') or '—' }}{% if record and record.total_price %} &middot; {{ record.total_price }}{% endif %}</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#4D96FF;">View details &rsaquo;</div>
+    </div>
+
+    <!-- Tile 2: Email Verification -->
+    <div onclick="{% if email_results %}openEmailModal(){% endif %}" class="card"
+         style="margin-bottom:0;{% if email_results %}cursor:pointer;{% else %}opacity:.55;{% endif %}transition:box-shadow .15s,border-color .15s;"
+         {% if email_results %}
+         onmouseover="this.style.borderColor='var(--brand)'" onmouseout="this.style.borderColor='var(--line2)'"
+         {% endif %}>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <div style="width:34px;height:34px;border-radius:9px;background:rgba(222,93,24,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        </div>
+        <span style="font-size:14px;font-weight:800;color:var(--ink);">Email Verification</span>
+      </div>
+      {% if email_results %}
+      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ email_results | length }} attachment{{ 's' if email_results | length != 1 else '' }}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge-yes" style="border-radius:20px;">&#10003; {{ eml_yes }}</span>
+        <span class="badge-no" style="border-radius:20px;">&#10007; {{ eml_no }}</span>
+        <span class="badge-na" style="border-radius:20px;">&#8212; {{ eml_na }}</span>
+      </div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:var(--brand);">View &amp; modify &rsaquo;</div>
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted);">No email verification was run for this version.</div>
+      {% endif %}
+    </div>
+
+    <!-- Tile 3: ZIP Checklist -->
+    <div onclick="{% if checklist_rows %}openChecklistModal(){% endif %}" class="card"
+         style="margin-bottom:0;{% if checklist_rows %}cursor:pointer;{% else %}opacity:.55;{% endif %}transition:box-shadow .15s,border-color .15s;"
+         {% if checklist_rows %}
+         onmouseover="this.style.borderColor='#7c3fc0'" onmouseout="this.style.borderColor='var(--line2)'"
+         {% endif %}>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <div style="width:34px;height:34px;border-radius:9px;background:rgba(124,63,192,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3fc0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <span style="font-size:14px;font-weight:800;color:var(--ink);">ZIP Checklist</span>
+      </div>
+      {% if checklist_rows %}
+      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ zip_filename or 'checklist' }}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge-yes" style="border-radius:20px;">&#10003; {{ yes_count }}</span>
+        <span class="badge-no" style="border-radius:20px;">&#10007; {{ no_count }}</span>
+        <span class="badge-na" style="border-radius:20px;">&#8212; {{ na_count }}</span>
+      </div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#7c3fc0;">View &amp; modify &rsaquo;</div>
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted);">No checklist rows for this version.</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- Bottom action row: install date + Save Draft / Confirm (or read-only status) -->
+  {% if quote_id %}
+  <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+
+    {% if is_readonly %}
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Viewing v{{ revisit_version.version }} &bull;
+      <span style="font-weight:600;color:#16a34a;">Confirmed</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;">
+      <label for="result-preferred-install-date" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">
+        Install Date
+      </label>
+      <input type="date" id="result-preferred-install-date"
+             value="{{ preferred_install_date or '' }}"
+             style="padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;
+                    font-size:13px;color:var(--ink);background:var(--surface2);outline:none;">
+    </div>
+
+    {% else %}
+    <div style="display:flex;align-items:center;gap:8px;">
+      <label for="result-preferred-install-date" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">
+        Install Date
+      </label>
+      <input type="date" id="result-preferred-install-date"
+             value="{{ preferred_install_date or '' }}" min="{{ today }}"
+             style="padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;
+                    font-size:13px;color:var(--ink);background:var(--surface2);outline:none;">
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;">
+      <!-- Save Draft -->
+      <form method="post" action="/checklist-save-draft" id="save-draft-form">
+        <input type="hidden" name="quote_id"           value="{{ quote_id }}">
+        <input type="hidden" name="dl_token"           id="draft-dl-token" value="{{ dl_token }}">
+        <input type="hidden" name="zip_filename"       value="{{ zip_filename }}">
+        <input type="hidden" name="tpl_name"           value="{{ tpl.name }}">
+        <input type="hidden" name="yes_count"          id="draft-yes"       value="{{ yes_count }}">
+        <input type="hidden" name="no_count"           id="draft-no"        value="{{ no_count }}">
+        <input type="hidden" name="na_count"           id="draft-na"        value="{{ na_count }}">
+        <input type="hidden" name="rows_json"          id="draft-rows-json" value='{{ checklist_rows | tojson }}'>
+        <input type="hidden" name="email_results_json" id="draft-email-json" value='{{ email_results | default([]) | tojson }}'>
+        <input type="hidden" name="preferred_install_date" id="draft-preferred-install-date" value="{{ preferred_install_date or '' }}">
+        <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
+        <button type="submit"
+                style="display:flex;align-items:center;gap:7px;padding:9px 20px;
+                       background:var(--surface3);border:1px solid var(--line2);
+                       color:var(--ink);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+          </svg>
+          Save Draft
         </button>
-        {% endif %}
-        <button type="button" class="link-btn" id="modify-btn" onclick="enterEditMode()"
-                style="font-weight:600;">
+      </form>
+
+      <!-- Confirm & Add to Calendar -->
+      <form method="post" action="/checklist-confirm" id="confirm-form">
+        <input type="hidden" name="quote_id"           value="{{ quote_id }}">
+        <input type="hidden" name="dl_token"           id="confirm-dl-token" value="{{ dl_token }}">
+        <input type="hidden" name="zip_filename"       value="{{ zip_filename }}">
+        <input type="hidden" name="tpl_name"           value="{{ tpl.name }}">
+        <input type="hidden" name="yes_count"          id="confirm-yes"       value="{{ yes_count }}">
+        <input type="hidden" name="no_count"           id="confirm-no"        value="{{ no_count }}">
+        <input type="hidden" name="na_count"           id="confirm-na"        value="{{ na_count }}">
+        <input type="hidden" name="rows_json"          id="confirm-rows-json" value='{{ checklist_rows | tojson }}'>
+        <input type="hidden" name="email_results_json" id="confirm-email-json" value='{{ email_results | default([]) | tojson }}'>
+        <input type="hidden" name="preferred_install_date" id="confirm-preferred-install-date" value="{{ preferred_install_date or '' }}">
+        <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
+        <button type="submit"
+                style="display:flex;align-items:center;gap:7px;padding:9px 22px;
+                       background:var(--brand);color:#fff;border:none;
+                       border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Confirm &amp; Add to Calendar
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- ═══════════════════════════ Modal 1: Signed Agreement (view-only) ═══════════════════════════ -->
+<div id="agreement-modal-overlay"
+     onclick="if(event.target===this)closeAgreementModal()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 20px;">
+  <div style="background:var(--surface2);border:1px solid var(--line2);border-radius:16px;max-width:900px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 26px;border-bottom:1px solid var(--line2);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4D96FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span style="font-size:15px;font-weight:800;color:var(--ink);">Signed Agreement</span>
+      </div>
+      <button onclick="closeAgreementModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
+    </div>
+    <div style="padding:24px 26px;max-height:70vh;overflow-y:auto;">
+
+      {% macro field(label, value) %}
+      <div style="display:flex;flex-direction:column;gap:3px;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;">{{ label }}</div>
+        <div style="font-size:13px;font-weight:{% if value %}600{% else %}400{% endif %};color:{% if value %}var(--ink){% else %}var(--muted){% endif %};word-break:break-word;line-height:1.4;">{{ value if value else '—' }}</div>
+      </div>
+      {% endmacro %}
+
+      {% if record %}
+      <div style="display:flex;align-items:center;gap:8px;padding:0 0 12px;">
+        <div style="width:3px;height:16px;background:#4D96FF;border-radius:2px;flex-shrink:0;"></div>
+        <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#4D96FF;">Customer Details</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px 24px;padding:16px;background:var(--surface3);border-radius:10px;border:1px solid var(--line2);margin-bottom:20px;">
+        {{ field('Quote Number',    record.get('quote_number','')) }}
+        {{ field('Quote Valid Until', record.get('quote_valid_until','')) }}
+        {{ field('Customer Name',   record.get('customer_name','')) }}
+        {{ field('Contact Person',  record.get('contact_person','')) }}
+        {{ field('Email',           record.get('email','')) }}
+        {{ field('Phone',           record.get('phone','')) }}
+        {{ field('Billing Address', record.get('billing_address','')) }}
+        {{ field('Delivery Address',record.get('delivery_address','')) }}
+        {{ field('Roof Type',       record.get('roof_type','')) }}
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;padding:0 0 12px;">
+        <div style="width:3px;height:16px;background:#6BCB77;border-radius:2px;flex-shrink:0;"></div>
+        <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#2a7d4f;">Retailer Details</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px 24px;padding:16px;background:var(--surface3);border-radius:10px;border:1px solid var(--line2);margin-bottom:20px;">
+        {{ field('Retailer Name',           record.get('retailer_name','')) }}
+        {{ field('Retailer Contact Person', record.get('retailer_contact_person','')) }}
+        {{ field('Retailer Phone',          record.get('retailer_phone','')) }}
+        {{ field('Retailer Email',          record.get('retailer_email','')) }}
+        {{ field('Retailer Postal Address', record.get('retailer_postal_address','')) }}
+        {{ field('Retailer Street Address', record.get('retailer_street_address','')) }}
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;padding:0 0 12px;">
+        <div style="width:3px;height:16px;background:var(--brand);border-radius:2px;flex-shrink:0;"></div>
+        <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--brand);">Financial Details</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px 24px;padding:16px;background:var(--surface3);border-radius:10px;border:1px solid var(--line2);">
+        {{ field('System Price',    record.get('system_price','')) }}
+        {{ field('STC Incentive',   record.get('stc_incentive','')) }}
+        {{ field('VIC Rebate',      record.get('vic_rebate','')) }}
+        {{ field('Battery Rebate',  record.get('battery_rebate','')) }}
+        {{ field('Total Price',     record.get('total_price','')) }}
+        {{ field('Deposit',         record.get('deposit','')) }}
+        {{ field('Balance',         record.get('balance','')) }}
+        {{ field('Payment Terms',   record.get('payment_terms','')) }}
+        {{ field('Install Date',    record.get('install_date','')) }}
+        {{ field('Balance Due Date',record.get('balance_due_date','')) }}
+        {{ field('Notes',           record.get('notes','')) }}
+      </div>
+      {% else %}
+      <div style="color:var(--muted);font-size:13px;">No agreement data found for this quote.</div>
+      {% endif %}
+    </div>
+    <div style="padding:16px 26px;border-top:1px solid var(--line2);display:flex;justify-content:flex-end;">
+      <button onclick="closeAgreementModal()" style="padding:7px 18px;border-radius:7px;border:1px solid var(--line2);background:var(--surface3);color:var(--ink2);font-size:13px;font-weight:600;cursor:pointer;">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ Modal 2: Email Verification (editable) ═══════════════════════════ -->
+{% if email_results %}
+<div id="email-modal-overlay"
+     onclick="if(event.target===this)closeEmailModal()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 20px;">
+  <div class="card result-card" style="margin:0;max-width:900px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div class="dl-bar" style="margin-bottom:0;">
+      <span style="font-size:15px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:10px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Email Verification
+      </span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button type="button" class="link-btn" id="eml-modify-btn" onclick="emlEnterEditMode()" style="font-weight:600;">
           &#9998; Modify
         </button>
-        <a href="/checklist-download?token={{ dl_token }}" class="link-btn" id="dl-link" style="font-weight:600;">
-          &#8595; Download Excel
-        </a>
+        <button onclick="closeEmailModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
       </div>
     </div>
 
-    <!-- Edit mode save bar (hidden by default, shown in edit mode) -->
-    <div id="edit-bar" style="background:var(--brand);color:#fff;border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:12px;">
-      <span style="font-size:13px;font-weight:600;">&#9998; Edit mode — change Yes/No and remarks, then save.</span>
+    <div id="eml-edit-bar" style="background:var(--brand);color:#fff;border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:12px;">
+      <span style="font-size:13px;font-weight:600;">&#9998; Edit mode — change status and remarks, then save.</span>
       <div style="display:flex;gap:8px;">
-        <button type="button" onclick="cancelEditMode()"
-                style="background:transparent;border:1.5px solid rgba(255,255,255,.6);color:#fff;border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;">
-          Cancel
-        </button>
-        <button type="button" onclick="saveEdits()"
-                style="background:#fff;color:var(--brand);border:none;border-radius:6px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;">
-          Save Changes
-        </button>
+        <button type="button" onclick="emlCancelEditMode()"
+                style="background:transparent;border:1.5px solid rgba(255,255,255,.6);color:#fff;border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;">Cancel</button>
+        <button type="button" id="eml-save-btn" onclick="emlSaveEdits()"
+                style="background:#fff;color:var(--brand);border:none;border-radius:6px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;">Save</button>
       </div>
     </div>
 
-    {% if email_results %}
-    <!-- ── Email Verification Results panel ── -->
-    <div style="margin-bottom:20px;border:1.5px solid rgba(196,80,16,.2);border-radius:12px;overflow:hidden;">
-      <div style="background:rgba(196,80,16,.07);padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(196,80,16,.15);">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        <span style="font-size:13px;font-weight:700;color:var(--brand);">Email Verification</span>
-        <span style="font-size:12px;color:var(--muted);margin-left:4px;">{{ email_results | length }} attachment{{ 's' if email_results | length != 1 else '' }}</span>
-      </div>
+    <div style="max-height:65vh;overflow-y:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
         <colgroup>
           <col style="width:30%;">
           <col style="width:16%;">
           <col style="width:54%;">
         </colgroup>
-        <thead>
+        <thead style="position:sticky;top:0;z-index:1;">
           <tr style="border-bottom:1px solid var(--line2);background:var(--surface3);">
             <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Attachment</th>
             <th style="text-align:center;padding:8px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Status</th>
@@ -209,11 +437,53 @@
         </tbody>
       </table>
     </div>
-    {% endif %}
+  </div>
+</div>
+{% endif %}
 
-    <div style="overflow-x:auto;">
+<!-- ═══════════════════════════ Modal 3: ZIP Checklist (editable) ═══════════════════════════ -->
+{% if checklist_rows %}
+<div id="checklist-modal-overlay"
+     onclick="if(event.target===this)closeChecklistModal()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 20px;">
+  <div class="card result-card" style="margin:0;max-width:1000px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div class="dl-bar">
+      <div class="summary-chips">
+        <span class="chip chip-yes" onclick="setFilter('Yes')" id="filter-yes"
+              style="cursor:pointer;user-select:none;">&#10003; {{ yes_count }} Yes</span>
+        <span class="chip chip-no" onclick="setFilter('No')" id="filter-no"
+              style="cursor:pointer;user-select:none;">&#10007; {{ no_count }} No</span>
+        <span class="chip chip-na" onclick="setFilter('N/A')" id="filter-na"
+              style="cursor:pointer;user-select:none;">— {{ na_count }} N/A</span>
+        <span class="chip" onclick="setFilter('All')" id="filter-all"
+              style="cursor:pointer;user-select:none;background:var(--brand);color:#fff;">All</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button type="button" class="link-btn" id="modify-btn" onclick="enterEditMode()" style="font-weight:600;">
+          &#9998; Modify
+        </button>
+        <button onclick="closeChecklistModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
+      </div>
+    </div>
+
+    <!-- Edit mode save bar (hidden by default, shown in edit mode) -->
+    <div id="edit-bar" style="background:var(--brand);color:#fff;border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:12px;">
+      <span style="font-size:13px;font-weight:600;">&#9998; Edit mode — change Yes/No and remarks, then save.</span>
+      <div style="display:flex;gap:8px;">
+        <button type="button" onclick="cancelEditMode()"
+                style="background:transparent;border:1.5px solid rgba(255,255,255,.6);color:#fff;border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;">
+          Cancel
+        </button>
+        <button type="button" onclick="saveEdits()"
+                style="background:#fff;color:var(--brand);border:none;border-radius:6px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;">
+          Save Changes
+        </button>
+      </div>
+    </div>
+
+    <div style="overflow-x:auto;max-height:65vh;overflow-y:auto;">
       <table class="checklist-table">
-        <thead>
+        <thead style="position:sticky;top:0;z-index:1;">
           <tr>
             <th class="checklist-sno-cell">Sno.</th>
             <th>Checklist Item</th>
@@ -284,94 +554,9 @@
         </tbody>
       </table>
     </div>
-
-    {% if quote_id %}
-    <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line2);
-                display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-
-      {% if is_readonly %}
-      <!-- Confirmed version: values can still be modified in place via the Modify button above -->
-      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Viewing v{{ revisit_version.version }} &bull;
-        <span style="font-weight:600;color:#16a34a;">Confirmed</span>
-      </div>
-
-      <div style="display:flex;align-items:center;gap:8px;">
-        <label for="result-preferred-install-date" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">
-          Install Date
-        </label>
-        <input type="date" id="result-preferred-install-date"
-               value="{{ preferred_install_date or '' }}"
-               style="padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;
-                      font-size:13px;color:var(--ink);background:var(--surface2);outline:none;">
-      </div>
-
-      {% else %}
-      <!-- Preferred Installation Date: editable here, shared by Save Draft and Confirm -->
-      <div style="display:flex;align-items:center;gap:8px;">
-        <label for="result-preferred-install-date" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">
-          Install Date
-        </label>
-        <input type="date" id="result-preferred-install-date"
-               value="{{ preferred_install_date or '' }}" min="{{ today }}"
-               style="padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;
-                      font-size:13px;color:var(--ink);background:var(--surface2);outline:none;">
-      </div>
-
-      <!-- Save Draft -->
-      <form method="post" action="/checklist-save-draft" id="save-draft-form">
-        <input type="hidden" name="quote_id"           value="{{ quote_id }}">
-        <input type="hidden" name="dl_token"           id="draft-dl-token" value="{{ dl_token }}">
-        <input type="hidden" name="zip_filename"       value="{{ zip_filename }}">
-        <input type="hidden" name="tpl_name"           value="{{ tpl.name }}">
-        <input type="hidden" name="yes_count"          id="draft-yes"       value="{{ yes_count }}">
-        <input type="hidden" name="no_count"           id="draft-no"        value="{{ no_count }}">
-        <input type="hidden" name="na_count"           id="draft-na"        value="{{ na_count }}">
-        <input type="hidden" name="rows_json"          id="draft-rows-json" value='{{ checklist_rows | tojson }}'>
-        <input type="hidden" name="email_results_json" id="draft-email-json" value='{{ email_results | default([]) | tojson }}'>
-        <input type="hidden" name="preferred_install_date" id="draft-preferred-install-date" value="{{ preferred_install_date or '' }}">
-        <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
-        <button type="submit"
-                style="display:flex;align-items:center;gap:7px;padding:9px 20px;
-                       background:var(--surface3);border:1px solid var(--line2);
-                       color:var(--ink);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-            <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
-          </svg>
-          Save Draft
-        </button>
-      </form>
-
-      <!-- Confirm & Add to Calendar -->
-      <form method="post" action="/checklist-confirm" id="confirm-form">
-        <input type="hidden" name="quote_id"           value="{{ quote_id }}">
-        <input type="hidden" name="dl_token"           id="confirm-dl-token" value="{{ dl_token }}">
-        <input type="hidden" name="zip_filename"       value="{{ zip_filename }}">
-        <input type="hidden" name="tpl_name"           value="{{ tpl.name }}">
-        <input type="hidden" name="yes_count"          id="confirm-yes"       value="{{ yes_count }}">
-        <input type="hidden" name="no_count"           id="confirm-no"        value="{{ no_count }}">
-        <input type="hidden" name="na_count"           id="confirm-na"        value="{{ na_count }}">
-        <input type="hidden" name="rows_json"          id="confirm-rows-json" value='{{ checklist_rows | tojson }}'>
-        <input type="hidden" name="email_results_json" id="confirm-email-json" value='{{ email_results | default([]) | tojson }}'>
-        <input type="hidden" name="preferred_install_date" id="confirm-preferred-install-date" value="{{ preferred_install_date or '' }}">
-        <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
-        <button type="submit"
-                style="display:flex;align-items:center;gap:7px;padding:9px 22px;
-                       background:var(--brand);color:#fff;border:none;
-                       border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          Confirm &amp; Add to Calendar
-        </button>
-      </form>
-      {% endif %}
-
-    </div>
-    {% endif %}
   </div>
-
 </div>
+{% endif %}
 
 <!-- Remark view modal (read-only, always rendered) -->
 <div id="remark-view-overlay"
@@ -435,10 +620,29 @@
 
   var _quoteId = {{ (quote_id or '') | tojson }};
   var _activeFilter = 'All';
-  var _editMode     = false;
+  var _editMode     = false;    // ZIP checklist edit mode
+  var _emlEditMode  = false;    // Email verification edit mode
   var _tplData       = {{ tpl | tojson }};
   var _emailResults  = {{ email_results | default([]) | tojson }};
   var _currentDlToken = (document.getElementById('confirm-dl-token') || {}).value || '';
+
+  // ── Modal open/close ───────────────────────────────────────────────────
+  function openAgreementModal() { document.getElementById('agreement-modal-overlay').style.display = 'flex'; }
+  function closeAgreementModal() { document.getElementById('agreement-modal-overlay').style.display = 'none'; }
+
+  function openEmailModal() { document.getElementById('email-modal-overlay').style.display = 'flex'; }
+  function closeEmailModal() {
+    if (_emlEditMode && !confirm('Discard unsaved email verification changes?')) return;
+    if (_emlEditMode) emlCancelEditMode();
+    document.getElementById('email-modal-overlay').style.display = 'none';
+  }
+
+  function openChecklistModal() { document.getElementById('checklist-modal-overlay').style.display = 'flex'; }
+  function closeChecklistModal() {
+    if (_editMode && !confirm('Discard unsaved checklist changes?')) return;
+    if (_editMode) cancelEditMode();
+    document.getElementById('checklist-modal-overlay').style.display = 'none';
+  }
 
   // ── Remark view modal (read-only) ────────────────────────────────────────
   function openRemarkView(span) {
@@ -453,9 +657,9 @@
     if (e.target === this) closeRemarkView();
   });
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && document.getElementById('remark-view-overlay').style.display === 'flex') {
-      closeRemarkView();
-    }
+    if (e.key !== 'Escape') return;
+    closeRemarkView();
+    closeRemarkModal(false);
   });
 
   // Single source of truth: read current row state from the DOM
@@ -485,7 +689,7 @@
   }
 
   // Same idea as _collectRows() but for the Email Verification table —
-  // independent data, independent table, same edit-mode toggle.
+  // independent data, independent table, independent modal.
   function _collectEmailRows() {
     var rows = [];
     document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
@@ -587,7 +791,7 @@
   });
   {% endif %}
 
-  // ── Filter chips ─────────────────────────────────────────────────────────
+  // ── Filter chips (ZIP checklist modal) ──────────────────────────────────
   function setFilter(val) {
     _activeFilter = val;
     var chips = { 'Yes': 'filter-yes', 'No': 'filter-no', 'N/A': 'filter-na', 'All': 'filter-all' };
@@ -604,7 +808,7 @@
     });
   }
 
-  // ── Remark modal ─────────────────────────────────────────────────────────
+  // ── Remark modal (shared by both tables) ─────────────────────────────────
   var _remarkBtn = null;
 
   function openRemarkModal(btn) {
@@ -634,16 +838,16 @@
     if (e.key === 'Escape') { e.preventDefault(); closeRemarkModal(false); }
   });
 
-  // ── Edit mode — single class toggle drives all visibility via CSS ─────────
-  var _card = document.querySelector('.result-card');
+  // ── ZIP Checklist edit mode — single class toggle drives all visibility ──
+  var _card = document.querySelector('#checklist-modal-overlay .result-card');
 
   function enterEditMode() {
     _editMode = true;
     _card.classList.add('is-edit-mode');
-    document.querySelectorAll('#checklist-tbody tr[data-position], #email-results-tbody tr').forEach(function(tr) {
+    document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
       tr.dataset.savedStatus = tr.dataset.status;
     });
-    document.querySelectorAll('.status-edit').forEach(function(sel) {
+    document.querySelectorAll('#checklist-tbody .status-edit').forEach(function(sel) {
       sel.addEventListener('change', function() {
         var tr = sel.closest('tr');
         tr.dataset.status = sel.value;
@@ -655,7 +859,7 @@
   function cancelEditMode() {
     _editMode = false;
     _card.classList.remove('is-edit-mode');
-    document.querySelectorAll('#checklist-tbody tr[data-position], #email-results-tbody tr').forEach(function(tr) {
+    document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
       tr.dataset.status = tr.dataset.savedStatus || tr.dataset.status;
       tr.querySelector('.status-edit').value = tr.dataset.status;
       var inp = tr.querySelector('.remark-edit');
@@ -677,33 +881,6 @@
       var cls = newStatus === 'Yes' ? 'badge-yes' : (newStatus === 'No' ? 'badge-no' : 'badge-na');
       tr.querySelector('.status-view').innerHTML = '<span class="' + cls + '">' + newStatus + '</span>';
       tr.querySelector('.remark-view').textContent = newRemark;
-      var btn = tr.querySelector('.remark-edit-btn');
-      if (btn) btn.querySelector('.remark-btn-preview').textContent = newRemark;
-      _refreshChangedHighlight(tr);
-    });
-  }
-
-  // Same as _applyRowsToDom() but the Email Verification table uses its own
-  // Match/Mismatch/N/A pill styling instead of the checklist's Yes/No badges.
-  function _applyEmailRowsToDom() {
-    document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
-      var statusEl = tr.querySelector('.status-edit');
-      var remarkEl = tr.querySelector('.remark-edit');
-      if (!statusEl || !remarkEl) return;
-      var newStatus = statusEl.value;
-      var newRemark = remarkEl.value;
-      tr.dataset.status = newStatus;
-      tr.dataset.remark = newRemark;
-      var html;
-      if (newStatus === 'Yes') {
-        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(52,211,153,.12);color:#16a34a;border:1px solid rgba(52,211,153,.35);">&#10003; Match</span>';
-      } else if (newStatus === 'No') {
-        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(248,113,113,.12);color:#dc2626;border:1px solid rgba(248,113,113,.35);">&#10007; Mismatch</span>';
-      } else {
-        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:var(--surface3);color:var(--muted);border:1px solid var(--line2);">— N/A</span>';
-      }
-      tr.querySelector('.status-view').innerHTML = html;
-      tr.querySelector('.remark-view').textContent = newRemark || '—';
       var btn = tr.querySelector('.remark-edit-btn');
       if (btn) btn.querySelector('.remark-btn-preview').textContent = newRemark;
       _refreshChangedHighlight(tr);
@@ -754,24 +931,17 @@
   }
 
   function saveEdits() {
-    var rows        = _collectRows();
-    var hasEmailTbl = !!document.getElementById('email-results-tbody');
-    var emailRows   = hasEmailTbl ? _collectEmailRows() : null;
-    var saveBtn     = document.querySelector('#edit-bar button:last-child');
+    var rows    = _collectRows();
+    var saveBtn = document.querySelector('#edit-bar button:last-child');
     saveBtn.disabled    = true;
     saveBtn.textContent = 'Saving…';
 
     if (_isReadonly) {
       var dateInput = document.getElementById('result-preferred-install-date');
-      var payload = { rows: rows, preferred_install_date: dateInput ? dateInput.value : '' };
-      // Only include email_results when this page actually has that table —
-      // its absence (key omitted) tells the backend to leave stored email
-      // results untouched, so a version with no email step isn't wiped.
-      if (hasEmailTbl) payload.email_results = emailRows;
       fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ rows: rows, preferred_install_date: dateInput ? dateInput.value : '' }),
       })
       .then(function(r) {
         return r.json().then(function(data) { return { ok: r.ok, data: data }; });
@@ -782,7 +952,6 @@
         }
         var data = result.data;
         _applyRowsToDom(rows);
-        if (hasEmailTbl) _applyEmailRowsToDom();
         document.getElementById('filter-yes').textContent = '✓ ' + data.yes_count + ' Yes';
         document.getElementById('filter-no').textContent  = '✗ ' + data.no_count  + ' No';
         document.getElementById('filter-na').textContent  = '— ' + data.na_count  + ' N/A';
@@ -800,8 +969,6 @@
       return;
     }
 
-    if (hasEmailTbl) _emailResults = emailRows;
-
     fetch('/checklist-save-edits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -817,8 +984,6 @@
       if (dlLink) dlLink.href = '/checklist-download?token=' + encodeURIComponent(data.dl_token);
 
       _applyRowsToDom(rows);
-      if (hasEmailTbl) _applyEmailRowsToDom();
-      _syncEmailForms();
 
       var counts = _syncForms(rows);
       document.getElementById('filter-yes').textContent = '✓ ' + counts.yes + ' Yes';
@@ -828,11 +993,148 @@
       _editMode = false;
       _card.classList.remove('is-edit-mode');
       setFilter(_activeFilter);
+      saveBtn.disabled    = false;
+      saveBtn.textContent = 'Save Changes';
     })
     .catch(function() {
       saveBtn.disabled    = false;
       saveBtn.textContent = 'Save Changes';
       alert('Failed to save edits. Please try again.');
+    });
+  }
+
+  // ── Email Verification edit mode (fully independent of the checklist's) ─
+  // The email modal's card is a separate .result-card from the checklist
+  // modal's — each carries its own independent .is-edit-mode class, so the
+  // existing CSS toggle (.result-card.is-edit-mode .status-view etc., see
+  // home.css) drives row visibility here too, same mechanism as the
+  // checklist table, just scoped to a different card element.
+  var _emlCard = document.querySelector('#email-modal-overlay .result-card');
+
+  function emlEnterEditMode() {
+    _emlEditMode = true;
+    document.getElementById('eml-edit-bar').style.display = 'flex';
+    document.getElementById('eml-modify-btn').style.display = 'none';
+    _emlCard.classList.add('is-edit-mode');
+    document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
+      tr.dataset.savedStatus = tr.dataset.status;
+      tr.querySelector('.status-edit').addEventListener('change', function() {
+        tr.dataset.status = this.value;
+        _refreshChangedHighlight(tr);
+      });
+    });
+  }
+
+  function emlCancelEditMode() {
+    _emlEditMode = false;
+    document.getElementById('eml-edit-bar').style.display = 'none';
+    document.getElementById('eml-modify-btn').style.display = '';
+    _emlCard.classList.remove('is-edit-mode');
+    document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
+      tr.dataset.status = tr.dataset.savedStatus || tr.dataset.status;
+      tr.querySelector('.status-edit').value = tr.dataset.status;
+      var inp = tr.querySelector('.remark-edit');
+      var btn = tr.querySelector('.remark-edit-btn');
+      inp.value = tr.dataset.remark || '';
+      btn.querySelector('.remark-btn-preview').textContent = tr.dataset.remark || '';
+      _refreshChangedHighlight(tr);
+    });
+  }
+
+  function _applyEmailRowsToDom() {
+    document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
+      var statusEl = tr.querySelector('.status-edit');
+      var remarkEl = tr.querySelector('.remark-edit');
+      if (!statusEl || !remarkEl) return;
+      var newStatus = statusEl.value;
+      var newRemark = remarkEl.value;
+      tr.dataset.status = newStatus;
+      tr.dataset.remark = newRemark;
+      var html;
+      if (newStatus === 'Yes') {
+        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(52,211,153,.12);color:#16a34a;border:1px solid rgba(52,211,153,.35);">&#10003; Match</span>';
+      } else if (newStatus === 'No') {
+        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(248,113,113,.12);color:#dc2626;border:1px solid rgba(248,113,113,.35);">&#10007; Mismatch</span>';
+      } else {
+        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:var(--surface3);color:var(--muted);border:1px solid var(--line2);">— N/A</span>';
+      }
+      tr.querySelector('.status-view').innerHTML = html;
+      tr.querySelector('.remark-view').textContent = newRemark || '—';
+      var btn = tr.querySelector('.remark-edit-btn');
+      if (btn) btn.querySelector('.remark-btn-preview').textContent = newRemark;
+      _refreshChangedHighlight(tr);
+    });
+  }
+
+  function emlSaveEdits() {
+    var emailRows = _collectEmailRows();
+    var saveBtn   = document.getElementById('eml-save-btn');
+    saveBtn.disabled    = true;
+    saveBtn.textContent = 'Saving…';
+
+    if (_isReadonly) {
+      fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: _collectRows(), email_results: emailRows }),
+      })
+      .then(function(r) {
+        return r.json().then(function(data) { return { ok: r.ok, data: data }; });
+      })
+      .then(function(result) {
+        if (!result.ok) {
+          throw new Error(result.data && result.data.detail ? result.data.detail : 'Failed to save changes.');
+        }
+        _emailResults = emailRows;
+        _applyEmailRowsToDom();
+        _emlEditMode = false;
+        document.getElementById('eml-edit-bar').style.display = 'none';
+        document.getElementById('eml-modify-btn').style.display = '';
+        _emlCard.classList.remove('is-edit-mode');
+        saveBtn.disabled    = false;
+        saveBtn.textContent = 'Save';
+      })
+      .catch(function(err) {
+        saveBtn.disabled    = false;
+        saveBtn.textContent = 'Save';
+        alert(err.message || 'Failed to save changes. Please try again.');
+      });
+      return;
+    }
+
+    // Fresh run / draft: rebuild the download token with the new email
+    // results (same endpoint the ZIP checklist's Save Changes uses), then
+    // sync the Save Draft / Confirm forms' hidden fields so a later submit
+    // carries the edit even without touching the checklist modal.
+    fetch('/checklist-save-edits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: _collectRows(), tpl: _tplData, dl_token: _currentDlToken, email_results: emailRows }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _currentDlToken = data.dl_token;
+      ['confirm-dl-token','draft-dl-token'].forEach(function(id) {
+        var el = document.getElementById(id); if (el) el.value = data.dl_token;
+      });
+      var dlLink = document.getElementById('dl-link');
+      if (dlLink) dlLink.href = '/checklist-download?token=' + encodeURIComponent(data.dl_token);
+
+      _emailResults = emailRows;
+      _applyEmailRowsToDom();
+      _syncEmailForms();
+
+      _emlEditMode = false;
+      document.getElementById('eml-edit-bar').style.display = 'none';
+      document.getElementById('eml-modify-btn').style.display = '';
+      _emlCard.classList.remove('is-edit-mode');
+      saveBtn.disabled    = false;
+      saveBtn.textContent = 'Save';
+    })
+    .catch(function() {
+      saveBtn.disabled    = false;
+      saveBtn.textContent = 'Save';
+      alert('Failed to save. Please try again.');
     });
   }
 

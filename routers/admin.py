@@ -381,6 +381,10 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
         email_results = json.loads(v.get("email_results_json") or "[]") or []
     except Exception:
         email_results = []
+    # Full PDF-extracted quote record — the Signed Agreement summary block is
+    # view-only here (editing it belongs on the Customer Record page), but
+    # it's shown so an admin can cross-check without leaving this page.
+    record = db.get_quote(v["quote_id"])
     resp = templates.TemplateResponse(request, "admin_qc_version.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
@@ -388,6 +392,7 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
         "v": v,
         "rows": rows,
         "email_results": email_results,
+        "record": record,
     })
     resp.headers.update(_NO_CACHE)
     return resp
