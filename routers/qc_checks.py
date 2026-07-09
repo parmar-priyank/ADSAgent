@@ -1073,6 +1073,8 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
 
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
+        "is_admin": False,
+        "revisit_version": None,
         "tpl": payload["tpl"],
         "checklist_rows": payload["rows"],
         "dl_token": payload["dl_token"],

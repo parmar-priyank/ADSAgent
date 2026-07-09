@@ -25,6 +25,7 @@
   {% set eml_na  = email_results | rejectattr('status','equalto','Yes') | rejectattr('status','equalto','No') | list | length %}
 
   {% set is_admin = is_admin | default(false) %}
+  {% set revisit_version = revisit_version | default(none) %}
   {% set is_revisit = revisit_version is not none %}
   {# is_readonly is display-only (drives the Confirmed/Draft badge text) —
      it no longer gates editing. Both admin and user can Modify/Save a
@@ -652,6 +653,7 @@
 
 {% block scripts %}
 {% set is_admin = is_admin | default(false) %}
+{% set revisit_version = revisit_version | default(none) %}
 {% set is_revisit = revisit_version is not none %}
 {% set is_readonly = revisit_version and revisit_version.status == 'confirmed' %}
 <script>
