@@ -292,6 +292,11 @@ def admin_record_detail(record_id: int, request: Request, user=Depends(require_a
     if not record:
         raise HTTPException(404, "Record not found.")
     qc_versions = db.get_qc_versions(record_id)
+    # A customer with exactly one QC version — the common case — jumps
+    # straight to that version's page instead of showing a one-row list.
+    # Customers with multiple versions still land here to pick one.
+    if len(qc_versions) == 1:
+        return RedirectResponse(url=f"/admin/qc-version/{qc_versions[0]['id']}", status_code=303)
     ctx = _admin_ctx(user, record=record, qc_versions=qc_versions)
     response = templates.TemplateResponse(request, "admin_record.html", ctx)
     response.headers.update(_NO_CACHE)
