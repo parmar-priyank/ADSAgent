@@ -17,7 +17,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 import db.user_repo as adb
 from config import (
-    RECAPTCHA_SITE_KEY,
     _NO_CACHE,
     _POST_ONLY_PATHS,
     _get_session,
@@ -25,7 +24,6 @@ from config import (
     _login_ctx,
     _resolve_theme,
     _set_session,
-    _signer,
     _verify_recaptcha,
     limiter,
     require_login,
@@ -33,8 +31,6 @@ from config import (
     COOKIE,
     COOKIE_ADMIN,
 )
-from utils.mailer import send_otp_email, SMTP_CONFIGURED
-from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -135,91 +131,6 @@ def logout(request: Request):
     return response
 
 
-@router.get("/forgot-password", response_class=HTMLResponse)
-def forgot_password_page(request: Request, error: str = None, success: str = None,
-                         step: str = "request", via: str = "admin",
-                         email: str = "", token: str = ""):
-    return templates.TemplateResponse(request, "forgot_password.html", {
-        "error": error, "success": success, "step": step,
-        "smtp_configured": bool(SMTP_CONFIGURED),
-        "via": via,
-        "saved_email": email,
-        "reset_token": token,
-    })
-
-
-@router.post("/forgot-password/request")
-@limiter.limit("5/minute")
-def forgot_password_request(request: Request,
-                            email: str = Form("", max_length=254),
-                            via: str = Form("admin")):
-    """Look up user by verified email, send OTP."""
-    via = via if via in ("admin", "user") else "admin"
-    clean_email = email.strip().lower()
-    if not clean_email:
-        return RedirectResponse(url=f"/forgot-password?via={via}&error=Please+enter+your+email+address.", status_code=303)
-    email_enc = urllib.parse.quote(clean_email)
-    # Always show the same message to avoid revealing whether email exists
-    generic_ok = f"/forgot-password?step=otp&via={via}&email={email_enc}&success=If+that+email+is+registered%2C+an+OTP+was+sent."
-    if not bool(SMTP_CONFIGURED):
-        return RedirectResponse(url=f"/forgot-password?via={via}&error=Email+service+not+configured+on+this+server.", status_code=303)
-    user = adb.get_user_by_email(clean_email)
-    if not user or not user.get("email_verified"):
-        return RedirectResponse(url=generic_ok, status_code=303)
-    otp = adb.create_otp(user["id"], "reset")
-    send_otp_email(clean_email, otp, "reset", user["username"])
-    return RedirectResponse(url=generic_ok, status_code=303)
-
-
-@router.post("/forgot-password/verify")
-@limiter.limit("10/minute")
-def forgot_password_verify(request: Request,
-                           email: str = Form("", max_length=254),
-                           otp: str = Form("", max_length=6),
-                           via: str = Form("admin")):
-    """Step 2 — validate OTP only, then move to step 3 (reset form)."""
-    via = via if via in ("admin", "user") else "admin"
-    clean_email = email.strip().lower()
-    email_enc = urllib.parse.quote(clean_email)
-    user = adb.get_user_by_email(clean_email)
-    if not user or not adb.verify_otp(user["id"], "reset", otp.strip()):
-        return RedirectResponse(url=f"/forgot-password?step=otp&via={via}&email={email_enc}&error=Invalid+or+expired+OTP.", status_code=303)
-    # OTP valid — issue a short-lived reset token and go to step 3
-    reset_token = _signer.dumps({"uid": user["id"], "purpose": "reset"})
-    token_enc = urllib.parse.quote(reset_token, safe="")
-    return RedirectResponse(url=f"/forgot-password?step=reset&via={via}&email={email_enc}&token={token_enc}", status_code=303)
-
-
-@router.post("/forgot-password/reset")
-@limiter.limit("10/minute")
-def forgot_password_reset(request: Request,
-                          token: str = Form("", max_length=500),
-                          new_password: str = Form("", max_length=256),
-                          via: str = Form("admin")):
-    """Step 3 — set new password using the signed reset token."""
-    via = via if via in ("admin", "user") else "admin"
-    try:
-        payload = _signer.loads(token, max_age=900)  # 15-minute window
-        assert payload.get("purpose") == "reset"
-        uid = payload["uid"]
-    except Exception:
-        return RedirectResponse(url=f"/forgot-password?via={via}&error=Reset+link+expired.+Please+start+again.", status_code=303)
-    strong = (len(new_password) >= 8 and
-              any(c.isupper() for c in new_password) and
-              any(c.islower() for c in new_password) and
-              any(c.isdigit() for c in new_password) and
-              any(not c.isalnum() for c in new_password))
-    if not strong:
-        token_enc = urllib.parse.quote(token, safe="")
-        return RedirectResponse(
-            url=f"/forgot-password?step=reset&via={via}&token={token_enc}&error=Password+must+be+8%2B+chars+with+upper%2C+lower%2C+number+and+symbol.",
-            status_code=303,
-        )
-    adb.change_password(uid, new_password)
-    dest = "/admin-dashboard" if via == "admin" else "/login"
-    return RedirectResponse(url=f"{dest}?success=Password+reset+successfully.", status_code=303)
-
-
 _EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}$")
 
 
@@ -251,48 +162,6 @@ def user_update_profile(request: Request,
     ref_path = urllib.parse.urlparse(ref).path if ref else ""
     dest = ref if ref_path else "/user_home"
     return RedirectResponse(url=dest, status_code=303)
-
-
-@router.post("/user/email/save")
-def user_save_email_only(request: Request,
-                         email: str = Form("", max_length=254),
-                         user=Depends(require_login)):
-    """Save just the email address — used by the inline verify-email banner,
-    which must not require touching name/phone to unblock verification."""
-    clean_email = email.strip()
-    if not clean_email or not _EMAIL_RE.match(clean_email):
-        return JSONResponse({"ok": False, "error": "Please enter a valid email address."})
-    err = adb.save_email_only(user["id"], clean_email)
-    if err:
-        return JSONResponse({"ok": False, "error": err})
-    return JSONResponse({"ok": True})
-
-
-@router.post("/user/email/send-otp")
-def user_send_email_otp(request: Request, user=Depends(require_login)):
-    email = user.get("email")
-    if not email:
-        return JSONResponse({"ok": False, "error": "No email address saved. Save your email first."})
-    if not SMTP_CONFIGURED:
-        return JSONResponse({"ok": False, "error": "SMTP is not configured on this server."})
-    otp = adb.create_otp(user["id"], "verify")
-    ok = send_otp_email(email, otp, "verify", user["username"])
-    if not ok:
-        return JSONResponse({"ok": False, "error": "Failed to send email. Check SMTP settings."})
-    return JSONResponse({"ok": True})
-
-
-@router.post("/user/email/verify-otp")
-@limiter.limit("10/minute")
-def user_verify_email_otp(request: Request,
-                           otp: str = Form(..., max_length=6),
-                           user=Depends(require_login)):
-    if not otp.strip().isdigit() or len(otp.strip()) != 6:
-        return JSONResponse({"ok": False, "error": "Invalid OTP format."})
-    if not adb.verify_otp(user["id"], "verify", otp.strip()):
-        return JSONResponse({"ok": False, "error": "Invalid or expired OTP."})
-    adb.set_email_verified(user["id"])
-    return JSONResponse({"ok": True})
 
 
 @router.post("/user/change-password")

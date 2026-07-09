@@ -186,7 +186,7 @@
 
   // ── Calendar ────────────────────────────────────────────────────────────────
   var _installMap = {};
-  try { _installMap = {{ install_map_json | safe }}; } catch(e) {}
+  try { _installMap = {{ install_map_json | tojson }}; } catch(e) {}
 
   var _calYear, _calMonth;
   (function() {

@@ -383,7 +383,7 @@ def _login_ctx(error=None) -> dict:
     return {"error": error, "recaptcha_site_key": RECAPTCHA_SITE_KEY}
 
 
-def _build_install_map(records: list) -> str:
+def _build_install_map(records: list) -> dict:
     # Only show quotes that have at least one confirmed QC version — a raw
     # PDF upload alone (no confirmed checklist yet) shouldn't clutter the
     # calendar or create duplicate-looking entries for the same customer.
@@ -413,7 +413,11 @@ def _build_install_map(records: list) -> str:
             "address":    r.get("delivery_address") or "",
             "preferred":  bool(preferred),
         })
-    return json.dumps(install_map)
+    # Return the dict itself — the template encodes it with |tojson, which
+    # (unlike json.dumps + |safe) escapes </script>, <, >, & so a malicious
+    # customer/address value from an uploaded PDF can't break out of the
+    # inline <script> and inject markup (stored-XSS hardening).
+    return install_map
 
 
 def _admin_ctx(user: dict, **extra) -> dict:
