@@ -352,14 +352,17 @@
       <div style="display:flex;gap:8px;align-items:center;">
         {% if revisit_version %}
         <input type="file" id="eml-upload-input" accept=".eml" style="display:none;" onchange="emlUploadFile(this)">
-        <button type="button" class="link-btn" id="eml-upload-btn" onclick="document.getElementById('eml-upload-input').click()" style="font-weight:600;">
+        <button type="button" id="eml-upload-btn" onclick="document.getElementById('eml-upload-input').click()"
+                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:600;cursor:pointer;">
           &#128228; Upload Email
         </button>
         {% endif %}
-        <button type="button" class="link-btn" id="eml-modify-btn" onclick="emlEnterEditMode()" style="font-weight:600;{% if not email_results %}display:none;{% endif %}">
+        <button type="button" id="eml-modify-btn" onclick="emlEnterEditMode()"
+                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:600;cursor:pointer;{% if not email_results %}display:none;{% endif %}">
           &#9998; Modify
         </button>
-        <button onclick="closeEmailModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
+        <button onclick="closeEmailModal()"
+                style="background:transparent;border:1.5px solid var(--line2);color:var(--muted);border-radius:6px;width:26px;height:26px;font-size:16px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;">&times;</button>
       </div>
     </div>
 
