@@ -81,6 +81,11 @@
             <input type="text" name="text" value="{{ it['text'] }}"
                    form="frag-row-form-{{ it['id'] }}"
                    style="width:100%;padding:5px 6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;{% if it['is_section'] %}font-weight:700;{% endif %}">
+            <label style="display:flex;align-items:center;gap:4px;margin-top:3px;font-size:11px;font-weight:400;color:var(--muted);cursor:pointer;">
+              <input type="checkbox" name="is_section" value="1" {% if it['is_section'] %}checked{% endif %}
+                     form="frag-row-form-{{ it['id'] }}" style="margin:0;">
+              Section header (excluded from ZIP matching)
+            </label>
           </td>
           <td style="padding:5px 6px;">
             <input type="hidden" name="reference" id="ref-hidden-{{ it['id'] }}"

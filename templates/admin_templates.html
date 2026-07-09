@@ -159,12 +159,13 @@
 
             if (form.id === 'tpl-save-all-form') {
               body.querySelectorAll('tr[data-item-id]').forEach(function(r) {
-                var iid    = r.dataset.itemId;
-                var sno    = r.querySelector('input[name="sno"]').value;
-                var text   = r.querySelector('input[name="text"]').value;
-                var ref    = r.querySelector('input[name="reference"]').value;
-                var prompt = r.querySelector('[name="prompt"]').value;
-                [['item_id',iid],['sno',sno],['text',text],['reference',ref],['prompt',prompt]].forEach(function(p){
+                var iid       = r.dataset.itemId;
+                var sno       = r.querySelector('input[name="sno"]').value;
+                var text      = r.querySelector('input[name="text"]').value;
+                var ref       = r.querySelector('input[name="reference"]').value;
+                var prompt    = r.querySelector('[name="prompt"]').value;
+                var isSection = r.querySelector('input[name="is_section"]').checked ? '1' : '';
+                [['item_id',iid],['sno',sno],['text',text],['reference',ref],['prompt',prompt],['is_section',isSection]].forEach(function(p){
                   var inp = document.createElement('input');
                   inp.type = 'hidden'; inp.name = p[0]; inp.value = p[1];
                   form.appendChild(inp);

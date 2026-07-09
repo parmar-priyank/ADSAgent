@@ -98,21 +98,25 @@ def item_add(template_id: int, text: str = Form(...), sno: str = Form(""),
 def item_update(template_id: int, item_id: int,
                 text: str = Form(...), sno: str = Form(""),
                 reference: str = Form(""), prompt: str = Form(""),
+                is_section: str = Form(""),
                 user=Depends(require_admin)):
-    tdb.update_item(item_id, text=text, sno=sno, reference=reference, prompt=prompt)
+    tdb.update_item(item_id, text=text, sno=sno, reference=reference, prompt=prompt,
+                     is_section=bool(is_section))
     return RedirectResponse(url="/admin", status_code=303)
 
 
 @router.post("/templates/{template_id}/save-all")
 async def items_save_all(template_id: int, request: Request, user=Depends(require_admin)):
     form = await request.form()
-    item_ids = form.getlist("item_id")
-    snos     = form.getlist("sno")
-    texts    = form.getlist("text")
-    refs     = form.getlist("reference")
-    prompts  = form.getlist("prompt")
-    for item_id, sno, text, ref, prompt in zip(item_ids, snos, texts, refs, prompts):
-        tdb.update_item(int(item_id), text=text, sno=sno, reference=ref, prompt=prompt)
+    item_ids    = form.getlist("item_id")
+    snos        = form.getlist("sno")
+    texts       = form.getlist("text")
+    refs        = form.getlist("reference")
+    prompts     = form.getlist("prompt")
+    is_sections = form.getlist("is_section")
+    for item_id, sno, text, ref, prompt, is_section in zip(item_ids, snos, texts, refs, prompts, is_sections):
+        tdb.update_item(int(item_id), text=text, sno=sno, reference=ref, prompt=prompt,
+                         is_section=bool(is_section))
     return RedirectResponse(url="/admin", status_code=303)
 
 

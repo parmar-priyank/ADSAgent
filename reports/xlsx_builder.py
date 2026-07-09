@@ -88,10 +88,13 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
         prompt_str = str(prompt_val).strip() if prompt_val is not None else ""
 
         pos += 1
-        is_section = (
-            bool(text.isupper() and SECTION_HINT.search(text)) or
-            (text.isupper() and len(text) > 4 and not sno_str.isdigit())
-        )
+        # A row is a section header only when it's all-caps AND its text
+        # matches one of the known section-title keywords (e.g. "CUSTOMER
+        # DETAILS", "SYSTEM DETAILS") — not just "any all-caps text with a
+        # non-numeric S.No.", which used to misclassify real checklist items
+        # like "HBCF INSURANCE CERTIFICATE" as section headers, silently
+        # excluding them from ZIP file matching and AI analysis entirely.
+        is_section = bool(text.isupper() and SECTION_HINT.search(text))
 
         items.append({
             "position": pos,
