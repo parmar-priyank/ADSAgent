@@ -27,6 +27,7 @@ from config import (
     _verify_recaptcha,
     limiter,
     require_login,
+    require_qc_access,
     templates,
     COOKIE,
     COOKIE_ADMIN,
@@ -180,7 +181,7 @@ def user_change_password(request: Request,
 
 
 @router.post("/toggle-theme")
-async def toggle_theme(request: Request, user=Depends(require_login)):
+async def toggle_theme(request: Request, user=Depends(require_qc_access)):
     current = _resolve_theme(user)
     adb.set_user_theme(user["id"], "light" if current == "dark" else "dark")
     form = await request.form()

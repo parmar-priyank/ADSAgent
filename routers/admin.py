@@ -19,12 +19,9 @@ Routes:
   GET  /admin/qc-download/{quote_id}
   GET  /admin/qc-version/{version_id}/download
   GET  /admin/qc-version/{version_id}
-  POST /admin/qc-version/{version_id}/save
-  POST /admin/qc-version/{version_id}/add-email
   GET  /db/download
   POST /db/restore
 """
-import asyncio
 import json
 import logging
 import os
@@ -33,19 +30,13 @@ import sqlite3
 import tempfile
 import time
 import urllib.parse
+from datetime import datetime
 
 import db.user_repo as adb
 import db.quote_repo as db
 import db.checklist_repo as tdb
 from reports.xlsx_builder import build_xlsx
 from db.connection import get_db
-from routers.qc_checks import (
-    _build_reference_text,
-    _decode_email_field,
-    _extract_email_address,
-    _match_attachment_with_claude,
-    _parse_eml,
-)
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -56,8 +47,8 @@ from config import (
     _admin_ctx,
     _anthropic_client,
     _build_install_map,
-    _get_claude,
     _resolve_theme,
+    _signer,
     is_login_ip_restricted,
     require_admin,
     set_login_ip_restricted,
@@ -378,12 +369,18 @@ def admin_qc_version_download(version_id: int, user=Depends(require_admin)):
 
 @router.get("/admin/qc-version/{version_id}", response_class=HTMLResponse)
 def admin_qc_version_view(request: Request, version_id: int, user=Depends(require_admin)):
-    """Admin view of a specific QC version with inline edit capability."""
+    """Admin view of a specific QC version — renders the same 3-tile page the
+    user side uses (templates/user_result.html), so both roles share one
+    template/one set of edit/save/upload behaviors instead of two drifting
+    copies. is_admin=True gates the handful of pieces that differ (Full
+    Record link vs. the fresh-run step tracker/rerun panel/bottom save card,
+    which never apply to admin since admin always revisits a saved version)."""
     with get_db() as conn:
         row = conn.execute(
             """SELECT qv.*, q.customer_name, q.quote_number, q.install_date,
                       q.email, q.phone, q.total_price, q.system_price,
-                      q.deposit, q.balance, q.payment_terms, q.billing_address
+                      q.deposit, q.balance, q.payment_terms, q.billing_address,
+                      q.preferred_install_date
                FROM qc_versions qv JOIN quotes q ON q.id = qv.quote_id
                WHERE qv.id = ?""",
             (version_id,),
@@ -391,184 +388,62 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     if not row:
         raise HTTPException(404, "QC version not found.")
     v = dict(row)
-    rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
+    try:
+        rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
+        if not isinstance(rows, list):
+            rows = []
+    except Exception:
+        rows = []
     try:
         email_results = json.loads(v.get("email_results_json") or "[]") or []
     except Exception:
         email_results = []
-    # Full PDF-extracted quote record — the Signed Agreement summary block is
-    # view-only here (editing it belongs on the Customer Record page), but
-    # it's shown so an admin can cross-check without leaving this page.
-    record = db.get_quote(v["quote_id"])
-    resp = templates.TemplateResponse(request, "admin_qc_version.html", {
-        "current_user": user,
-        "theme": _resolve_theme(user),
-        "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
-        "v": v,
-        "rows": rows,
-        "email_results": email_results,
-        "record": record,
-    })
-    resp.headers.update(_NO_CACHE)
-    return resp
 
+    tpl = {
+        "id": 0, "name": v.get("template_name", ""),
+        "customer_label": "", "address_label": "", "job_label": "", "note_text": "",
+    }
+    # Same tmp-file token trick user_qc_version_revisit uses, so admin's
+    # Download Excel goes through the same /checklist-download mechanism.
+    dl_token = ""
+    if v.get("excel_blob"):
+        xlsx_dir = os.path.join(os.path.dirname(__file__), "..", "tmp_xlsx")
+        os.makedirs(xlsx_dir, exist_ok=True)
+        xlsx_tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", dir=xlsx_dir, delete=False)
+        try:
+            xlsx_tmp.write(bytes(v["excel_blob"]))
+        finally:
+            xlsx_tmp.close()
+        dl_token = _signer.dumps({"xlsx_path": xlsx_tmp.name, "name": tpl["name"]})
 
-@router.post("/admin/qc-version/{version_id}/save")
-async def admin_qc_version_save(request: Request, version_id: int, user=Depends(require_admin)):
-    """Save admin edits to a QC version — rebuilds Excel and updates DB."""
-    body = await request.json()
-    rows   = body.get("rows", [])
-    action = body.get("action", "draft")  # "draft" or "confirm"
-    # email_results is optional — omitted means the email table wasn't part
-    # of this edit and its stored value should be left untouched; an empty
-    # list is a legitimate value (all rows cleared) and must overwrite.
-    has_email_edit = "email_results" in body
-    email_results = body.get("email_results", [])
-
-    with get_db() as conn:
-        existing = conn.execute(
-            "SELECT email_results_json FROM qc_versions WHERE id = ?", (version_id,)
-        ).fetchone()
-    if not existing:
-        raise HTTPException(404, "QC version not found.")
-    try:
-        stored_email_results = json.loads(existing["email_results_json"] or "[]")
-    except Exception:
-        stored_email_results = []
-
-    # Rebuild Excel from edited rows
-    filled = {}
-    for row in rows:
-        if not row.get("is_section") and row.get("position") is not None:
-            filled[row["position"]] = {
-                "status": row.get("status", "N/A"),
-                "remark": row.get("remark", ""),
-                "ai_status": row.get("ai_status", ""),
-            }
-
-    xlsx_blob = build_xlsx(
-        rows, filled=filled,
-        email_results=email_results if has_email_edit else stored_email_results,
-    )
     yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
     no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
     na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
 
-    confirm = action == "confirm"
-    db.update_qc_version(
-        version_id=version_id,
-        xlsx_bytes=xlsx_blob,
-        rows_json=json.dumps(rows),
-        yes_count=yes_count,
-        no_count=no_count,
-        na_count=na_count,
-        confirm=confirm,
-        confirmed_by_user_id=user["id"] if confirm else None,
-        email_results_json=json.dumps(email_results) if has_email_edit else None,
-    )
-    return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}
-
-
-@router.post("/admin/qc-version/{version_id}/add-email")
-async def admin_qc_version_add_email(
-    version_id: int,
-    eml_file: UploadFile = File(...),
-    user=Depends(require_admin),
-):
-    """Analyse one more .eml file against the signed agreement and append its
-    attachment results to this version's saved email results immediately —
-    independent of the Modify/edit-mode flow, no separate Save step."""
-    if not eml_file.filename.lower().endswith(".eml"):
-        raise HTTPException(400, f"'{eml_file.filename}' is not a valid .eml file (Outlook email format).")
-
-    raw = await eml_file.read()
-    if len(raw) > 50 * 1024 * 1024:
-        raise HTTPException(400, f"'{eml_file.filename}' is too large. Maximum allowed size is 50 MB.")
-
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT id, quote_id, status, rows_json, email_results_json, "
-            "yes_count, no_count, na_count, confirmed_by_user_id "
-            "FROM qc_versions WHERE id = ?",
-            (version_id,),
-        ).fetchone()
-    if not row:
-        raise HTTPException(404, "QC version not found.")
-    v = dict(row)
-
-    import email as _email_mod
-    import email.policy as _policy
-
-    msg = _email_mod.message_from_bytes(raw, policy=_policy.compat32)
-    subject = _decode_email_field(msg.get("Subject", "")) or "(no subject)"
-    from_hdr = _decode_email_field(msg.get("From", "")) or "(unknown sender)"
-    address = _extract_email_address(from_hdr)
-
-    attachments = _parse_eml(raw)
-    if not attachments:
-        raise HTTPException(400, f"No attachments found in '{eml_file.filename}'. Please check the .eml file.")
-
-    reference_text = _build_reference_text(v["quote_id"])
-    client = _get_claude()
-
-    analysed = await asyncio.gather(
-        *[asyncio.to_thread(_match_attachment_with_claude, client, att, reference_text)
-          for att in attachments]
-    )
-
-    new_results = [
-        {
-            **r,
-            "ai_status": r.get("status"),
-            "source_email": from_hdr,
-            "source_subject": subject,
-            "source_address": address,
-        }
-        for r in analysed
-    ]
-
-    try:
-        existing_results = json.loads(v.get("email_results_json") or "[]") or []
-    except Exception:
-        existing_results = []
-
-    # Same dedup rule as the Step 2 upload flow: a new result replaces an
-    # existing one only if it shares both sender address and attachment name.
-    new_keys = {
-        ((r.get("source_address") or ""), (r.get("name") or "").strip().lower())
-        for r in new_results
-    }
-    kept_old = [
-        r for r in existing_results
-        if ((r.get("source_address") or ""), (r.get("name") or "").strip().lower())
-        not in new_keys
-    ]
-    merged_results = kept_old + new_results
-
-    rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
-    filled = {}
-    for r in rows:
-        if not r.get("is_section") and r.get("position") is not None:
-            filled[r["position"]] = {
-                "status": r.get("status", "N/A"),
-                "remark": r.get("remark", ""),
-                "ai_status": r.get("ai_status", ""),
-            }
-    xlsx_blob = build_xlsx(rows, filled=filled, email_results=merged_results)
-
-    was_confirmed = v.get("status") == "confirmed"
-    db.update_qc_version(
-        version_id=version_id,
-        xlsx_bytes=xlsx_blob,
-        rows_json=v["rows_json"] or json.dumps(rows),
-        yes_count=v["yes_count"],
-        no_count=v["no_count"],
-        na_count=v["na_count"],
-        confirm=was_confirmed,
-        confirmed_by_user_id=v["confirmed_by_user_id"] if was_confirmed else None,
-        email_results_json=json.dumps(merged_results),
-    )
-    return {"ok": True, "email_results": merged_results}
+    # Full PDF-extracted quote record — the Signed Agreement summary block is
+    # view-only here (editing it belongs on the Customer Record page), but
+    # it's shown so an admin can cross-check without leaving this page.
+    record = db.get_quote(v["quote_id"])
+    resp = templates.TemplateResponse(request, "user_result.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "is_admin": True,
+        "tpl": tpl,
+        "checklist_rows": rows,
+        "dl_token": dl_token,
+        "quote_id": v["quote_id"],
+        "zip_filename": v.get("zip_filename", ""),
+        "yes_count": yes_count,
+        "no_count": no_count,
+        "na_count": na_count,
+        "email_results": email_results,
+        "revisit_version": v,
+        "preferred_install_date": v.get("preferred_install_date") or "",
+        "today": datetime.now().strftime("%Y-%m-%d"),
+        "record": record,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
 
 
 # ---------------------------------------------------------------------------

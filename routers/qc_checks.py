@@ -1523,6 +1523,12 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
     body = await request.json()
     rows = body.get("rows", [])
     preferred_install_date = (body.get("preferred_install_date") or "").strip()
+    # action is optional — omitted means "keep whatever status this version
+    # already had" (the original revisit-save behavior); "draft" or "confirm"
+    # explicitly sets the status, same choice the admin panel already offers.
+    action = body.get("action")
+    if action not in ("draft", "confirm"):
+        action = "confirm" if v.get("status") == "confirmed" else "draft"
     # email_results is optional in the payload — omitted (key absent) means
     # "the email table wasn't part of this edit, leave it as stored"; an
     # empty list is a legitimate value (all rows cleared) and must overwrite.
@@ -1547,6 +1553,7 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
         no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
         na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
 
+        confirm = action == "confirm"
         db.update_qc_version(
             version_id=version_id,
             xlsx_bytes=xlsx_blob,
@@ -1554,8 +1561,8 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
             yes_count=yes_count,
             no_count=no_count,
             na_count=na_count,
-            confirm=(v.get("status") == "confirmed"),
-            confirmed_by_user_id=user["id"] if v.get("status") == "confirmed" else None,
+            confirm=confirm,
+            confirmed_by_user_id=user["id"] if confirm else None,
             email_results_json=json.dumps(email_results) if has_email_edit else None,
         )
 

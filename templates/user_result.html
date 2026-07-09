@@ -24,22 +24,35 @@
   {% set eml_no  = email_results | selectattr('status','equalto','No')  | list | length %}
   {% set eml_na  = email_results | rejectattr('status','equalto','Yes') | rejectattr('status','equalto','No') | list | length %}
 
+  {% set is_admin = is_admin | default(false) %}
+  {% set is_revisit = revisit_version is not none %}
+  {# is_readonly is display-only (drives the Confirmed/Draft badge text) —
+     it no longer gates editing. Both admin and user can Modify/Save a
+     Confirmed version; is_revisit (not is_readonly) decides which save
+     endpoint the page talks to. #}
   {% set is_readonly = revisit_version and revisit_version.status == 'confirmed' %}
 
-  {% if revisit_version %}
+  {% if is_revisit %}
   <!-- Revisiting a saved QC version — show who/what this is instead of the upload-flow step tracker -->
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
-    <div style="width:40px;height:40px;border-radius:10px;background:rgba(77,150,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4D96FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-    </div>
-    <div>
-      <div style="font-size:18px;font-weight:800;color:var(--ink);line-height:1.2;">{{ (record.customer_name if record else '') or 'Customer' }}</div>
-      <div style="font-size:12.5px;color:var(--muted);">
-        {{ (record.quote_number if record else '') or '—' }}{% if record and record.total_price %} &middot; {{ record.total_price }}{% endif %}
-        &middot; v{{ revisit_version.version }}
-        {% if is_readonly %}&middot; <span style="color:#16a34a;font-weight:700;">Confirmed</span>{% else %}&middot; <span style="color:var(--brand);font-weight:700;">Draft</span>{% endif %}
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:40px;height:40px;border-radius:10px;background:rgba(77,150,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4D96FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <div>
+        <div style="font-size:18px;font-weight:800;color:var(--ink);line-height:1.2;">{{ (record.customer_name if record else '') or 'Customer' }}</div>
+        <div style="font-size:12.5px;color:var(--muted);">
+          {{ (record.quote_number if record else '') or '—' }}{% if record and record.total_price %} &middot; {{ record.total_price }}{% endif %}
+          &middot; v{{ revisit_version.version }}
+          {% if is_readonly %}&middot; <span style="color:#16a34a;font-weight:700;">Confirmed</span>{% else %}&middot; <span style="color:var(--brand);font-weight:700;">Draft</span>{% endif %}
+        </div>
       </div>
     </div>
+    {% if is_admin %}
+    <a href="/admin/record/{{ revisit_version.quote_id }}" class="link-btn" style="font-weight:600;">
+      &#128196; Full Record
+    </a>
+    {% endif %}
   </div>
   {% else %}
   <!-- Step tracker (fresh run in progress) -->
@@ -72,8 +85,8 @@
   </div>
   {% endif %}
 
-  <!-- Upload another ZIP panel (hidden by default, not shown in revisit/readonly mode) -->
-  {% if not is_readonly %}
+  <!-- Upload another ZIP panel — only for a user's fresh in-progress run; admin never has this state -->
+  {% if not is_admin and not is_revisit %}
   <div id="rerun-box" style="display:none;margin-bottom:20px;">
     <div class="card" style="border-color:var(--brand);box-shadow:0 0 0 3px rgba(222,93,24,.08);">
       <h2>Upload Another ZIP</h2>
@@ -111,11 +124,17 @@
   {% endif %}
 
   <!-- Top action row -->
-  {% if not is_readonly %}
+  {% if not is_admin and not is_revisit %}
   <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
     <button type="button" class="link-btn" onclick="toggleRerun()" id="rerun-toggle-btn" style="font-weight:600;">
       &#8635; Upload Another ZIP
     </button>
+    <a href="/checklist-download?token={{ dl_token }}" class="link-btn" id="dl-link" style="font-weight:600;">
+      &#8595; Download Excel
+    </a>
+  </div>
+  {% elif is_admin %}
+  <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
     <a href="/checklist-download?token={{ dl_token }}" class="link-btn" id="dl-link" style="font-weight:600;">
       &#8595; Download Excel
     </a>
@@ -191,33 +210,14 @@
 
   </div>
 
-  <!-- Bottom action row: install date + Save Draft / Confirm (or read-only status) -->
-  {% if quote_id %}
+  <!-- Bottom action row: install date + Save Draft / Confirm — user only.
+       Admin has no such state (always revisiting a saved version) and can
+       promote a draft to confirmed via the checklist modal's Confirm button
+       instead. Editing is never locked once confirmed, so this always
+       shows the full Save Draft / Confirm form, never a read-only variant. -->
+  {% if quote_id and not is_admin %}
   <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
 
-    {% if is_readonly %}
-    <div style="display:flex;align-items:center;gap:8px;">
-      <label for="result-preferred-install-date" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">
-        &#128197; Install Date
-      </label>
-      <input type="date" id="result-preferred-install-date"
-             value="{{ preferred_install_date or '' }}"
-             style="padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;
-                    font-size:13px;color:var(--ink);background:var(--surface2);outline:none;">
-      {% if not preferred_install_date %}
-      <span style="font-size:11.5px;color:var(--muted);">Not set</span>
-      {% endif %}
-    </div>
-
-    <a href="/checklist-download?token={{ dl_token }}" id="dl-link"
-       style="display:flex;align-items:center;gap:7px;padding:9px 20px;
-              background:var(--surface3);border:1px solid var(--line2);
-              color:var(--ink);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Download Excel
-    </a>
-
-    {% else %}
     <div style="display:flex;align-items:center;gap:8px;">
       <label for="result-preferred-install-date" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">
         Install Date
@@ -276,7 +276,6 @@
         </button>
       </form>
     </div>
-    {% endif %}
 
   </div>
   {% endif %}
@@ -507,10 +506,21 @@
                 style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;cursor:pointer;">
           Cancel
         </button>
+        {% if is_revisit %}
+        <button type="button" onclick="saveEdits('draft')" id="save-draft-btn"
+                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:700;cursor:pointer;">
+          Save as Draft
+        </button>
+        <button type="button" onclick="saveEdits('confirm')" id="save-confirm-btn"
+                style="background:var(--brand);color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:700;cursor:pointer;">
+          &#10003; Confirm
+        </button>
+        {% else %}
         <button type="button" onclick="saveEdits()"
                 style="background:var(--brand);color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:700;cursor:pointer;">
           Save Changes
         </button>
+        {% endif %}
       </div>
     </div>
 
@@ -641,6 +651,8 @@
 {% endblock %}
 
 {% block scripts %}
+{% set is_admin = is_admin | default(false) %}
+{% set is_revisit = revisit_version is not none %}
 {% set is_readonly = revisit_version and revisit_version.status == 'confirmed' %}
 <script>
   // Email verification remark — reuse existing read-only remark modal
@@ -655,6 +667,15 @@
   var _activeFilter = 'All';
   var _editMode     = false;    // ZIP checklist edit mode
   var _emlEditMode  = false;    // Email verification edit mode
+
+  // Warn if the user tries to navigate away while either modal is mid-edit
+  window.addEventListener('beforeunload', function(e) {
+    if (_editMode || _emlEditMode) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
   var _tplData       = {{ tpl | tojson }};
   var _emailResults  = {{ email_results | default([]) | tojson }};
   var _currentDlToken = (document.getElementById('confirm-dl-token') || {}).value || '';
@@ -872,7 +893,7 @@
   }
 
   // ── Rerun panel ──────────────────────────────────────────────────────────
-  {% if not is_readonly %}
+  {% if not is_admin and not is_revisit %}
   function toggleRerun() {
     var box  = document.getElementById('rerun-box');
     var btn  = document.getElementById('rerun-toggle-btn');
@@ -990,7 +1011,12 @@
     });
   }
 
-  var _isReadonly = {{ 'true' if is_readonly else 'false' }};
+  // Which save endpoint to use: a saved qc_versions row (admin always, user
+  // when revisiting) POSTs to /user/qc-version/{id}/save; a fresh in-progress
+  // run (user only) POSTs to /checklist-save-edits instead. Unrelated to
+  // confirmed/draft status — both can be edited freely either way.
+  var _isRevisit = {{ 'true' if is_revisit else 'false' }};
+  var _isAdmin   = {{ 'true' if is_admin else 'false' }};
 
   function _applyRowsToDom(rows) {
     document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
@@ -1050,18 +1076,25 @@
       });
   }
 
-  function saveEdits() {
-    var rows    = _collectRows();
-    var saveBtn = document.querySelector('#edit-bar button:last-child');
+  function saveEdits(action) {
+    var rows = _collectRows();
+    // action is only meaningful for the revisit two-button bar (draft/confirm
+    // choice); the fresh-run single "Save Changes" button has no action arg.
+    var saveBtn = action === 'draft' ? document.getElementById('save-draft-btn')
+                : action === 'confirm' ? document.getElementById('save-confirm-btn')
+                : document.querySelector('#edit-bar button:last-child');
+    var origLabel = saveBtn.textContent;
     saveBtn.disabled    = true;
     saveBtn.textContent = 'Saving…';
 
-    if (_isReadonly) {
+    if (_isRevisit) {
       var dateInput = document.getElementById('result-preferred-install-date');
+      var payload = { rows: rows, preferred_install_date: dateInput ? dateInput.value : '' };
+      if (action) payload.action = action;
       fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: rows, preferred_install_date: dateInput ? dateInput.value : '' }),
+        body: JSON.stringify(payload),
       })
       .then(function(r) {
         return r.json().then(function(data) { return { ok: r.ok, data: data }; });
@@ -1079,11 +1112,11 @@
         _card.classList.remove('is-edit-mode');
         setFilter(_activeFilter);
         saveBtn.disabled    = false;
-        saveBtn.textContent = 'Save Changes';
+        saveBtn.textContent = origLabel;
       })
       .catch(function(err) {
         saveBtn.disabled    = false;
-        saveBtn.textContent = 'Save Changes';
+        saveBtn.textContent = origLabel;
         alert(err.message || 'Failed to save changes. Please try again.');
       });
       return;
@@ -1192,7 +1225,7 @@
     saveBtn.disabled    = true;
     saveBtn.textContent = 'Saving…';
 
-    if (_isReadonly) {
+    if (_isRevisit) {
       fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1258,7 +1291,7 @@
     });
   }
 
-  {% if not is_readonly %}
+  {% if not is_admin %}
   function _syncInstallDate() {
     var dateInput = document.getElementById('result-preferred-install-date');
     if (!dateInput) return;
