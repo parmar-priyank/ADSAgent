@@ -365,13 +365,13 @@
 
     <div id="eml-upload-status" style="display:none;font-size:12.5px;font-weight:600;margin-bottom:10px;"></div>
 
-    <div id="eml-edit-bar" style="background:var(--brand);color:#fff;border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:12px;">
+    <div id="eml-edit-bar" style="background:var(--brand-glow);border:1px solid var(--brand-glow);color:var(--brand);border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:12px;">
       <span style="font-size:13px;font-weight:600;">&#9998; Edit mode — change status and remarks, then save.</span>
       <div style="display:flex;gap:8px;">
         <button type="button" onclick="emlCancelEditMode()"
-                style="background:transparent;border:1.5px solid rgba(255,255,255,.6);color:#fff;border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;">Cancel</button>
+                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;">Cancel</button>
         <button type="button" id="eml-save-btn" onclick="emlSaveEdits()"
-                style="background:#fff;color:var(--brand);border:none;border-radius:6px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;">Save</button>
+                style="background:var(--brand);color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;">Save</button>
       </div>
     </div>
 
@@ -475,15 +475,15 @@
     </div>
 
     <!-- Edit mode save bar (hidden by default, shown in edit mode) -->
-    <div id="edit-bar" style="background:var(--brand);color:#fff;border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:12px;">
+    <div id="edit-bar" style="background:var(--brand-glow);border:1px solid var(--brand-glow);color:var(--brand);border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:12px;">
       <span style="font-size:13px;font-weight:600;">&#9998; Edit mode — change Yes/No and remarks, then save.</span>
       <div style="display:flex;gap:8px;">
         <button type="button" onclick="cancelEditMode()"
-                style="background:transparent;border:1.5px solid rgba(255,255,255,.6);color:#fff;border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;">
+                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:5px 14px;font-size:13px;cursor:pointer;">
           Cancel
         </button>
         <button type="button" onclick="saveEdits()"
-                style="background:#fff;color:var(--brand);border:none;border-radius:6px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;">
+                style="background:var(--brand);color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;">
           Save Changes
         </button>
       </div>
