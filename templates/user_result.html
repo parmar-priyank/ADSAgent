@@ -145,8 +145,8 @@
       <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;">
         <colgroup>
           <col style="width:30%;">
-          <col style="width:12%;">
-          <col style="width:58%;">
+          <col style="width:16%;">
+          <col style="width:54%;">
         </colgroup>
         <thead>
           <tr style="border-bottom:1px solid var(--line2);background:var(--surface3);">
@@ -155,9 +155,16 @@
             <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Finding / Remark</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="email-results-tbody">
           {% for er in email_results %}
-          <tr style="border-bottom:1px solid var(--line2);">
+          <tr style="border-bottom:1px solid var(--line2);"
+              data-name="{{ er.name | e }}"
+              data-status="{{ er.status or 'N/A' }}"
+              data-ai-status="{{ er.ai_status or '' }}"
+              data-remark="{{ er.remark or '' | e }}"
+              data-source-email="{{ er.source_email or '' | e }}"
+              data-source-subject="{{ er.source_subject or '' | e }}"
+              data-source-address="{{ er.source_address or '' | e }}">
             <td style="padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:var(--ink);" title="{{ er.name }}">
               {% set ext = er.name.rsplit('.',1)[-1].lower() if '.' in er.name else '' %}
               {% if ext == 'pdf' %}
@@ -167,18 +174,36 @@
               {% endif %}
               {{ er.name }}
             </td>
-            <td style="padding:9px 12px;text-align:center;">
-              {% if er.status == 'Yes' %}
-              <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(52,211,153,.12);color:#16a34a;border:1px solid rgba(52,211,153,.35);">&#10003; Match</span>
-              {% elif er.status == 'No' %}
-              <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(248,113,113,.12);color:#dc2626;border:1px solid rgba(248,113,113,.35);">&#10007; Mismatch</span>
-              {% else %}
-              <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:var(--surface3);color:var(--muted);border:1px solid var(--line2);">— N/A</span>
-              {% endif %}
+            <td class="eml-status-cell" style="padding:9px 12px;text-align:center;">
+              <span class="status-view">
+                {% if er.status == 'Yes' %}
+                <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(52,211,153,.12);color:#16a34a;border:1px solid rgba(52,211,153,.35);">&#10003; Match</span>
+                {% elif er.status == 'No' %}
+                <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(248,113,113,.12);color:#dc2626;border:1px solid rgba(248,113,113,.35);">&#10007; Mismatch</span>
+                {% else %}
+                <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:var(--surface3);color:var(--muted);border:1px solid var(--line2);">— N/A</span>
+                {% endif %}
+              </span>
+              <div class="status-edit-row">
+                <select class="status-edit" style="font-size:13px;padding:3px 6px;border-radius:5px;border:1.5px solid var(--brand);background:var(--bg);color:var(--text);cursor:pointer;">
+                  <option value="Yes" {% if er.status == 'Yes' %}selected{% endif %}>Match</option>
+                  <option value="No"  {% if er.status == 'No'  %}selected{% endif %}>Mismatch</option>
+                  <option value="N/A" {% if er.status == 'N/A' or not er.status %}selected{% endif %}>N/A</option>
+                </select>
+              </div>
             </td>
-            <td style="padding:9px 12px;color:var(--ink2);line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:{% if er.remark %}pointer{% else %}default{% endif %};"
-                title="{{ er.remark }}"
-                {% if er.remark %}onclick="openEmlRemark(this)"{% endif %}>{{ er.remark or '—' }}</td>
+            <td class="remark-cell" style="padding:9px 12px;color:var(--ink2);line-height:1.5;">
+              <span class="remark-view" title="{{ er.remark or '' }}"
+                    style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:{% if er.remark %}pointer{% else %}default{% endif %};"
+                    {% if er.remark %}onclick="openEmlRemark(this)"{% endif %}>{{ er.remark or '—' }}</span>
+              <input class="remark-edit" type="hidden" value="{{ er.remark or '' | e }}">
+              <button type="button" class="remark-edit-btn"
+                      style="border:1px solid #ccc;background:#f5f5f5;color:#444;"
+                      onclick="openRemarkModal(this)">
+                <span class="remark-btn-preview" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">{{ er.remark or '' }}</span>
+                <svg style="flex-shrink:0;opacity:.4;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+              </button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -304,7 +329,7 @@
         <input type="hidden" name="no_count"           id="draft-no"        value="{{ no_count }}">
         <input type="hidden" name="na_count"           id="draft-na"        value="{{ na_count }}">
         <input type="hidden" name="rows_json"          id="draft-rows-json" value='{{ checklist_rows | tojson }}'>
-        <input type="hidden" name="email_results_json" value='{{ email_results | default([]) | tojson }}'>
+        <input type="hidden" name="email_results_json" id="draft-email-json" value='{{ email_results | default([]) | tojson }}'>
         <input type="hidden" name="preferred_install_date" id="draft-preferred-install-date" value="{{ preferred_install_date or '' }}">
         <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
         <button type="submit"
@@ -329,7 +354,7 @@
         <input type="hidden" name="no_count"           id="confirm-no"        value="{{ no_count }}">
         <input type="hidden" name="na_count"           id="confirm-na"        value="{{ na_count }}">
         <input type="hidden" name="rows_json"          id="confirm-rows-json" value='{{ checklist_rows | tojson }}'>
-        <input type="hidden" name="email_results_json" value='{{ email_results | default([]) | tojson }}'>
+        <input type="hidden" name="email_results_json" id="confirm-email-json" value='{{ email_results | default([]) | tojson }}'>
         <input type="hidden" name="preferred_install_date" id="confirm-preferred-install-date" value="{{ preferred_install_date or '' }}">
         <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
         <button type="submit"
@@ -459,6 +484,26 @@
     return rows;
   }
 
+  // Same idea as _collectRows() but for the Email Verification table —
+  // independent data, independent table, same edit-mode toggle.
+  function _collectEmailRows() {
+    var rows = [];
+    document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
+      var statusEl = tr.querySelector('.status-edit');
+      var remarkEl = tr.querySelector('.remark-edit');
+      rows.push({
+        name:           tr.dataset.name           || '',
+        status:         statusEl ? statusEl.value : (tr.dataset.status || 'N/A'),
+        remark:         remarkEl ? remarkEl.value : (tr.dataset.remark || ''),
+        ai_status:      tr.dataset.aiStatus       || '',
+        source_email:   tr.dataset.sourceEmail    || '',
+        source_subject: tr.dataset.sourceSubject  || '',
+        source_address: tr.dataset.sourceAddress  || '',
+      });
+    });
+    return rows;
+  }
+
   // Amber highlight reflects "differs from AI's original decision" — persists across saves/reloads
   function _refreshChangedHighlight(tr) {
     var aiStatus = tr.dataset.aiStatus || '';
@@ -488,6 +533,18 @@
     if (rj1) rj1.value = encoded;
     if (rj2) rj2.value = encoded;
     return { yes: yes, no: no, na: na };
+  }
+
+  // Push the current (possibly edited) email results into the Save Draft /
+  // Confirm forms' hidden fields, same purpose as _syncForms() for rows —
+  // independent of it, since email edits don't require touching ZIP rows.
+  function _syncEmailForms() {
+    var ej1 = document.getElementById('confirm-email-json');
+    var ej2 = document.getElementById('draft-email-json');
+    if (!ej1 && !ej2) return;
+    var encoded = JSON.stringify(_emailResults);
+    if (ej1) ej1.value = encoded;
+    if (ej2) ej2.value = encoded;
   }
 
   // ── Rerun panel ──────────────────────────────────────────────────────────
@@ -583,7 +640,7 @@
   function enterEditMode() {
     _editMode = true;
     _card.classList.add('is-edit-mode');
-    document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
+    document.querySelectorAll('#checklist-tbody tr[data-position], #email-results-tbody tr').forEach(function(tr) {
       tr.dataset.savedStatus = tr.dataset.status;
     });
     document.querySelectorAll('.status-edit').forEach(function(sel) {
@@ -598,7 +655,7 @@
   function cancelEditMode() {
     _editMode = false;
     _card.classList.remove('is-edit-mode');
-    document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
+    document.querySelectorAll('#checklist-tbody tr[data-position], #email-results-tbody tr').forEach(function(tr) {
       tr.dataset.status = tr.dataset.savedStatus || tr.dataset.status;
       tr.querySelector('.status-edit').value = tr.dataset.status;
       var inp = tr.querySelector('.remark-edit');
@@ -620,6 +677,33 @@
       var cls = newStatus === 'Yes' ? 'badge-yes' : (newStatus === 'No' ? 'badge-no' : 'badge-na');
       tr.querySelector('.status-view').innerHTML = '<span class="' + cls + '">' + newStatus + '</span>';
       tr.querySelector('.remark-view').textContent = newRemark;
+      var btn = tr.querySelector('.remark-edit-btn');
+      if (btn) btn.querySelector('.remark-btn-preview').textContent = newRemark;
+      _refreshChangedHighlight(tr);
+    });
+  }
+
+  // Same as _applyRowsToDom() but the Email Verification table uses its own
+  // Match/Mismatch/N/A pill styling instead of the checklist's Yes/No badges.
+  function _applyEmailRowsToDom() {
+    document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
+      var statusEl = tr.querySelector('.status-edit');
+      var remarkEl = tr.querySelector('.remark-edit');
+      if (!statusEl || !remarkEl) return;
+      var newStatus = statusEl.value;
+      var newRemark = remarkEl.value;
+      tr.dataset.status = newStatus;
+      tr.dataset.remark = newRemark;
+      var html;
+      if (newStatus === 'Yes') {
+        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(52,211,153,.12);color:#16a34a;border:1px solid rgba(52,211,153,.35);">&#10003; Match</span>';
+      } else if (newStatus === 'No') {
+        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(248,113,113,.12);color:#dc2626;border:1px solid rgba(248,113,113,.35);">&#10007; Mismatch</span>';
+      } else {
+        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:var(--surface3);color:var(--muted);border:1px solid var(--line2);">— N/A</span>';
+      }
+      tr.querySelector('.status-view').innerHTML = html;
+      tr.querySelector('.remark-view').textContent = newRemark || '—';
       var btn = tr.querySelector('.remark-edit-btn');
       if (btn) btn.querySelector('.remark-btn-preview').textContent = newRemark;
       _refreshChangedHighlight(tr);
@@ -670,17 +754,24 @@
   }
 
   function saveEdits() {
-    var rows    = _collectRows();
-    var saveBtn = document.querySelector('#edit-bar button:last-child');
+    var rows        = _collectRows();
+    var hasEmailTbl = !!document.getElementById('email-results-tbody');
+    var emailRows   = hasEmailTbl ? _collectEmailRows() : null;
+    var saveBtn     = document.querySelector('#edit-bar button:last-child');
     saveBtn.disabled    = true;
     saveBtn.textContent = 'Saving…';
 
     if (_isReadonly) {
       var dateInput = document.getElementById('result-preferred-install-date');
+      var payload = { rows: rows, preferred_install_date: dateInput ? dateInput.value : '' };
+      // Only include email_results when this page actually has that table —
+      // its absence (key omitted) tells the backend to leave stored email
+      // results untouched, so a version with no email step isn't wiped.
+      if (hasEmailTbl) payload.email_results = emailRows;
       fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: rows, preferred_install_date: dateInput ? dateInput.value : '' }),
+        body: JSON.stringify(payload),
       })
       .then(function(r) {
         return r.json().then(function(data) { return { ok: r.ok, data: data }; });
@@ -691,6 +782,7 @@
         }
         var data = result.data;
         _applyRowsToDom(rows);
+        if (hasEmailTbl) _applyEmailRowsToDom();
         document.getElementById('filter-yes').textContent = '✓ ' + data.yes_count + ' Yes';
         document.getElementById('filter-no').textContent  = '✗ ' + data.no_count  + ' No';
         document.getElementById('filter-na').textContent  = '— ' + data.na_count  + ' N/A';
@@ -708,6 +800,8 @@
       return;
     }
 
+    if (hasEmailTbl) _emailResults = emailRows;
+
     fetch('/checklist-save-edits', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -723,6 +817,8 @@
       if (dlLink) dlLink.href = '/checklist-download?token=' + encodeURIComponent(data.dl_token);
 
       _applyRowsToDom(rows);
+      if (hasEmailTbl) _applyEmailRowsToDom();
+      _syncEmailForms();
 
       var counts = _syncForms(rows);
       document.getElementById('filter-yes').textContent = '✓ ' + counts.yes + ' Yes';
@@ -749,8 +845,13 @@
     });
   }
 
-  document.getElementById('save-draft-form').addEventListener('submit', function() { _syncForms(_collectRows()); _syncInstallDate(); });
-  document.getElementById('confirm-form').addEventListener('submit',    function() { _syncForms(_collectRows()); _syncInstallDate(); });
+  function _syncEmailFormsFromDom() {
+    if (document.getElementById('email-results-tbody')) _emailResults = _collectEmailRows();
+    _syncEmailForms();
+  }
+
+  document.getElementById('save-draft-form').addEventListener('submit', function() { _syncForms(_collectRows()); _syncInstallDate(); _syncEmailFormsFromDom(); });
+  document.getElementById('confirm-form').addEventListener('submit',    function() { _syncForms(_collectRows()); _syncInstallDate(); _syncEmailFormsFromDom(); });
   {% endif %}
 </script>
 {% endblock %}

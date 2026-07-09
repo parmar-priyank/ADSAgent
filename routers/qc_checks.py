@@ -315,6 +315,26 @@ def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf
         return {"status": "N/A", "remark": f"Error analysing file: {e}"}
 
 
+def _derive_email_summary(results: list) -> tuple:
+    """From a list of analyzed attachment results, rebuild the "N emails
+    uploaded" header panel's data: (emails_meta, email_from, email_subject).
+    emails_meta is set (multi-email view) when 2+ distinct emails are
+    represented; otherwise email_from/email_subject carry the single one
+    (matches the original single-email upload response shape)."""
+    seen, seen_keys = [], set()
+    for r in results:
+        key = (r.get("source_address") or "", r.get("source_subject") or "")
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        seen.append({"from": r.get("source_email", ""), "subject": r.get("source_subject", "")})
+    if len(seen) > 1:
+        return seen, None, None
+    if seen:
+        return None, seen[0]["from"], seen[0]["subject"]
+    return None, None, None
+
+
 @router.get("/email-verify", response_class=HTMLResponse)
 def email_verify_page(request: Request, quote_id: str = "", user=Depends(require_qc_access)):
     results = None
@@ -334,19 +354,7 @@ def email_verify_page(request: Request, quote_id: str = "", user=Depends(require
             parsed = json.loads(draft_json)
             if isinstance(parsed, list) and parsed:
                 results = parsed
-                seen = []
-                seen_keys = set()
-                for r in results:
-                    key = (r.get("source_address") or "", r.get("source_subject") or "")
-                    if key in seen_keys:
-                        continue
-                    seen_keys.add(key)
-                    seen.append({"from": r.get("source_email", ""), "subject": r.get("source_subject", "")})
-                if len(seen) > 1:
-                    emails_meta = seen
-                elif seen:
-                    email_from = seen[0]["from"]
-                    email_subject = seen[0]["subject"]
+                emails_meta, email_from, email_subject = _derive_email_summary(results)
         except Exception:
             results = None
 
@@ -494,17 +502,43 @@ async def email_verify_post(
         deduped.append(r)
     results = deduped
 
+    # Merge with any previously-saved draft for this quote, so uploading one
+    # more .eml doesn't discard emails already analysed in an earlier visit —
+    # new results replace old ones with the same (sender, attachment name),
+    # everything else from the saved draft is kept alongside the new results.
+    if quote_id:
+        try:
+            draft_json = db.get_draft_email_results(int(quote_id))
+        except (ValueError, TypeError):
+            draft_json = ""
+        if draft_json.strip():
+            try:
+                saved = json.loads(draft_json)
+                if isinstance(saved, list):
+                    new_keys = {
+                        ((r.get("source_address") or ""), (r.get("name") or "").strip().lower())
+                        for r in results
+                    }
+                    kept_old = [
+                        r for r in saved
+                        if ((r.get("source_address") or ""), (r.get("name") or "").strip().lower())
+                        not in new_keys
+                    ]
+                    results = kept_old + results
+            except Exception:
+                pass
+
+    emails_meta, email_from, email_subject = _derive_email_summary(results)
+
     resp = templates.TemplateResponse(request, "user_email_verify.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
         "quote_id": quote_id,
         "results": list(results),
         "error": None,
-        # Backward-compatible top-level vars — reflect the first email when
-        # only one was uploaded (unchanged single-email behavior).
-        "email_subject": emails_meta[0]["subject"] if emails_meta else None,
-        "email_from": emails_meta[0]["from"] if emails_meta else None,
-        "emails": emails_meta if len(emails_meta) > 1 else None,
+        "email_subject": email_subject,
+        "email_from": email_from,
+        "emails": emails_meta,
     })
     resp.headers.update(_NO_CACHE)
     return resp
@@ -1209,6 +1243,7 @@ def checklist_confirm(
                     na_count=na_count,
                     confirm=True,
                     confirmed_by_user_id=user["id"],
+                    email_results_json=email_results_json,
                 )
             else:
                 db.add_qc_version(
@@ -1302,6 +1337,7 @@ def checklist_save_draft(
                     no_count=no_count,
                     na_count=na_count,
                     confirm=False,
+                    email_results_json=email_results_json,
                 )
             else:
                 db.add_qc_version(
@@ -1438,6 +1474,11 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
     body = await request.json()
     rows = body.get("rows", [])
     preferred_install_date = (body.get("preferred_install_date") or "").strip()
+    # email_results is optional in the payload — omitted (key absent) means
+    # "the email table wasn't part of this edit, leave it as stored"; an
+    # empty list is a legitimate value (all rows cleared) and must overwrite.
+    has_email_edit = "email_results" in body
+    email_results = body.get("email_results", [])
 
     try:
         filled = {}
@@ -1449,7 +1490,10 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
                     "ai_status": r.get("ai_status", ""),
                 }
 
-        xlsx_blob = build_xlsx(rows, filled=filled)
+        xlsx_blob = build_xlsx(
+            rows, filled=filled,
+            email_results=email_results if has_email_edit else json.loads(v.get("email_results_json") or "[]"),
+        )
         yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
         no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
         na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
@@ -1463,6 +1507,7 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
             na_count=na_count,
             confirm=(v.get("status") == "confirmed"),
             confirmed_by_user_id=user["id"] if v.get("status") == "confirmed" else None,
+            email_results_json=json.dumps(email_results) if has_email_edit else None,
         )
 
         quote_id = v["quote_id"]

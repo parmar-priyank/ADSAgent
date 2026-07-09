@@ -399,6 +399,22 @@ async def admin_qc_version_save(request: Request, version_id: int, user=Depends(
     body = await request.json()
     rows   = body.get("rows", [])
     action = body.get("action", "draft")  # "draft" or "confirm"
+    # email_results is optional — omitted means the email table wasn't part
+    # of this edit and its stored value should be left untouched; an empty
+    # list is a legitimate value (all rows cleared) and must overwrite.
+    has_email_edit = "email_results" in body
+    email_results = body.get("email_results", [])
+
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT email_results_json FROM qc_versions WHERE id = ?", (version_id,)
+        ).fetchone()
+    if not existing:
+        raise HTTPException(404, "QC version not found.")
+    try:
+        stored_email_results = json.loads(existing["email_results_json"] or "[]")
+    except Exception:
+        stored_email_results = []
 
     # Rebuild Excel from edited rows
     filled = {}
@@ -410,7 +426,10 @@ async def admin_qc_version_save(request: Request, version_id: int, user=Depends(
                 "ai_status": row.get("ai_status", ""),
             }
 
-    xlsx_blob = build_xlsx(rows, filled=filled)
+    xlsx_blob = build_xlsx(
+        rows, filled=filled,
+        email_results=email_results if has_email_edit else stored_email_results,
+    )
     yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
     no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
     na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
@@ -425,6 +444,7 @@ async def admin_qc_version_save(request: Request, version_id: int, user=Depends(
         na_count=na_count,
         confirm=confirm,
         confirmed_by_user_id=user["id"] if confirm else None,
+        email_results_json=json.dumps(email_results) if has_email_edit else None,
     )
     return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}
 

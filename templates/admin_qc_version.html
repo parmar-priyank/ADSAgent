@@ -135,28 +135,48 @@
         <th style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:left;padding:8px 16px;">Finding / Remark</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="eml-tbody">
       {% for er in email_results %}
-      <tr style="border-top:1px solid #f0ece8;{% if er.ai_status and er.status != er.ai_status %}background:#fff7d6;{% elif loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}">
+      <tr data-name="{{ er.name | e }}"
+          data-status="{{ er.status or 'N/A' }}"
+          data-ai-status="{{ er.ai_status or '' }}"
+          data-remark="{{ er.remark or '' | e }}"
+          data-source-email="{{ er.source_email or '' | e }}"
+          data-source-subject="{{ er.source_subject or '' | e }}"
+          data-source-address="{{ er.source_address or '' | e }}"
+          style="border-top:1px solid #f0ece8;{% if er.ai_status and er.status != er.ai_status %}background:#fff7d6;{% elif loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}">
         <td style="padding:8px 16px;color:#1a1a1a;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ er.name }}">{{ er.name }}</td>
         <td style="padding:8px 12px;text-align:center;white-space:nowrap;">
-          {% if er.status == 'Yes' %}
-            <span style="background:rgba(52,211,153,.12);color:#16a34a;border:1.5px solid rgba(52,211,153,.4);border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">Yes</span>
-          {% elif er.status == 'No' %}
-            <span style="background:rgba(239,68,68,.1);color:#dc2626;border:1.5px solid rgba(239,68,68,.35);border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">No</span>
-          {% else %}
-            <span style="background:rgba(148,163,184,.1);color:#64748b;border:1.5px solid rgba(148,163,184,.35);border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:600;">N/A</span>
-          {% endif %}
+          <span class="eml-status-view">
+            {% if er.status == 'Yes' %}
+              <span style="background:rgba(52,211,153,.12);color:#16a34a;border:1.5px solid rgba(52,211,153,.4);border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">Yes</span>
+            {% elif er.status == 'No' %}
+              <span style="background:rgba(239,68,68,.1);color:#dc2626;border:1.5px solid rgba(239,68,68,.35);border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">No</span>
+            {% else %}
+              <span style="background:rgba(148,163,184,.1);color:#64748b;border:1.5px solid rgba(148,163,184,.35);border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:600;">N/A</span>
+            {% endif %}
+          </span>
+          <select class="eml-status-edit" style="display:none;font-size:12px;padding:3px 8px;border-radius:5px;border:1.5px solid #c45010;background:#fff;color:#1a1a1a;cursor:pointer;width:auto;">
+            <option value="Yes" {% if er.status == 'Yes' %}selected{% endif %}>Yes</option>
+            <option value="No"  {% if er.status == 'No'  %}selected{% endif %}>No</option>
+            <option value="N/A" {% if er.status == 'N/A' or not er.status %}selected{% endif %}>N/A</option>
+          </select>
         </td>
         <td style="padding:8px 16px;overflow:hidden;max-width:0;">
-          {% if er.remark %}
-          <div onclick="openRemarkModal(this.querySelector('span'))"
-               style="display:flex;align-items:center;font-size:12.5px;padding:4px 8px;border-radius:6px;border:1.5px solid #ede8e0;background:#faf8f6;cursor:pointer;overflow:hidden;">
+          <div class="eml-remark-view" {% if er.remark %}onclick="openRemarkModal(this.querySelector('span'))"{% endif %}
+               style="display:flex;align-items:center;font-size:12.5px;padding:4px 8px;border-radius:6px;border:1.5px solid #ede8e0;background:#faf8f6;cursor:{% if er.remark %}pointer{% else %}default{% endif %};overflow:hidden;">
+            {% if er.remark %}
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333;">{{ er.remark }}</span>
+            {% else %}
+            <span style="color:#bbb;font-size:12px;">—</span>
+            {% endif %}
           </div>
-          {% else %}
-          <span style="color:#bbb;font-size:12px;">—</span>
-          {% endif %}
+          <div class="eml-remark-edit" style="display:none;flex-direction:row;align-items:center;">
+            <input class="eml-remark-edit-input" type="text" value="{{ er.remark or '' | e }}"
+                   onclick="openRemarkEditModal(this)"
+                   readonly
+                   style="flex:1;font-size:12.5px;padding:5px 10px;border-radius:6px;border:1.5px solid #ede8e0;background:#fff;color:#1a1a1a;box-sizing:border-box;cursor:pointer;width:100%;">
+          </div>
         </td>
       </tr>
       {% endfor %}
@@ -359,6 +379,20 @@
         _refreshChangedHighlight(tr);
       });
     });
+
+    // Email Verification table — independent of the checklist table above,
+    // but toggled by the same Modify button/edit-bar.
+    document.querySelectorAll('#eml-tbody tr').forEach(function(row) {
+      row.querySelector('.eml-status-view').style.display = 'none';
+      row.querySelector('.eml-status-edit').style.display = '';
+      row.querySelector('.eml-remark-view').style.display = 'none';
+      row.querySelector('.eml-remark-edit').style.display = 'flex';
+      row.dataset.savedStatus = row.dataset.status;
+      row.querySelector('.eml-status-edit').addEventListener('change', function() {
+        var tr = this.closest('tr');
+        tr.dataset.status = this.value;
+      });
+    });
   }
 
   function cancelEditMode() {
@@ -374,6 +408,15 @@
       row.querySelector('.remark-view').style.display = '';
       row.querySelector('.remark-edit').style.display = 'none';
       _refreshChangedHighlight(row);
+    });
+    document.querySelectorAll('#eml-tbody tr').forEach(function(row) {
+      row.dataset.status = row.dataset.savedStatus || row.dataset.status;
+      row.querySelector('.eml-status-edit').value = row.dataset.status;
+      row.querySelector('.eml-remark-edit-input').value = row.dataset.remark || '';
+      row.querySelector('.eml-status-view').style.display = '';
+      row.querySelector('.eml-status-edit').style.display = 'none';
+      row.querySelector('.eml-remark-view').style.display = '';
+      row.querySelector('.eml-remark-edit').style.display = 'none';
     });
   }
 
@@ -400,6 +443,25 @@
       });
     });
 
+    // Email Verification table — independent data, only included when the
+    // table exists on this version (its absence must not wipe stored data).
+    var emlTbody = document.getElementById('eml-tbody');
+    var emailResults = null;
+    if (emlTbody) {
+      emailResults = [];
+      emlTbody.querySelectorAll('tr').forEach(function(row) {
+        emailResults.push({
+          name:           row.dataset.name           || '',
+          status:         row.querySelector('.eml-status-edit').value,
+          remark:         row.querySelector('.eml-remark-edit-input').value,
+          ai_status:      row.dataset.aiStatus        || '',
+          source_email:   row.dataset.sourceEmail     || '',
+          source_subject: row.dataset.sourceSubject   || '',
+          source_address: row.dataset.sourceAddress   || '',
+        });
+      });
+    }
+
     var draftBtn   = document.getElementById('draft-btn');
     var confirmBtn = document.getElementById('confirm-btn');
     draftBtn.disabled = true;
@@ -410,10 +472,13 @@
       draftBtn.textContent = 'Saving…';
     }
 
+    var payload = { rows: rows, action: action };
+    if (emailResults !== null) payload.email_results = emailResults;
+
     fetch('/admin/qc-version/{{ v.id }}/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows: rows, action: action }),
+      body: JSON.stringify(payload),
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
@@ -443,6 +508,34 @@
         _refreshChangedHighlight(row);
       });
 
+      if (emlTbody) {
+        emlTbody.querySelectorAll('tr').forEach(function(row) {
+          var sel       = row.querySelector('.eml-status-edit');
+          var inp       = row.querySelector('.eml-remark-edit-input');
+          var newStatus = sel.value;
+          var newRemark = inp.value;
+          row.dataset.status = newStatus;
+          row.dataset.remark = newRemark;
+
+          var bg, txtC, bdr, label;
+          if (newStatus === 'Yes')      { bg='rgba(52,211,153,.12)';  txtC='#16a34a'; bdr='rgba(52,211,153,.4)';  label='Yes'; }
+          else if (newStatus === 'No')  { bg='rgba(239,68,68,.1)';    txtC='#dc2626'; bdr='rgba(239,68,68,.35)';  label='No';  }
+          else                          { bg='rgba(148,163,184,.1)'; txtC='#64748b'; bdr='rgba(148,163,184,.35)'; label='N/A'; }
+          row.querySelector('.eml-status-view').innerHTML =
+            '<span style="background:' + bg + ';color:' + txtC + ';border:1.5px solid ' + bdr + ';border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">' + label + '</span>';
+          var rv = row.querySelector('.eml-remark-view');
+          if (newRemark) {
+            rv.innerHTML = '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333;">' + newRemark.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</span>';
+            rv.setAttribute('onclick', "openRemarkModal(this.querySelector('span'))");
+            rv.style.cursor = 'pointer';
+          } else {
+            rv.innerHTML = '<span style="color:#bbb;font-size:12px;">—</span>';
+            rv.removeAttribute('onclick');
+            rv.style.cursor = 'default';
+          }
+        });
+      }
+
       document.getElementById('chip-yes').textContent = '✓ ' + data.yes_count + ' Yes';
       document.getElementById('chip-no').textContent  = '✗ ' + data.no_count  + ' No';
       document.getElementById('chip-na').textContent  = '— ' + data.na_count  + ' N/A';
@@ -456,6 +549,14 @@
         row.querySelector('.remark-view').style.display = '';
         row.querySelector('.remark-edit').style.display = 'none';
       });
+      if (emlTbody) {
+        emlTbody.querySelectorAll('tr').forEach(function(row) {
+          row.querySelector('.eml-status-view').style.display = '';
+          row.querySelector('.eml-status-edit').style.display = 'none';
+          row.querySelector('.eml-remark-view').style.display = '';
+          row.querySelector('.eml-remark-edit').style.display = 'none';
+        });
+      }
 
       draftBtn.disabled = false;
       confirmBtn.disabled = false;

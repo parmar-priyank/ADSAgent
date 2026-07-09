@@ -288,9 +288,40 @@ def add_qc_version(
 
 def update_qc_version(version_id: int, xlsx_bytes: bytes, rows_json: str,
                       yes_count: int, no_count: int, na_count: int,
-                      confirm: bool = False, confirmed_by_user_id: int = None):
+                      confirm: bool = False, confirmed_by_user_id: int = None,
+                      email_results_json: str = None):
+    """email_results_json is optional — pass None (default) to leave the
+    version's stored email-verification results untouched, or a JSON string
+    to overwrite them (used when the Email Verification table was edited
+    alongside the checklist rows)."""
     with get_db() as conn:
-        if confirm:
+        if email_results_json is not None:
+            if confirm:
+                conn.execute(
+                    """
+                    UPDATE qc_versions
+                       SET excel_blob=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
+                           email_results_json=?,
+                           status='confirmed', confirmed_at=CURRENT_TIMESTAMP,
+                           confirmed_by_user_id=?
+                     WHERE id=?
+                    """,
+                    (xlsx_bytes, rows_json, yes_count, no_count, na_count,
+                     email_results_json, confirmed_by_user_id, version_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE qc_versions
+                       SET excel_blob=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
+                           email_results_json=?,
+                           status='draft'
+                     WHERE id=?
+                    """,
+                    (xlsx_bytes, rows_json, yes_count, no_count, na_count,
+                     email_results_json, version_id),
+                )
+        elif confirm:
             conn.execute(
                 """
                 UPDATE qc_versions
