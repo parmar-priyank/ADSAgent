@@ -199,11 +199,21 @@ def get_draft_email_results(quote_id: int) -> str:
     return (row["draft_email_results_json"] if row else "") or ""
 
 
-def get_recent(limit: int = 20):
+def count_quotes() -> int:
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM quotes ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
+        return conn.execute("SELECT COUNT(*) FROM quotes").fetchone()[0]
+
+
+def get_recent(limit: int | None = 20):
+    """limit=None returns every quote record — used by the Customer Records
+    page, which must show the full list, not just the most recent ones."""
+    with get_db() as conn:
+        if limit is None:
+            rows = conn.execute("SELECT * FROM quotes ORDER BY id DESC").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM quotes ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
         quotes = _attach_line_items(conn, [dict(r) for r in rows])
         if quotes:
             ids = [q["id"] for q in quotes]

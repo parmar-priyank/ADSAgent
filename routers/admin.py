@@ -89,12 +89,12 @@ def _redirect_back_to_admin(request: Request, fallback: str = "/admin") -> str:
 
 @router.get("/admin", response_class=HTMLResponse)
 def admin_dashboard(request: Request, user=Depends(require_admin), cal: str = ""):
-    records = db.get_recent()
+    all_records = db.get_recent(limit=None)
     ctx = _admin_ctx(user,
         users_count=len(adb.list_users()),
-        records_count=len(records),
+        records_count=db.count_quotes(),
         templates_count=len(tdb.list_templates()),
-        install_map_json=_build_install_map(records),
+        install_map_json=_build_install_map(all_records),
         cal_jump=cal,  # e.g. "2026-08" — tells the calendar JS which month to open
     )
     response = templates.TemplateResponse(request, "admin_dashboard.html", ctx)
@@ -117,7 +117,7 @@ def admin_users_page(request: Request, user=Depends(require_admin), success: str
 
 @router.get("/admin/records", response_class=HTMLResponse)
 def admin_records_page(request: Request, user=Depends(require_admin)):
-    ctx = _admin_ctx(user, records=db.get_recent())
+    ctx = _admin_ctx(user, records=db.get_recent(limit=None))
     response = templates.TemplateResponse(request, "admin_records.html", ctx)
     response.headers.update(_NO_CACHE)
     return response

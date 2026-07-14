@@ -218,7 +218,7 @@ async def upload_confirm(
 
 @router.get("/pdf", response_class=HTMLResponse)
 def quote_detail(request: Request, id: int = None, user=Depends(require_qc_access)):
-    all_records = db.get_recent()
+    all_records = db.get_recent(limit=None)
     if id is None:
         if not all_records:
             raise HTTPException(404, "No records found.")
