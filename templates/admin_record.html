@@ -94,7 +94,7 @@
   {% else %}
   <!-- Column headers -->
   <div style="display:grid;grid-template-columns:70px 1fr 1fr 1fr 120px 160px 180px;gap:0;padding:10px 24px;background:#faf8f6;">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Version</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">#</div>
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Template</div>
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">ZIP File</div>
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:center;">Results</div>
@@ -104,10 +104,8 @@
   </div>
   {% for qv in qc_versions %}
   <div onclick="window.location='/admin/qc-version/{{ qv['id'] }}'" style="display:grid;grid-template-columns:70px 1fr 1fr 1fr 120px 160px 180px;gap:0;padding:14px 24px;border-top:1px solid #f0ece8;cursor:pointer;transition:background .15s;{% if loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}" onmouseover="this.style.background='#faf5f0'" onmouseout="this.style.background='{% if loop.index is even %}#fdfcfb{% else %}#fff{% endif %}'">
-    <!-- Version pill -->
-    <div style="display:flex;align-items:center;">
-      <span style="background:#fdeede;color:#c45010;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800;">v{{ qv['version'] }}</span>
-    </div>
+    <!-- Run number -->
+    <div style="display:flex;align-items:center;font-size:13px;font-weight:700;color:#555;">{{ qv['version'] }}</div>
     <!-- Template -->
     <div style="display:flex;align-items:center;font-size:13px;font-weight:700;color:#1a1a1a;">{{ qv['template_name'] or '—' }}</div>
     <!-- ZIP -->

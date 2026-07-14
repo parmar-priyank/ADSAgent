@@ -226,7 +226,7 @@
         <table class="dash-table" style="width:100%;">
           <thead>
             <tr>
-              <th style="width:80px;">Version</th>
+              <th style="width:80px;">#</th>
               <th>ZIP File</th>
               <th>Template</th>
               <th style="text-align:center;">Results</th>
@@ -238,8 +238,8 @@
             {% for v in qc_versions %}
             <tr class="clickable" data-href="/admin/qc-version/{{ v.id }}" style="cursor:pointer;" title="View & edit this QC run">
               <td>
-                <span style="display:inline-flex;align-items:center;gap:5px;font-weight:700;font-size:13px;">
-                  <span style="background:var(--brand);color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;letter-spacing:.5px;">v{{ v.version }}</span>
+                <span style="display:inline-flex;align-items:center;gap:5px;font-weight:700;font-size:13px;color:var(--ink);">
+                  {{ v.version }}
                   {% if loop.first %}<span style="font-size:10px;color:var(--text2);font-weight:400;">latest</span>{% endif %}
                 </span>
               </td>
@@ -258,11 +258,11 @@
               <td style="text-align:right;" onclick="event.stopPropagation();">
                 <a href="/admin/qc-version/{{ v.id }}/download"
                    style="font-size:12px;font-weight:600;color:var(--brand);text-decoration:none;display:inline-flex;align-items:center;gap:4px;"
-                   title="Download v{{ v.version }}">
+                   title="Download run #{{ v.version }}">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                   </svg>
-                  v{{ v.version }}.xlsx
+                  #{{ v.version }}.xlsx
                 </a>
               </td>
             </tr>

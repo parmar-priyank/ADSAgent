@@ -44,7 +44,7 @@
         <div style="font-size:18px;font-weight:800;color:var(--ink);line-height:1.2;">{{ (record.customer_name if record else '') or 'Customer' }}</div>
         <div style="font-size:12.5px;color:var(--muted);">
           {{ (record.quote_number if record else '') or '—' }}{% if record and record.total_price %} &middot; {{ record.total_price }}{% endif %}
-          &middot; v{{ revisit_version.version }}
+          &middot; #{{ revisit_version.version }}
           {% if is_readonly %}&middot; <span style="color:#16a34a;font-weight:700;">Confirmed</span>{% else %}&middot; <span style="color:var(--brand);font-weight:700;">Draft</span>{% endif %}
         </div>
       </div>
