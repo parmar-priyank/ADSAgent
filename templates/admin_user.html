@@ -126,11 +126,29 @@
       <p style="font-size:12.5px;color:var(--muted);margin:0;">🔒 Only a super admin can reset another admin's password.</p>
       {% else %}
       <form action="/admin/users/{{ target.id }}/change-password" method="post"
-            style="display:flex;gap:8px;align-items:center;">
-        <input type="password" name="new_password" required minlength="8"
-               placeholder="New password (min. 8 characters)"
-               style="flex:1;padding:8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
-        <button type="submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Set</button>
+            id="reset-pwd-form" onsubmit="return validateResetPwd(event)">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div style="position:relative;flex:1;">
+            <input type="password" name="new_password" id="reset-pwd-new" required minlength="8"
+                   placeholder="New password (min. 8 characters)" oninput="checkResetPwdMatch()"
+                   style="width:100%;padding:8px 34px 8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
+            <button type="button" onclick="toggleResetPwdVisibility('reset-pwd-new', this)"
+                    style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div style="position:relative;flex:1;">
+            <input type="password" id="reset-pwd-confirm" required minlength="8"
+                   placeholder="Re-enter new password" oninput="checkResetPwdMatch()"
+                   style="width:100%;padding:8px 34px 8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
+            <button type="button" onclick="toggleResetPwdVisibility('reset-pwd-confirm', this)"
+                    style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <button type="submit" id="reset-pwd-submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Set</button>
+        </div>
+        <p id="reset-pwd-match-msg" style="display:none;font-size:12px;font-weight:600;margin:8px 0 0;"></p>
       </form>
       <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5;">User must use this password on their next login. Minimum 8 characters.</p>
       {% endif %}
@@ -203,5 +221,41 @@
   document.querySelectorAll('tr.clickable[data-href]').forEach(function(row) {
     row.addEventListener('click', function() { window.location.href = row.dataset.href; });
   });
+
+  function toggleResetPwdVisibility(inputId, btn) {
+    var input = document.getElementById(inputId);
+    var showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    btn.innerHTML = showing
+      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+  }
+
+  function checkResetPwdMatch() {
+    var np  = document.getElementById('reset-pwd-new').value;
+    var cp  = document.getElementById('reset-pwd-confirm').value;
+    var msg = document.getElementById('reset-pwd-match-msg');
+    var confirmInput = document.getElementById('reset-pwd-confirm');
+    if (!cp) { msg.style.display = 'none'; confirmInput.style.borderColor = 'var(--line2)'; return; }
+    if (np === cp) {
+      msg.style.display = 'block'; msg.style.color = '#16a34a'; msg.textContent = '✓ Passwords match';
+      confirmInput.style.borderColor = '#16a34a';
+    } else {
+      msg.style.display = 'block'; msg.style.color = '#dc2626'; msg.textContent = '✗ Passwords do not match';
+      confirmInput.style.borderColor = '#dc2626';
+    }
+  }
+
+  function validateResetPwd(e) {
+    var np = document.getElementById('reset-pwd-new').value;
+    var cp = document.getElementById('reset-pwd-confirm').value;
+    if (np !== cp) {
+      e.preventDefault();
+      checkResetPwdMatch();
+      document.getElementById('reset-pwd-confirm').focus();
+      return false;
+    }
+    return true;
+  }
 </script>
 {% endblock %}
