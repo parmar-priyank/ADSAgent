@@ -321,6 +321,17 @@ def require_admin(request: Request):
     return fresh if fresh else user
 
 
+def require_superadmin(request: Request):
+    """Guard for the handful of admin-on-admin actions (changing another
+    admin's password or role) that only a super admin may perform — a
+    regular admin can still manage plain users freely, this only narrows
+    who can act on OTHER admin accounts."""
+    user = require_admin(request)
+    if not user.get("is_super_admin"):
+        raise HTTPException(403, "Only a super admin can do this.")
+    return user
+
+
 def require_qc_access(request: Request):
     """Guard for the QC flow (upload/verify-email/checklist/confirm routes),
     letting both a logged-in user AND a logged-in admin through — same

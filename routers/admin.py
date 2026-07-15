@@ -242,16 +242,15 @@ def admin_update_profile(user_id: int, request: Request,
 
 @router.post("/admin/users/{user_id}/change-password")
 def admin_change_password(user_id: int, request: Request,
-                          old_password: str = Form(...),
                           new_password: str = Form(...),
                           user=Depends(require_admin)):
-    import bcrypt
     target = adb.get_user(user_id)
     if not target:
         raise HTTPException(404, "User not found.")
-    # Verify old password matches stored hash
-    if not bcrypt.checkpw(old_password.encode(), target["password"].encode()):
-        return RedirectResponse(url=f"/admin/users/{user_id}?error=Current+password+is+incorrect.", status_code=303)
+    # Changing another admin's password is a super-admin-only action; a
+    # regular admin can still reset any plain user's password freely.
+    if target.get("role") == "admin" and not user.get("is_super_admin"):
+        raise HTTPException(403, "Only a super admin can change another admin's password.")
     ok = adb.change_password(user_id, new_password)
     if ok:
         return RedirectResponse(url=f"/admin/users/{user_id}?success=Password+changed+successfully.", status_code=303)
@@ -267,6 +266,10 @@ def admin_change_role(user_id: int, request: Request,
     target = adb.get_user(user_id)
     if not target:
         raise HTTPException(404, "User not found.")
+    # Changing another admin's role (e.g. demoting them) is super-admin-only;
+    # promoting a plain user to admin is still allowed for any admin.
+    if target.get("role") == "admin" and not user.get("is_super_admin"):
+        raise HTTPException(403, "Only a super admin can change another admin's role.")
     ok = adb.change_role(user_id, new_role)
     if ok:
         label = "Admin" if new_role == "admin" else "User"

@@ -32,7 +32,8 @@ def init_auth_db():
             pass
         for col in ("full_name TEXT DEFAULT NULL", "email TEXT DEFAULT NULL",
                     "phone TEXT DEFAULT NULL", "email_verified INTEGER DEFAULT 0",
-                    "two_factor_enabled INTEGER DEFAULT 0"):
+                    "two_factor_enabled INTEGER DEFAULT 0",
+                    "is_super_admin INTEGER DEFAULT 0"):
             try:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except sqlite3.OperationalError:
@@ -135,6 +136,19 @@ def change_role(user_id: int, new_role: str) -> bool:
         return False
     with get_db() as conn:
         conn.execute("UPDATE users SET role = ? WHERE id = ?", (new_role, user_id))
+        if new_role != "admin":
+            # A plain "user" can't be a super admin — clear the flag so it
+            # doesn't silently reappear if this account is promoted again later.
+            conn.execute("UPDATE users SET is_super_admin = 0 WHERE id = ?", (user_id,))
+    return True
+
+
+def set_super_admin(user_id: int, is_super: bool) -> bool:
+    with get_db() as conn:
+        row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row or row["role"] != "admin":
+            return False
+        conn.execute("UPDATE users SET is_super_admin = ? WHERE id = ?", (1 if is_super else 0, user_id))
     return True
 
 

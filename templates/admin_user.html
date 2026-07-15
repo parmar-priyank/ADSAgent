@@ -9,6 +9,7 @@
 {% endblock %}
 
 {% block content %}
+{% set locked_for_viewer = target.role == 'admin' and not current_user.is_super_admin %}
 
 {% if success %}
 <div style="background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:10px;padding:11px 18px;margin-bottom:18px;font-size:13px;font-weight:500;">&#10003; {{ success }}</div>
@@ -97,6 +98,9 @@
         <div style="width:30px;height:30px;border-radius:8px;background:rgba(222,93,24,.1);display:flex;align-items:center;justify-content:center;font-size:14px;">🔑</div>
         <span style="font-size:13px;font-weight:700;color:var(--ink);">Change Role</span>
       </div>
+      {% if locked_for_viewer %}
+      <p style="font-size:12.5px;color:var(--muted);margin:0;">🔒 Only a super admin can change another admin's role.</p>
+      {% else %}
       <form action="/admin/users/{{ target.id }}/change-role" method="post"
             style="display:flex;gap:8px;align-items:center;">
         <select name="new_role" style="flex:1;padding:8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;">
@@ -106,6 +110,7 @@
         <button type="submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Save</button>
       </form>
       <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5;">Promoting to <strong>Admin</strong> grants full dashboard access including user management and all records.</p>
+      {% endif %}
     </div>
   </div>
   {% endif %}
@@ -117,6 +122,9 @@
         <div style="width:30px;height:30px;border-radius:8px;background:rgba(222,93,24,.1);display:flex;align-items:center;justify-content:center;font-size:14px;">🔒</div>
         <span style="font-size:13px;font-weight:700;color:var(--ink);">Reset Password</span>
       </div>
+      {% if locked_for_viewer %}
+      <p style="font-size:12.5px;color:var(--muted);margin:0;">🔒 Only a super admin can reset another admin's password.</p>
+      {% else %}
       <form action="/admin/users/{{ target.id }}/change-password" method="post"
             style="display:flex;gap:8px;align-items:center;">
         <input type="password" name="new_password" required minlength="8"
@@ -125,6 +133,7 @@
         <button type="submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Set</button>
       </form>
       <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5;">User must use this password on their next login. Minimum 8 characters.</p>
+      {% endif %}
     </div>
   </div>
 
