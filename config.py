@@ -5,11 +5,13 @@ All routers import from here so the FastAPI app, Jinja2 templates, limiter,
 signer, Anthropic client, constants, and auth helpers are initialised exactly
 once at process start.
 """
+import logging
 import json
 import os
 import urllib.parse
 import urllib.request
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 import anthropic
 from dotenv import load_dotenv
@@ -31,6 +33,25 @@ import db.user_repo as adb
 # Config — loaded from .env
 # ---------------------------------------------------------------------------
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# File logging — captures app errors/warnings and unhandled exceptions
+# (crashes, DB errors, etc.) to a plain file for tailing/grepping, in
+# addition to whatever gunicorn/systemd already send to journald.
+# ---------------------------------------------------------------------------
+_LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
+os.makedirs(_LOG_DIR, exist_ok=True)
+_log_file_handler = RotatingFileHandler(
+    os.path.join(_LOG_DIR, "app.log"),
+    maxBytes=10 * 1024 * 1024,  # 10 MB per file
+    backupCount=5,              # keep app.log.1 .. app.log.5 (50 MB total)
+)
+_log_file_handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+))
+_log_file_handler.setLevel(logging.WARNING)
+logging.getLogger().addHandler(_log_file_handler)
+logging.getLogger().setLevel(logging.WARNING)
 
 ANTHROPIC_API_KEY    = os.environ.get("ANTHROPIC_API_KEY")
 CLAUDE_MODEL         = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
@@ -301,6 +322,21 @@ class _AuthRedirect(Exception):
 
 async def _auth_redirect_handler(request: Request, exc: _AuthRedirect):
     return RedirectResponse(url=exc.url, status_code=303)
+
+
+_crash_logger = logging.getLogger("adsagent.crash")
+
+
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    """Last-resort handler — logs the full traceback for any exception that
+    escapes a route (a real "app crash": unexpected code path, DB error,
+    etc.) to logs/app.log, then returns a plain 500 same as FastAPI's
+    default would, so behavior for the client is unchanged."""
+    _crash_logger.error(
+        "Unhandled exception on %s %s", request.method, request.url.path,
+        exc_info=exc,
+    )
+    return PlainTextResponse("Internal Server Error", status_code=500)
 
 
 def require_login(request: Request):

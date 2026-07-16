@@ -4,6 +4,7 @@ from config import (
     limiter,
     _on_rate_limit_exceeded,
     _auth_redirect_handler,
+    _unhandled_exception_handler,
     _AuthRedirect,
     _CSP,
     SecurityHeadersMiddleware,
@@ -17,6 +18,7 @@ from routers import auth, admin, uploads, qc_checks, checklist_mgmt
 
 app.add_exception_handler(RateLimitExceeded, _on_rate_limit_exceeded)
 app.add_exception_handler(_AuthRedirect, _auth_redirect_handler)
+app.add_exception_handler(Exception, _unhandled_exception_handler)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(InactivityTimeoutMiddleware)
 app.add_middleware(UserLoginIPRestrictionMiddleware)
