@@ -682,6 +682,18 @@
   var _emailResults  = {{ email_results | default([]) | tojson }};
   var _currentDlToken = (document.getElementById('confirm-dl-token') || {}).value || '';
 
+  // A fetch() to any of these auth-protected endpoints transparently follows
+  // a same-origin redirect if the session expired (server sends 303 -> the
+  // login page, which fetch() treats as just another 200 OK response). The
+  // response is HTML, not JSON, so parsing it as JSON throws — indistinguishable
+  // from a real network failure unless we check for this first. Detecting it
+  // here lets every save/upload handler show "please log in again" instead of
+  // a generic "failed, try again" that isn't actually true.
+  function _sessionExpired(response) {
+    return response.redirected && /\/login(\?|$)/.test(response.url);
+  }
+  var SESSION_EXPIRED_MESSAGE = 'Your session has expired due to inactivity. Please log in again to continue — your edits were not saved.';
+
   // ── Modal open/close ───────────────────────────────────────────────────
   function openAgreementModal() { document.getElementById('agreement-modal-overlay').style.display = 'flex'; }
   function closeAgreementModal() { document.getElementById('agreement-modal-overlay').style.display = 'none'; }
@@ -756,6 +768,7 @@
 
     fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/add-email', { method: 'POST', body: formData })
       .then(function(r) {
+        if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
         if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Upload failed'); });
         return r.json();
       })
@@ -1052,7 +1065,10 @@
     formData.append('quote_id', _quoteId || '');
 
     fetch('/checklist-analyse-file', { method: 'POST', body: formData })
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
+        return r.json();
+      })
       .then(function(data) {
         var status = data.status || 'N/A';
         var remark = data.remark || '';
@@ -1071,10 +1087,10 @@
         btn.classList.remove('is-busy');
         input.value = '';
       })
-      .catch(function() {
+      .catch(function(err) {
         btn.classList.remove('is-busy');
         input.value = '';
-        alert('Failed to analyse the file. Please try again.');
+        alert((err && err.message) || 'Failed to analyse the file. Please try again.');
       });
   }
 
@@ -1099,6 +1115,7 @@
         body: JSON.stringify(payload),
       })
       .then(function(r) {
+        if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
         return r.json().then(function(data) { return { ok: r.ok, data: data }; });
       })
       .then(function(result) {
@@ -1129,7 +1146,10 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rows: rows, tpl: _tplData, dl_token: _currentDlToken, email_results: _emailResults }),
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
+      return r.json();
+    })
     .then(function(data) {
       _currentDlToken = data.dl_token;
       ['confirm-dl-token','draft-dl-token'].forEach(function(id) {
@@ -1151,10 +1171,10 @@
       saveBtn.disabled    = false;
       saveBtn.textContent = 'Save Changes';
     })
-    .catch(function() {
+    .catch(function(err) {
       saveBtn.disabled    = false;
       saveBtn.textContent = 'Save Changes';
-      alert('Failed to save edits. Please try again.');
+      alert((err && err.message) || 'Failed to save edits. Please try again.');
     });
   }
 
@@ -1234,6 +1254,7 @@
         body: JSON.stringify({ rows: _collectRows(), email_results: emailRows }),
       })
       .then(function(r) {
+        if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
         return r.json().then(function(data) { return { ok: r.ok, data: data }; });
       })
       .then(function(result) {
@@ -1266,7 +1287,10 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rows: _collectRows(), tpl: _tplData, dl_token: _currentDlToken, email_results: emailRows }),
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
+      return r.json();
+    })
     .then(function(data) {
       _currentDlToken = data.dl_token;
       ['confirm-dl-token','draft-dl-token'].forEach(function(id) {
@@ -1286,10 +1310,10 @@
       saveBtn.disabled    = false;
       saveBtn.textContent = 'Save';
     })
-    .catch(function() {
+    .catch(function(err) {
       saveBtn.disabled    = false;
       saveBtn.textContent = 'Save';
-      alert('Failed to save. Please try again.');
+      alert((err && err.message) || 'Failed to save. Please try again.');
     });
   }
 
