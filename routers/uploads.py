@@ -51,10 +51,12 @@ def root_redirect(request: Request):
 
 
 @router.get("/user/heartbeat")
-def user_heartbeat(request: Request, user=Depends(require_login)):
+def user_heartbeat(request: Request, user=Depends(require_qc_access)):
     """No-op ping so genuine reading/thinking time (no clicks) still counts
-    as activity — passing through require_login lets
-    InactivityTimeoutMiddleware refresh the session's idle timer."""
+    as activity — passing through require_qc_access (rather than
+    require_login) lets this refresh the idle timer for an admin using
+    /user_upload too, not just a plain user account; InactivityTimeoutMiddleware
+    does the actual cookie refresh for whichever cookie is present."""
     return {"ok": True}
 
 
