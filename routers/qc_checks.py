@@ -1096,7 +1096,7 @@ async def upload_zip(
         "no_count": no_count,
         "na_count": na_count,
         "email_results": email_results,
-    })
+    }, user_id=uid)
     return RedirectResponse(url=f"/checklist-result?token={result_token}", status_code=303)
 
 

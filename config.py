@@ -197,7 +197,7 @@ _signer = URLSafeTimedSerializer(SECRET_KEY)
 COOKIE       = "session_user"   # used by user routes only
 COOKIE_ADMIN = "session_admin"  # used by admin routes only
 SESSION_MAX_AGE = 86400 * 7     # 7 days — absolute cap on a session's lifetime
-INACTIVITY_TIMEOUT = 60 * 15    # 15 minutes — session ends early if idle this long
+INACTIVITY_TIMEOUT = 60 * 60 * 4  # 4 hours — session ends early if idle this long
 
 
 def _make_token(user: dict) -> str:
@@ -412,6 +412,11 @@ def _resolve_theme(user: dict) -> str:
 
 def _index_context(user=None, **extra):
     saved = tdb.list_templates()
+    # If this user has an already-computed checklist result sitting unclaimed
+    # (e.g. a session timeout bounced them off the results page before they
+    # saw it), surface it instead of letting them re-upload and re-pay for
+    # AI analysis that already ran successfully.
+    resume_token = tdb.get_latest_pending_result_token(user["id"]) if user else None
     base = {
         "records": db_quotes.get_recent(),
         "result": None,
@@ -421,6 +426,7 @@ def _index_context(user=None, **extra):
         "current_user": user,
         "theme": _resolve_theme(user) if user else "dark",
         "today": datetime.now().strftime("%Y-%m-%d"),
+        "resume_token": resume_token,
     }
     base.update(extra)
     return base

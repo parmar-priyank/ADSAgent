@@ -54,6 +54,12 @@ def init_templates_db():
             )
             """
         )
+        pr_cols = [r[1] for r in conn.execute("PRAGMA table_info(pending_results)")]
+        if "user_id" not in pr_cols:
+            # Lets a user find their own already-computed (already AI-analysed,
+            # already paid for) result again after a session hiccup bounces
+            # them off the results page — see get_latest_pending_result_for_user.
+            conn.execute("ALTER TABLE pending_results ADD COLUMN user_id INTEGER")
 
 
 # ---------------------------------------------------------------------------
@@ -296,13 +302,17 @@ def _cleanup_tmp_xlsx(ttl: int = 7200):
             pass
 
 
-def store_pending_result(payload: dict, ttl: int = 7200) -> str:
-    """Store result payload in DB, return a short random token."""
+def store_pending_result(payload: dict, ttl: int = 7200, user_id: int = None) -> str:
+    """Store result payload in DB, return a short random token. user_id (when
+    given) lets the owner find this result again via
+    get_latest_pending_result_for_user if they lose the token — e.g. a
+    session that expired mid-request bounced them off the results page
+    before they ever saw the redirect URL."""
     token = secrets.token_urlsafe(32)
     with get_db() as conn:
         conn.execute(
-            "INSERT INTO pending_results (token, payload, created_at) VALUES (?, ?, ?)",
-            (token, json.dumps(payload), int(time.time())),
+            "INSERT INTO pending_results (token, payload, created_at, user_id) VALUES (?, ?, ?, ?)",
+            (token, json.dumps(payload), int(time.time()), user_id),
         )
         # Clean up expired DB rows
         conn.execute(
@@ -312,6 +322,20 @@ def store_pending_result(payload: dict, ttl: int = 7200) -> str:
     # Clean up orphaned xlsx temp files at the same time
     _cleanup_tmp_xlsx(ttl)
     return token
+
+
+def get_latest_pending_result_token(user_id: int, ttl: int = 7200) -> str | None:
+    """Find the most recent still-live pending result token for this user —
+    used to route them back to an already-computed result after a session
+    expiry/crash, instead of making them re-upload and re-pay for AI analysis
+    that already ran successfully."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT token FROM pending_results WHERE user_id = ? AND created_at >= ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (user_id, int(time.time()) - ttl),
+        ).fetchone()
+    return row["token"] if row else None
 
 
 def fetch_pending_result(token: str, ttl: int = 7200) -> dict | None:
