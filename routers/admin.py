@@ -333,18 +333,23 @@ def admin_record_detail(record_id: int, request: Request, user=Depends(require_a
     if not record:
         raise HTTPException(404, "Record not found.")
     qc_versions = db.get_qc_versions(record_id)
+    # Jump straight to the checklist page (which now shows both Pre-QC and
+    # Post-QC tiles together — see admin_qc_version_view) instead of an
+    # intermediate summary page. Picks whichever kind has the most recent
+    # activity; the other kind still shows up there as the 4th tile if it
+    # exists. Only a customer with zero QC runs of any kind has no
+    # checklist page to land on, so that case alone still shows the (now
+    # necessarily empty) box-summary page.
+    if qc_versions:
+        most_recent = max(qc_versions, key=lambda v: v.get("confirmed_at") or v.get("saved_at") or "")
+        return RedirectResponse(url=f"/admin/qc-version/{most_recent['id']}", status_code=303)
     pre_versions  = [v for v in qc_versions if v.get("kind", "pre") == "pre"]
     post_versions = [v for v in qc_versions if v.get("kind") == "post"]
-    # Latest version of each kind (highest version number first, per
-    # get_qc_versions' ORDER BY version DESC) — the one each box shows by
-    # default; older versions of the same kind are still listed for pick.
-    latest_pre  = pre_versions[0]  if pre_versions  else None
-    latest_post = post_versions[0] if post_versions else None
     assignee = db.get_post_qc_assignee(record_id)
     ctx = _admin_ctx(
         user, record=record,
         pre_versions=pre_versions, post_versions=post_versions,
-        latest_pre=latest_pre, latest_post=latest_post,
+        latest_pre=None, latest_post=None,
         post_qc_assignee=assignee,
     )
     response = templates.TemplateResponse(request, "admin_record.html", ctx)
