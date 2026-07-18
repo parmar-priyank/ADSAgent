@@ -513,6 +513,9 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     # view-only here (editing it belongs on the Customer Record page), but
     # it's shown so an admin can cross-check without leaving this page.
     record = db.get_quote(v["quote_id"])
+    # Only needed for the Post-QC tile's empty state (who it's assigned to,
+    # if no Post-QC run has happened yet).
+    post_qc_assignee = db.get_post_qc_assignee(v["quote_id"]) if other_kind == "post" and not other_v else None
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
@@ -536,6 +539,7 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
         "other_yes_count": other_yes_count,
         "other_no_count": other_no_count,
         "other_na_count": other_na_count,
+        "post_qc_assignee": post_qc_assignee,
     })
     resp.headers.update(_NO_CACHE)
     return resp
