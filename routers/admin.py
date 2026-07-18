@@ -12,6 +12,8 @@ Routes:
   GET  /admin/users/{user_id}
   POST /admin/users/{user_id}/change-password
   POST /admin/users/{user_id}/change-role
+  POST /admin/users/{user_id}/toggle-active
+  POST /admin/users/{user_id}/qc-access
   POST /admin/users/{user_id}/delete
   POST /admin/records/{record_id}/delete
   POST /admin/settings/theme
@@ -280,6 +282,34 @@ def admin_change_role(user_id: int, request: Request,
         label = "Admin" if new_role == "admin" else "User"
         return RedirectResponse(url=f"/admin/users/{user_id}?success=Role+changed+to+{label}.", status_code=303)
     return RedirectResponse(url=f"/admin/users/{user_id}?error=Invalid+role.", status_code=303)
+
+
+@router.post("/admin/users/{user_id}/toggle-active")
+def admin_toggle_active(user_id: int, request: Request, user=Depends(require_admin)):
+    if user_id == user["id"]:
+        return RedirectResponse(url=f"/admin/users/{user_id}?error=Cannot+deactivate+your+own+account.", status_code=303)
+    target = adb.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "User not found.")
+    if target.get("role") == "admin":
+        raise HTTPException(403, "Admin accounts cannot be deactivated.")
+    new_active = not target.get("is_active", 1)
+    adb.set_active(user_id, new_active)
+    label = "activated" if new_active else "deactivated"
+    return RedirectResponse(url=f"/admin/users/{user_id}?success=User+{label}.", status_code=303)
+
+
+@router.post("/admin/users/{user_id}/qc-access")
+def admin_set_qc_access(user_id: int, request: Request,
+                        can_pre_qc: str = Form(""), can_post_qc: str = Form(""),
+                        user=Depends(require_admin)):
+    target = adb.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "User not found.")
+    if target.get("role") == "admin":
+        raise HTTPException(403, "QC access does not apply to admin accounts.")
+    adb.set_qc_access(user_id, can_pre_qc=bool(can_pre_qc), can_post_qc=bool(can_post_qc))
+    return RedirectResponse(url=f"/admin/users/{user_id}?success=QC+access+updated.", status_code=303)
 
 
 @router.post("/admin/users/{user_id}/delete")

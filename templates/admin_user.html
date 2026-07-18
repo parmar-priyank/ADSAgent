@@ -38,7 +38,16 @@
       <div style="flex:1;min-width:160px;">
         <div style="font-size:19px;font-weight:800;color:var(--ink);line-height:1.15;">{{ target.full_name or target.username }}</div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">@{{ target.username }}</div>
-        <span class="badge badge-{{ target.role }}" style="font-size:10px;letter-spacing:.06em;margin-top:8px;display:inline-block;">{{ target.role | upper }}</span>
+        <div style="margin-top:8px;display:flex;gap:6px;">
+          <span class="badge badge-{{ target.role }}" style="font-size:10px;letter-spacing:.06em;">{{ target.role | upper }}</span>
+          {% if target.role == 'user' %}
+            {% if target.is_active %}
+            <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:20px;padding:2px 10px;">ACTIVE</span>
+            {% else %}
+            <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:20px;padding:2px 10px;">INACTIVE</span>
+            {% endif %}
+          {% endif %}
+        </div>
       </div>
 
       <!-- Stat chips -->
@@ -57,12 +66,21 @@
         </div>
       </div>
 
-      <!-- Delete: admin accounts (including your own) cannot be deleted from the UI -->
+      <!-- Activate/Deactivate + Delete: admin accounts (including your own) cannot be modified this way from the UI -->
       {% if target.id != current_user.id and target.role != 'admin' %}
-      <form action="/admin/users/{{ target.id }}/delete" method="post"
-            onsubmit="return confirm('Permanently delete {{ target.username }}? This cannot be undone.');">
-        <button type="submit" class="link-btn danger" style="padding:8px 16px;font-size:12.5px;">Delete User</button>
-      </form>
+      <div style="display:flex;gap:8px;">
+        <form action="/admin/users/{{ target.id }}/toggle-active" method="post">
+          {% if target.is_active %}
+          <button type="submit" class="link-btn" style="padding:8px 16px;font-size:12.5px;">Deactivate</button>
+          {% else %}
+          <button type="submit" class="link-btn" style="padding:8px 16px;font-size:12.5px;color:#2d7a4a;">Activate</button>
+          {% endif %}
+        </form>
+        <form action="/admin/users/{{ target.id }}/delete" method="post"
+              onsubmit="return confirm('Permanently delete {{ target.username }}? This cannot be undone.');">
+          <button type="submit" class="link-btn danger" style="padding:8px 16px;font-size:12.5px;">Delete User</button>
+        </form>
+      </div>
       {% endif %}
 
     </div>
@@ -155,6 +173,29 @@
     </div>
   </div>
 
+  <!-- QC Access: which template stages this user is allowed to run -->
+  {% if target.role == 'user' %}
+  <div class="dash-card" style="margin-bottom:0;grid-column:1 / -1;">
+    <div class="dash-card-body" style="padding:20px 22px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <div style="width:30px;height:30px;border-radius:8px;background:rgba(222,93,24,.1);display:flex;align-items:center;justify-content:center;font-size:14px;">✅</div>
+        <span style="font-size:13px;font-weight:700;color:var(--ink);">QC Access</span>
+      </div>
+      <form action="/admin/users/{{ target.id }}/qc-access" method="post" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;">
+          <input type="checkbox" name="can_pre_qc" value="1" {% if target.can_pre_qc %}checked{% endif %} style="width:16px;height:16px;">
+          Pre-Install QC
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;">
+          <input type="checkbox" name="can_post_qc" value="1" {% if target.can_post_qc %}checked{% endif %} style="width:16px;height:16px;">
+          Post-Install QC
+        </label>
+        <button type="submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Save</button>
+      </form>
+      <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5;">Controls which checklist stages this user can select when running QC.</p>
+    </div>
+  </div>
+  {% endif %}
 
 </div>
 

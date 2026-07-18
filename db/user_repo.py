@@ -33,7 +33,10 @@ def init_auth_db():
         for col in ("full_name TEXT DEFAULT NULL", "email TEXT DEFAULT NULL",
                     "phone TEXT DEFAULT NULL", "email_verified INTEGER DEFAULT 0",
                     "two_factor_enabled INTEGER DEFAULT 0",
-                    "is_super_admin INTEGER DEFAULT 0"):
+                    "is_super_admin INTEGER DEFAULT 0",
+                    "is_active INTEGER DEFAULT 1",
+                    "can_pre_qc INTEGER DEFAULT 1",
+                    "can_post_qc INTEGER DEFAULT 0"):
             try:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except sqlite3.OperationalError:
@@ -97,15 +100,18 @@ def verify_user(username: str, password: str):
         row = conn.execute(
             "SELECT * FROM users WHERE username = ?", (username,)
         ).fetchone()
-    if row and bcrypt.checkpw(password.encode(), row["password"].encode()):
-        return _safe_user(row)
-    return None
+    if not row or not bcrypt.checkpw(password.encode(), row["password"].encode()):
+        return None
+    if not row["is_active"]:
+        return None
+    return _safe_user(row)
 
 
 def list_users():
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id, username, role, created_at FROM users ORDER BY id ASC"
+            "SELECT id, username, role, created_at, is_active, can_pre_qc, can_post_qc "
+            "FROM users ORDER BY id ASC"
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -150,6 +156,19 @@ def set_super_admin(user_id: int, is_super: bool) -> bool:
             return False
         conn.execute("UPDATE users SET is_super_admin = ? WHERE id = ?", (1 if is_super else 0, user_id))
     return True
+
+
+def set_active(user_id: int, active: bool):
+    with get_db() as conn:
+        conn.execute("UPDATE users SET is_active = ? WHERE id = ?", (1 if active else 0, user_id))
+
+
+def set_qc_access(user_id: int, can_pre_qc: bool, can_post_qc: bool):
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE users SET can_pre_qc = ?, can_post_qc = ? WHERE id = ?",
+            (1 if can_pre_qc else 0, 1 if can_post_qc else 0, user_id),
+        )
 
 
 def get_user(user_id: int):

@@ -345,6 +345,10 @@ def require_login(request: Request):
     if not user or user.get("role") != "user":
         raise _AuthRedirect("/login")
     fresh = adb.get_user(user["id"])
+    if fresh and not fresh.get("is_active", 1):
+        # Deactivated mid-session — kick out immediately rather than waiting
+        # for their session to expire or them to log out naturally.
+        raise _AuthRedirect("/login?error=Your+account+has+been+deactivated.")
     return fresh if fresh else user
 
 
@@ -381,6 +385,8 @@ def require_qc_access(request: Request):
     user = _get_session(request)
     if user and user.get("role") == "user":
         fresh = adb.get_user(user["id"])
+        if fresh and not fresh.get("is_active", 1):
+            raise _AuthRedirect("/login?error=Your+account+has+been+deactivated.")
         return fresh if fresh else user
 
     admin_user = _get_admin_session(request)

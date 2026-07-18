@@ -133,17 +133,18 @@
 <div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;">
 
   <!-- Table header -->
-  <div style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:10px 20px;background:#faf8f6;border-bottom:1px solid #f0ece8;">
+  <div style="display:grid;grid-template-columns:40px 1fr 140px 100px 90px 190px;gap:0;padding:10px 20px;background:#faf8f6;border-bottom:1px solid #f0ece8;">
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">#</div>
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">User</div>
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Joined</div>
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Role</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Status</div>
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:right;">Actions</div>
   </div>
 
   {% for u in regular_users %}
   <div onclick="window.location='/admin/users/{{ u.id }}'"
-       style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:13px 20px;border-top:1px solid #f0ece8;cursor:pointer;align-items:center;transition:background .12s;{% if loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}"
+       style="display:grid;grid-template-columns:40px 1fr 140px 100px 90px 190px;gap:0;padding:13px 20px;border-top:1px solid #f0ece8;cursor:pointer;align-items:center;transition:background .12s;{% if loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}"
        onmouseover="this.style.background='#faf5f0'" onmouseout="this.style.background='{% if loop.index is even %}#fdfcfb{% else %}#fff{% endif %}'">
 
     <!-- Index -->
@@ -151,11 +152,11 @@
 
     <!-- Avatar + name -->
     <div style="display:flex;align-items:center;gap:12px;">
-      <div style="width:36px;height:36px;border-radius:50%;background:{{ avatar_colors[loop.index0 % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <div style="width:36px;height:36px;border-radius:50%;background:{{ avatar_colors[loop.index0 % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;{% if not u.is_active %}opacity:.45;{% endif %}">
         <span style="font-size:14px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:-.5px;">{{ u.username[0] }}{{ u.username[1] if u.username|length > 1 else '' }}</span>
       </div>
       <div>
-        <div style="font-size:14px;font-weight:700;color:#1a1a1a;">{{ u.username }}</div>
+        <div style="font-size:14px;font-weight:700;color:#1a1a1a;{% if not u.is_active %}opacity:.5;{% endif %}">{{ u.username }}</div>
         <div style="font-size:11px;color:#aaa;margin-top:1px;">User account</div>
       </div>
     </div>
@@ -168,11 +169,33 @@
       <span style="font-size:11px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:20px;padding:3px 12px;letter-spacing:.04em;">User</span>
     </div>
 
+    <!-- Status -->
+    <div>
+      {% if u.is_active %}
+      <span style="font-size:11px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:20px;padding:3px 12px;letter-spacing:.04em;">Active</span>
+      {% else %}
+      <span style="font-size:11px;font-weight:700;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:20px;padding:3px 12px;letter-spacing:.04em;">Inactive</span>
+      {% endif %}
+    </div>
+
     <!-- Actions -->
     <div style="display:flex;justify-content:flex-end;gap:6px;" onclick="event.stopPropagation();">
       <a href="/admin/users/{{ u.id }}"
          style="font-size:12px;font-weight:600;color:#555;background:#fff;border:1.5px solid #ddd;border-radius:7px;padding:4px 12px;text-decoration:none;transition:border-color .12s;"
          onmouseover="this.style.borderColor='#c45010';this.style.color='#c45010'" onmouseout="this.style.borderColor='#ddd';this.style.color='#555'">View</a>
+      <form action="/admin/users/{{ u.id }}/toggle-active" method="post" style="margin:0;">
+        {% if u.is_active %}
+        <button type="submit"
+                style="font-size:12px;font-weight:600;color:#a35a1a;background:#fdf0e4;border:1.5px solid #f0d3ae;border-radius:7px;padding:4px 12px;cursor:pointer;">
+          Deactivate
+        </button>
+        {% else %}
+        <button type="submit"
+                style="font-size:12px;font-weight:600;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:7px;padding:4px 12px;cursor:pointer;">
+          Activate
+        </button>
+        {% endif %}
+      </form>
       {% if u.id != current_user.id %}
       <form action="/admin/users/{{ u.id }}/delete" method="post"
             onsubmit="return confirm('Delete {{ u.username }}? This cannot be undone.');" style="margin:0;">
