@@ -73,9 +73,24 @@ def init_db():
             ("saved_by_user_id",     "INTEGER"),
             ("saved_at",             "TIMESTAMP"),
             ("email_results_json",   "TEXT DEFAULT ''"),
+            # Which checklist stage this run was against — 'pre' for every
+            # version that existed before Post-QC, hence the default.
+            ("kind",                 "TEXT DEFAULT 'pre'"),
         ]:
             if col not in qcv_cols:
                 conn.execute(f"ALTER TABLE qc_versions ADD COLUMN {col} {defn}")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS post_qc_assignments (
+                quote_id    INTEGER PRIMARY KEY,
+                user_id     INTEGER NOT NULL,
+                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
 
         conn.execute(
             """
@@ -224,8 +239,30 @@ def get_recent(limit: int | None = 20):
                 ids,
             ).fetchall()
             count_map = {r["quote_id"]: r["cnt"] for r in counts}
+            kind_counts = conn.execute(
+                f"SELECT quote_id, COALESCE(kind, 'pre') as kind, COUNT(*) as cnt "
+                f"FROM qc_versions WHERE quote_id IN ({placeholders}) GROUP BY quote_id, kind",
+                ids,
+            ).fetchall()
+            pre_count_map: dict = {}
+            post_count_map: dict = {}
+            for r in kind_counts:
+                if r["kind"] == "post":
+                    post_count_map[r["quote_id"]] = r["cnt"]
+                else:
+                    pre_count_map[r["quote_id"]] = r["cnt"]
+            assignees = conn.execute(
+                f"SELECT pqa.quote_id, pqa.user_id, u.username "
+                f"FROM post_qc_assignments pqa JOIN users u ON u.id = pqa.user_id "
+                f"WHERE pqa.quote_id IN ({placeholders})",
+                ids,
+            ).fetchall()
+            assignee_map = {r["quote_id"]: {"user_id": r["user_id"], "username": r["username"]} for r in assignees}
             for q in quotes:
                 q["qc_version_count"] = count_map.get(q["id"], 0)
+                q["pre_qc_count"] = pre_count_map.get(q["id"], 0)
+                q["post_qc_count"] = post_count_map.get(q["id"], 0)
+                q["post_qc_assignee"] = assignee_map.get(q["id"])
     for display_num, q in enumerate(quotes, start=1):
         q["display_num"] = display_num
     return quotes
@@ -273,7 +310,10 @@ def add_qc_version(
     confirmed_by_user_id: int = None,
     status: str = "confirmed",
     saved_by_user_id: int = None,
+    kind: str = "pre",
 ) -> tuple:
+    if kind not in ("pre", "post"):
+        kind = "pre"
     with get_db() as conn:
         row = conn.execute(
             "SELECT COALESCE(MAX(version), 0) FROM qc_versions WHERE quote_id = ?",
@@ -285,12 +325,12 @@ def add_qc_version(
             INSERT INTO qc_versions
                 (quote_id, version, template_name, zip_filename,
                  yes_count, no_count, na_count, excel_blob, rows_json,
-                 email_results_json, confirmed_by_user_id, status, saved_by_user_id, saved_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                 email_results_json, confirmed_by_user_id, status, saved_by_user_id, saved_at, kind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
             """,
             (quote_id, next_version, template_name, zip_filename,
              yes_count, no_count, na_count, xlsx_bytes, rows_json,
-             email_results_json or "", confirmed_by_user_id, status, saved_by_user_id),
+             email_results_json or "", confirmed_by_user_id, status, saved_by_user_id, kind),
         )
         version_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     return version_id, next_version
@@ -373,7 +413,8 @@ def get_qc_versions(quote_id: int) -> list:
             """
             SELECT id, version, template_name, zip_filename,
                    yes_count, no_count, na_count, confirmed_at, saved_at,
-                   COALESCE(status, 'confirmed') as status
+                   COALESCE(status, 'confirmed') as status,
+                   COALESCE(kind, 'pre') as kind
             FROM qc_versions WHERE quote_id = ?
             ORDER BY version DESC
             """,
@@ -397,7 +438,7 @@ def get_qc_history_by_user(user_id: int) -> list:
             SELECT qv.id, qv.version, qv.template_name, qv.zip_filename,
                    qv.yes_count, qv.no_count, qv.na_count,
                    qv.status, qv.confirmed_at, qv.saved_at,
-                   qv.quote_id,
+                   qv.quote_id, COALESCE(qv.kind, 'pre') as kind,
                    q.customer_name, q.quote_number,
                    q.install_date, q.total_price
             FROM qc_versions qv
@@ -412,6 +453,68 @@ def get_qc_history_by_user(user_id: int) -> list:
 
 # Alias kept for any call sites that use the old name
 get_qc_history_for_user = get_qc_history_by_user
+
+
+# ---------------------------------------------------------------------------
+# Post-QC customer assignment
+# ---------------------------------------------------------------------------
+
+def assign_post_qc(quote_id: int, user_id: int):
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO post_qc_assignments (quote_id, user_id, assigned_at) "
+            "VALUES (?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(quote_id) DO UPDATE SET user_id = excluded.user_id, "
+            "assigned_at = CURRENT_TIMESTAMP",
+            (quote_id, user_id),
+        )
+
+
+def unassign_post_qc(quote_id: int):
+    with get_db() as conn:
+        conn.execute("DELETE FROM post_qc_assignments WHERE quote_id = ?", (quote_id,))
+
+
+def get_post_qc_assignee(quote_id: int):
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT pqa.user_id, u.username FROM post_qc_assignments pqa "
+            "JOIN users u ON u.id = pqa.user_id WHERE pqa.quote_id = ?",
+            (quote_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_assigned_quotes_for_user(user_id: int) -> list:
+    """Customers assigned to this user for Post-QC, most recently assigned
+    first — the list a Post-QC user sees on their home page."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT q.*, pqa.assigned_at
+            FROM post_qc_assignments pqa
+            JOIN quotes q ON q.id = pqa.quote_id
+            WHERE pqa.user_id = ?
+            ORDER BY pqa.assigned_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+        quotes = _attach_line_items(conn, [dict(r) for r in rows])
+        if quotes:
+            ids = [q["id"] for q in quotes]
+            placeholders = ",".join("?" * len(ids))
+            kind_counts = conn.execute(
+                f"SELECT quote_id, COALESCE(kind, 'pre') as kind, COUNT(*) as cnt "
+                f"FROM qc_versions WHERE quote_id IN ({placeholders}) GROUP BY quote_id, kind",
+                ids,
+            ).fetchall()
+            post_count_map: dict = {}
+            for r in kind_counts:
+                if r["kind"] == "post":
+                    post_count_map[r["quote_id"]] = r["cnt"]
+            for q in quotes:
+                q["post_qc_count"] = post_count_map.get(q["id"], 0)
+    return quotes
 
 
 # ---------------------------------------------------------------------------

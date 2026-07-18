@@ -1,0 +1,52 @@
+{% extends "user_base.html" %}
+
+{% block title %}Post-Install QC{% endblock %}
+
+{% block content %}
+<div class="wrap" style="padding-top:32px;max-width:960px;">
+
+  <!-- Header -->
+  <div style="margin-bottom:24px;">
+    <div style="font-size:20px;font-weight:800;color:var(--ink);letter-spacing:-.02em;margin-bottom:4px;">Post-Install QC</div>
+    <div style="font-size:13px;color:var(--muted);">Customers assigned to you for Post-Install QC.</div>
+  </div>
+
+  {% if assigned %}
+  <div style="display:flex;flex-direction:column;gap:10px;">
+    {% for r in assigned %}
+    <a href="/post-qc/customer/{{ r['id'] }}"
+       style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;text-decoration:none;
+              background:var(--surface3);border:1px solid var(--line2);border-radius:14px;
+              padding:16px 20px;transition:border-color .15s;"
+       onmouseover="this.style.borderColor='var(--brand)'" onmouseout="this.style.borderColor='var(--line2)'">
+
+      <div style="flex:1;min-width:160px;">
+        <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:2px;">{{ r['customer_name'] or '—' }}</div>
+        <div style="font-size:12px;color:var(--muted);">{{ r['quote_number'] or '' }}{% if r['quote_number'] and r['install_date'] %} &bull; {% endif %}{% if r['install_date'] %}Install: {{ r['install_date'] }}{% endif %}</div>
+      </div>
+
+      <div style="flex-shrink:0;">
+        {% if r['post_qc_count'] > 0 %}
+        <span style="display:inline-flex;align-items:center;gap:4px;background:#2d7a4a;color:#fff;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700;letter-spacing:.3px;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Post-QC Done
+        </span>
+        {% else %}
+        <span style="font-size:11px;font-weight:700;color:var(--brand);background:var(--brand-glow);border-radius:20px;padding:3px 12px;letter-spacing:.3px;">
+          Pending
+        </span>
+        {% endif %}
+      </div>
+
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:14px;text-align:center;padding:60px 20px;color:var(--muted);font-size:14px;">
+    No customers have been assigned to you for Post-Install QC yet.
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

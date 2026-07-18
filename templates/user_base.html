@@ -29,6 +29,16 @@
 
         {% block nav_back %}{% endblock %}
 
+        {% if current_user.role != 'admin' and current_user.can_post_qc %}
+        <a href="/post-qc" class="home-nav-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Post-QC
+        </a>
+        {% endif %}
+
         <a href="/user/history" class="home-nav-btn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">

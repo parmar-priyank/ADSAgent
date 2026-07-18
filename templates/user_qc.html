@@ -3,6 +3,15 @@
 {% block title %}QC Cross-Check{% endblock %}
 
 {% block nav_back %}
+{% if kind == 'post' %}
+<a href="/post-qc" class="home-nav-btn">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="15 18 9 12 15 6"/>
+  </svg>
+  Back
+</a>
+{% else %}
 <a href="/user_upload?id={{ quote_id }}" class="home-nav-btn">
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
        stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -10,12 +19,33 @@
   </svg>
   Back
 </a>
+{% endif %}
 {% endblock %}
 
 {% block content %}
 <div class="wrap" style="max-width:760px;padding-top:32px;">
 
   <!-- Step tracker -->
+  {% if kind == 'post' %}
+  <div class="step-tracker">
+    <div class="step-item done">
+      <div class="step-circle">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="step-label">Select Customer</div>
+    </div>
+    <div class="step-connector done"></div>
+    <div class="step-item active">
+      <div class="step-circle">2</div>
+      <div class="step-label">Upload ZIP</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item">
+      <div class="step-circle">3</div>
+      <div class="step-label">Confirm</div>
+    </div>
+  </div>
+  {% else %}
   <div class="step-tracker">
     <div class="step-item done">
       <div class="step-circle">
@@ -41,10 +71,15 @@
       <div class="step-label">Confirm</div>
     </div>
   </div>
+  {% endif %}
 
   <div class="card" style="border-color:rgba(245,166,35,.35);box-shadow:0 0 0 3px rgba(245,166,35,.06),var(--shadow-card);margin-top:20px;">
     <p style="font-size:14px;color:var(--muted);margin:0 0 24px;">
+      {% if kind == 'post' %}
+      Select a Post-Install QC checklist template, then upload the ZIP containing the supporting documents (images &amp; PDFs) referenced in that template.
+      {% else %}
       Select a checklist template, then upload the ZIP containing the supporting documents (images &amp; PDFs) referenced in that template.
+      {% endif %}
     </p>
 
     {% if error %}
@@ -55,6 +90,7 @@
 
     <form action="/run-checklist" method="post" enctype="multipart/form-data" id="check-form">
       <input type="hidden" name="quote_id" value="{{ quote_id }}">
+      <input type="hidden" name="kind" value="{{ kind or 'pre' }}">
       <input type="hidden" name="email_results_json" value="{{ email_results_json | default('') | e }}">
 
       {% if saved_templates %}
@@ -69,7 +105,11 @@
       </div>
       {% else %}
       <div style="padding:12px;background:var(--err-bg);border:1px solid rgba(248,113,113,.25);border-radius:8px;font-size:13px;color:var(--err);margin-bottom:18px;">
+        {% if kind == 'post' %}
+        No Post-Install QC checklist templates found. Ask an admin to upload one.
+        {% else %}
         No checklist templates found. <a href="/Excel" style="color:var(--brand);">Upload one first &rarr;</a>
+        {% endif %}
       </div>
       {% endif %}
 

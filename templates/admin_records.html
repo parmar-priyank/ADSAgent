@@ -22,7 +22,8 @@
         <th>Total</th>
         <th>Install Date</th>
         <th>Preferred Date</th>
-        <th style="text-align:center;">QC</th>
+        <th style="text-align:center;">Pre-QC</th>
+        <th style="text-align:center;">Post-QC</th>
         <th style="text-align:right;">Actions</th>
       </tr>
     </thead>
@@ -37,14 +38,42 @@
         <td class="muted">{{ r['install_date'] }}</td>
         <td class="muted">{{ r['preferred_install_date'] or '—' }}</td>
         <td style="text-align:center;">
-          {% if r['qc_version_count'] > 0 %}
+          {% if r['pre_qc_count'] > 0 %}
           <span style="display:inline-flex;align-items:center;gap:4px;background:var(--brand);color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:.3px;">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            {{ r['qc_version_count'] }} QC
+            {{ r['pre_qc_count'] }} QC
           </span>
           {% else %}
           <span style="color:var(--text2);font-size:12px;">—</span>
           {% endif %}
+        </td>
+        <td style="text-align:center;" onclick="event.stopPropagation();">
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;">
+            {% if r['post_qc_count'] > 0 %}
+            <span style="display:inline-flex;align-items:center;gap:4px;background:#2d7a4a;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:.3px;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              {{ r['post_qc_count'] }} QC
+            </span>
+            {% endif %}
+            {% if r['pre_qc_count'] > 0 %}
+              {% if post_qc_users %}
+              <form action="/admin/records/{{ r['id'] }}/assign-post-qc" method="post"
+                    onsubmit="return true;" style="display:inline-flex;align-items:center;gap:4px;">
+                <select name="assignee_id" onchange="this.form.submit()"
+                        style="font-size:11px;padding:3px 6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);max-width:120px;">
+                  <option value="">{{ 'Unassigned' if not r['post_qc_assignee'] else 'Reassign…' }}</option>
+                  {% for pu in post_qc_users %}
+                  <option value="{{ pu['id'] }}" {% if r['post_qc_assignee'] and r['post_qc_assignee']['user_id'] == pu['id'] %}selected{% endif %}>{{ pu['username'] }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+              {% else %}
+              <span style="color:var(--text2);font-size:11px;">No Post-QC users</span>
+              {% endif %}
+            {% else %}
+            <span style="color:var(--text2);font-size:12px;">—</span>
+            {% endif %}
+          </div>
         </td>
         <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
           <form action="/admin/records/{{ r['id'] }}/delete" method="post" style="display:inline;"

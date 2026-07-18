@@ -14,6 +14,8 @@ Routes:
   GET  /user/qc-version/{version_id}
   POST /user/qc-version/{version_id}/save
   POST /user/qc-version/{version_id}/add-email
+  GET  /post-qc
+  GET  /post-qc/customer/{quote_id}
 """
 import asyncio
 import base64
@@ -645,12 +647,14 @@ def email_verify_save_draft(
 # ---------------------------------------------------------------------------
 
 @router.get("/qc-check", response_class=HTMLResponse)
-def qc_check_page(request: Request, quote_id: str = "", user=Depends(require_qc_access)):
-    saved = tdb.list_templates()
+def qc_check_page(request: Request, quote_id: str = "", kind: str = "pre", user=Depends(require_qc_access)):
+    kind = kind if kind in ("pre", "post") else "pre"
+    saved = tdb.list_templates(kind=kind)
     resp = templates.TemplateResponse(request, "user_qc.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
         "quote_id": quote_id,
+        "kind": kind,
         "saved_templates": saved,
         "email_results_json": "",
         "error": None,
@@ -666,12 +670,15 @@ def qc_check_page_with_email(
     email_results_json: str = Form(""),
     user=Depends(require_qc_access),
 ):
-    """Arrive from Step 2 (email verify) carrying the edited email results."""
-    saved = tdb.list_templates()
+    """Arrive from Step 2 (email verify) carrying the edited email results.
+    Always Pre-QC — Post-QC's flow never goes through email verify (see
+    /post-qc/customer/{quote_id}, which links straight to /qc-check?kind=post)."""
+    saved = tdb.list_templates(kind="pre")
     resp = templates.TemplateResponse(request, "user_qc.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
         "quote_id": quote_id,
+        "kind": "pre",
         "saved_templates": saved,
         "email_results_json": email_results_json,
         "error": None,
@@ -690,16 +697,19 @@ async def upload_zip(
     zip_file: UploadFile = File(...),
     quote_id: str = Form(""),
     template_id: int = Form(...),
+    kind: str = Form("pre"),
     email_results_json: str = Form(""),
     user=Depends(require_qc_access),
 ):
+    kind = kind if kind in ("pre", "post") else "pre"
     uid = user["id"]
     if uid in _active_jobs:
-        saved = tdb.list_templates()
+        saved = tdb.list_templates(kind=kind)
         resp = templates.TemplateResponse(request, "user_qc.html", {
             "current_user": user,
             "theme": _resolve_theme(user),
             "quote_id": quote_id,
+            "kind": kind,
             "saved_templates": saved,
             "error": "A checklist run is already in progress for your account. Please wait for it to finish.",
         })
@@ -714,11 +724,12 @@ async def upload_zip(
     data = await zip_file.read()
 
     def _qc_error(error: str):
-        saved = tdb.list_templates()
+        saved = tdb.list_templates(kind=kind)
         resp = templates.TemplateResponse(request, "user_qc.html", {
             "current_user": user,
             "theme": _resolve_theme(user),
             "quote_id": quote_id,
+            "kind": kind,
             "saved_templates": saved,
             "email_results_json": email_results_json,
             "error": error,
@@ -1289,6 +1300,7 @@ def checklist_confirm(
     dl_token: str = Form(""),
     zip_filename: str = Form(""),
     tpl_name: str = Form(""),
+    tpl_kind: str = Form(""),
     yes_count: int = Form(0),
     no_count: int = Form(0),
     na_count: int = Form(0),
@@ -1300,6 +1312,7 @@ def checklist_confirm(
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
     zip_filename = zip_filename[:260].replace("\n", "").replace("\r", "")
+    kind = tpl_kind if tpl_kind in ("pre", "post") else "pre"
 
     record = None
     if quote_id:
@@ -1355,6 +1368,7 @@ def checklist_confirm(
                     confirmed_by_user_id=user["id"],
                     saved_by_user_id=user["id"],
                     status="confirmed",
+                    kind=kind,
                 )
         except Exception:
             pass
@@ -1387,6 +1401,7 @@ def checklist_save_draft(
     dl_token: str = Form(""),
     zip_filename: str = Form(""),
     tpl_name: str = Form(""),
+    tpl_kind: str = Form(""),
     yes_count: int = Form(0),
     no_count: int = Form(0),
     na_count: int = Form(0),
@@ -1398,6 +1413,7 @@ def checklist_save_draft(
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
     zip_filename = zip_filename[:260].replace("\n", "").replace("\r", "")
+    kind = tpl_kind if tpl_kind in ("pre", "post") else "pre"
 
     record = None
     if quote_id:
@@ -1448,6 +1464,7 @@ def checklist_save_draft(
                     email_results_json=email_results_json,
                     saved_by_user_id=user["id"],
                     status="draft",
+                    kind=kind,
                 )
         except Exception:
             pass
@@ -1498,6 +1515,7 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
     tpl = {
         "id": 0, "name": v.get("template_name", ""),
         "customer_label": "", "address_label": "", "job_label": "", "note_text": "",
+        "kind": v.get("kind") or "pre",
     }
     # For revisiting saved versions, write the blob back to a temp file so the
     # dl_token stays small (same pattern as the live checklist flow).
@@ -1727,3 +1745,50 @@ async def user_qc_version_add_email(
         email_results_json=json.dumps(merged_results),
     )
     return {"ok": True, "email_results": merged_results}
+
+
+# ---------------------------------------------------------------------------
+# Post-QC — assigned-customer entry point
+# ---------------------------------------------------------------------------
+
+@router.get("/post-qc", response_class=HTMLResponse)
+def post_qc_customers(request: Request, user=Depends(require_qc_access)):
+    """List the customers this user has been assigned for Post-Install QC —
+    the Post-QC equivalent of Step 1 (Upload PDF): no new PDF is uploaded
+    here, since the reference/quote data already exists from that
+    customer's Pre-QC run."""
+    if user.get("role") != "admin" and not user.get("can_post_qc"):
+        raise HTTPException(403, "You do not have Post-QC access.")
+    assigned = db.get_assigned_quotes_for_user(user["id"])
+    resp = templates.TemplateResponse(request, "user_post_qc.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "assigned": assigned,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp
+
+
+@router.get("/post-qc/customer/{quote_id}", response_class=HTMLResponse)
+def post_qc_customer_detail(request: Request, quote_id: int, user=Depends(require_qc_access)):
+    """Read-only view of an assigned customer's existing reference/quote
+    details, with a link into the ZIP-upload step (Post-QC's own Step 2),
+    filtered to Post-QC templates only."""
+    if user.get("role") != "admin" and not user.get("can_post_qc"):
+        raise HTTPException(403, "You do not have Post-QC access.")
+    record = db.get_quote(quote_id)
+    if not record:
+        raise HTTPException(404, "Customer record not found.")
+    if user.get("role") != "admin":
+        assignee = db.get_post_qc_assignee(quote_id)
+        if not assignee or assignee.get("user_id") != user["id"]:
+            raise HTTPException(403, "This customer is not assigned to you for Post-QC.")
+    qc_versions = db.get_qc_versions(quote_id)
+    resp = templates.TemplateResponse(request, "user_post_qc_customer.html", {
+        "current_user": user,
+        "theme": _resolve_theme(user),
+        "record": record,
+        "qc_versions": qc_versions,
+    })
+    resp.headers.update(_NO_CACHE)
+    return resp

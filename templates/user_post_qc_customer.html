@@ -1,0 +1,92 @@
+{% extends "user_base.html" %}
+
+{% block title %}{{ record.customer_name or 'Customer' }} — Post-QC{% endblock %}
+
+{% block nav_back %}
+<a href="/post-qc" class="home-nav-btn">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="15 18 9 12 15 6"/>
+  </svg>
+  Back
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="wrap" style="padding-top:32px;">
+
+  <!-- Step tracker -->
+  <div class="step-tracker">
+    <div class="step-item active">
+      <div class="step-circle">1</div>
+      <div class="step-label">Select Customer</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item">
+      <div class="step-circle">2</div>
+      <div class="step-label">Upload ZIP</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item">
+      <div class="step-circle">3</div>
+      <div class="step-label">Confirm</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Customer &amp; Quote Details</h2>
+    <div class="kv">
+      {% for key in ['quote_number','customer_name','billing_address','delivery_address','email','phone','roof_type'] %}
+      {% set value = record.get(key, '') %}
+      <div class="kv-row">
+        <div class="k">{{ key.replace('_', ' ').title() }}</div>
+        <div class="v {{ 'empty' if not value }}">{{ value if value else '—' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Payment Details</h2>
+    <div class="kv">
+      {% for key in ['system_price','total_price','install_date','preferred_install_date'] %}
+      {% set value = record.get(key, '') %}
+      <div class="kv-row">
+        <div class="k">{{ key.replace('_', ' ').title() }}</div>
+        <div class="v {{ 'empty' if not value }}">{{ value if value else '—' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if qc_versions %}
+  <div class="card">
+    <h2>QC History</h2>
+    <table>
+      <thead>
+        <tr><th>Version</th><th>Kind</th><th>Template</th><th>Status</th><th>Date</th></tr>
+      </thead>
+      <tbody>
+        {% for v in qc_versions %}
+        <tr>
+          <td>v{{ v.version }}</td>
+          <td>{{ 'Post-QC' if v.kind == 'post' else 'Pre-QC' }}</td>
+          <td>{{ v.template_name or '—' }}</td>
+          <td>{{ v.status | title }}</td>
+          <td>{{ (v.confirmed_at or v.saved_at or '')[:16] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div style="text-align:center;margin:8px 0 32px;">
+    <a href="/qc-check?quote_id={{ record.id }}&kind=post"
+       style="display:inline-block;padding:13px 48px;font-size:1rem;background:var(--brand);color:#fff;border-radius:10px;font-weight:700;text-decoration:none;letter-spacing:-.01em;">
+      Start Post-QC &rarr;
+    </a>
+  </div>
+
+</div>
+{% endblock %}

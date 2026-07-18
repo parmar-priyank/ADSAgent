@@ -16,6 +16,7 @@ Routes:
   POST /admin/users/{user_id}/qc-access
   POST /admin/users/{user_id}/delete
   POST /admin/records/{record_id}/delete
+  POST /admin/records/{record_id}/assign-post-qc
   POST /admin/settings/theme
   POST /admin/settings/login-ip-restriction
   GET  /admin/qc-download/{quote_id}
@@ -119,7 +120,8 @@ def admin_users_page(request: Request, user=Depends(require_admin), success: str
 
 @router.get("/admin/records", response_class=HTMLResponse)
 def admin_records_page(request: Request, user=Depends(require_admin)):
-    ctx = _admin_ctx(user, records=db.get_recent(limit=None))
+    post_qc_users = [u for u in adb.list_users() if u.get("can_post_qc") and u.get("is_active", 1)]
+    ctx = _admin_ctx(user, records=db.get_recent(limit=None), post_qc_users=post_qc_users)
     response = templates.TemplateResponse(request, "admin_records.html", ctx)
     response.headers.update(_NO_CACHE)
     return response
@@ -348,6 +350,22 @@ def admin_delete_record(record_id: int, request: Request, user=Depends(require_a
     return RedirectResponse(url="/admin/records", status_code=303)
 
 
+@router.post("/admin/records/{record_id}/assign-post-qc")
+def admin_assign_post_qc(record_id: int, request: Request,
+                         assignee_id: str = Form(""), user=Depends(require_admin)):
+    record = db.get_quote(record_id)
+    if not record:
+        raise HTTPException(404, "Customer record not found.")
+    if not assignee_id.strip():
+        db.unassign_post_qc(record_id)
+        return RedirectResponse(url="/admin/records", status_code=303)
+    target = adb.get_user(int(assignee_id))
+    if not target or target.get("role") != "user" or not target.get("can_post_qc"):
+        raise HTTPException(400, "Selected user is not eligible for Post-QC assignment.")
+    db.assign_post_qc(record_id, int(assignee_id))
+    return RedirectResponse(url="/admin/records", status_code=303)
+
+
 @router.post("/admin/settings/theme")
 def admin_set_theme(request: Request, theme: str = Form(...), user=Depends(require_admin),
                     referer: str = None):
@@ -440,6 +458,7 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     tpl = {
         "id": 0, "name": v.get("template_name", ""),
         "customer_label": "", "address_label": "", "job_label": "", "note_text": "",
+        "kind": v.get("kind") or "pre",
     }
     # Same tmp-file token trick user_qc_version_revisit uses, so admin's
     # Download Excel goes through the same /checklist-download mechanism.

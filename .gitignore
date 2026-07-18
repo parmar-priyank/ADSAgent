@@ -12,6 +12,9 @@
 logs/
 *.log
 
+# ---- Runtime temp files ----
+tmp_xlsx/
+
 # ---- Python ----
 __pycache__/
 *.py[cod]

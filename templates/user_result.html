@@ -236,6 +236,7 @@
         <input type="hidden" name="dl_token"           id="draft-dl-token" value="{{ dl_token }}">
         <input type="hidden" name="zip_filename"       value="{{ zip_filename }}">
         <input type="hidden" name="tpl_name"           value="{{ tpl.name }}">
+        <input type="hidden" name="tpl_kind"           value="{{ tpl.kind or '' }}">
         <input type="hidden" name="yes_count"          id="draft-yes"       value="{{ yes_count }}">
         <input type="hidden" name="no_count"           id="draft-no"        value="{{ no_count }}">
         <input type="hidden" name="na_count"           id="draft-na"        value="{{ na_count }}">
@@ -261,6 +262,7 @@
         <input type="hidden" name="dl_token"           id="confirm-dl-token" value="{{ dl_token }}">
         <input type="hidden" name="zip_filename"       value="{{ zip_filename }}">
         <input type="hidden" name="tpl_name"           value="{{ tpl.name }}">
+        <input type="hidden" name="tpl_kind"           value="{{ tpl.kind or '' }}">
         <input type="hidden" name="yes_count"          id="confirm-yes"       value="{{ yes_count }}">
         <input type="hidden" name="no_count"           id="confirm-no"        value="{{ no_count }}">
         <input type="hidden" name="na_count"           id="confirm-na"        value="{{ na_count }}">
