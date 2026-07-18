@@ -44,7 +44,6 @@
         <th>Customer</th>
         <th>Email</th>
         <th>Total</th>
-        <th>Install Date</th>
         <th>Preferred Date</th>
         <th style="text-align:center;">Pre-QC</th>
         <th style="text-align:center;">Post-QC</th>
@@ -65,7 +64,6 @@
         <td><strong>{{ r['customer_name'] }}</strong></td>
         <td class="muted">{{ r['email'] }}</td>
         <td>{{ r['total_price'] }}</td>
-        <td class="muted">{{ r['install_date'] }}</td>
         <td class="muted">{{ r['preferred_install_date'] or '—' }}</td>
         <td style="text-align:center;">
           {% if r['pre_qc_count'] > 0 %}
