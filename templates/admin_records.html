@@ -6,6 +6,27 @@
 {% block page_crumb %}All Extractions{% endblock %}
 
 {% block content %}
+
+<!-- Bulk Post-QC assignment toolbar — shown only while 1+ rows are checked -->
+{% if post_qc_users %}
+<div id="bulk-assign-bar" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;
+     background:var(--brand-glow);border:1px solid var(--brand-glow);border-radius:10px;padding:10px 16px;margin-bottom:14px;">
+  <span id="bulk-assign-count" style="font-size:13px;font-weight:700;color:var(--brand);white-space:nowrap;"></span>
+  <form action="/admin/records/bulk-assign-post-qc" method="post" id="bulk-assign-form" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <span id="bulk-assign-ids-wrap"></span>
+    <select name="assignee_id" required
+            style="font-size:13px;padding:6px 10px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);">
+      <option value="" disabled selected>Assign selected to…</option>
+      {% for pu in post_qc_users %}
+      <option value="{{ pu['id'] }}">{{ pu['username'] }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" style="padding:7px 16px;font-size:13px;">Assign Selected</button>
+    <button type="button" class="link-btn" onclick="clearBulkSelection()">Clear</button>
+  </form>
+</div>
+{% endif %}
+
 <div class="dash-card">
   <div class="dash-card-header">
     <div class="dash-card-title">Customer Records</div>
@@ -16,6 +37,9 @@
   <table class="dash-table">
     <thead>
       <tr>
+        {% if post_qc_users %}
+        <th style="width:32px;"><input type="checkbox" id="select-all-checkbox" onclick="toggleSelectAll(this)"></th>
+        {% endif %}
         <th>ID</th>
         <th>Quote</th>
         <th>Customer</th>
@@ -31,6 +55,13 @@
     <tbody>
       {% for r in records %}
       <tr class="clickable" data-href="/admin/record/{{ r['id'] }}">
+        {% if post_qc_users %}
+        <td onclick="event.stopPropagation();">
+          {% if r['pre_qc_count'] > 0 %}
+          <input type="checkbox" class="bulk-select-checkbox" value="{{ r['id'] }}" onclick="updateBulkBar()">
+          {% endif %}
+        </td>
+        {% endif %}
         <td><span class="id-pill">{{ r['display_num'] }}</span></td>
         <td>{{ r['quote_number'] }}</td>
         <td><strong>{{ r['customer_name'] }}</strong></td>
@@ -40,9 +71,9 @@
         <td class="muted">{{ r['preferred_install_date'] or '—' }}</td>
         <td style="text-align:center;">
           {% if r['pre_qc_count'] > 0 %}
-          <span style="display:inline-flex;align-items:center;gap:4px;background:var(--brand);color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:.3px;">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            {{ r['pre_qc_count'] }} QC
+          <span style="display:inline-flex;align-items:center;gap:3px;color:#2d7a4a;font-size:12px;font-weight:700;white-space:nowrap;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Done
           </span>
           {% else %}
           <span style="color:var(--text2);font-size:12px;">—</span>
@@ -51,9 +82,9 @@
         <td style="text-align:center;white-space:nowrap;" onclick="event.stopPropagation();">
           <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
             {% if r['post_qc_count'] > 0 %}
-            <span style="display:inline-flex;align-items:center;gap:4px;background:#2d7a4a;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:.3px;white-space:nowrap;">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              {{ r['post_qc_count'] }} QC
+            <span style="display:inline-flex;align-items:center;gap:3px;color:#2d7a4a;font-size:12px;font-weight:700;white-space:nowrap;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Done
             </span>
             {% endif %}
             {% if r['pre_qc_count'] > 0 %}
@@ -61,7 +92,7 @@
               <form action="/admin/records/{{ r['id'] }}/assign-post-qc" method="post"
                     onsubmit="return true;" style="display:inline-flex;align-items:center;gap:4px;">
                 <select name="assignee_id" onchange="this.form.submit()"
-                        style="font-size:11px;padding:3px 6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);width:110px;">
+                        style="font-size:11px;padding:3px 4px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);width:78px;">
                   <option value="">{{ 'Unassigned' if not r['post_qc_assignee'] else 'Reassign…' }}</option>
                   {% for pu in post_qc_users %}
                   <option value="{{ pu['id'] }}" {% if r['post_qc_assignee'] and r['post_qc_assignee']['user_id'] == pu['id'] %}selected{% endif %}>{{ pu['username'] }}</option>
@@ -102,5 +133,38 @@
       window.location.href = row.dataset.href;
     });
   });
+
+  function toggleSelectAll(checkbox) {
+    document.querySelectorAll('.bulk-select-checkbox').forEach(function(cb) {
+      cb.checked = checkbox.checked;
+    });
+    updateBulkBar();
+  }
+
+  function clearBulkSelection() {
+    document.querySelectorAll('.bulk-select-checkbox').forEach(function(cb) { cb.checked = false; });
+    var selectAll = document.getElementById('select-all-checkbox');
+    if (selectAll) selectAll.checked = false;
+    updateBulkBar();
+  }
+
+  function updateBulkBar() {
+    var bar = document.getElementById('bulk-assign-bar');
+    if (!bar) return;
+    var checked = Array.from(document.querySelectorAll('.bulk-select-checkbox:checked'));
+    var wrap = document.getElementById('bulk-assign-ids-wrap');
+    wrap.innerHTML = '';
+    checked.forEach(function(cb) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'record_ids'; inp.value = cb.value;
+      wrap.appendChild(inp);
+    });
+    if (checked.length > 0) {
+      bar.style.display = 'flex';
+      document.getElementById('bulk-assign-count').textContent = checked.length + ' selected';
+    } else {
+      bar.style.display = 'none';
+    }
+  }
 </script>
 {% endblock %}

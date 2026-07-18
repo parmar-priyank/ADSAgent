@@ -17,6 +17,7 @@ Routes:
   POST /admin/users/{user_id}/delete
   POST /admin/records/{record_id}/delete
   POST /admin/records/{record_id}/assign-post-qc
+  POST /admin/records/bulk-assign-post-qc
   POST /admin/settings/theme
   POST /admin/settings/login-ip-restriction
   GET  /admin/qc-download/{quote_id}
@@ -376,6 +377,34 @@ def admin_assign_post_qc(record_id: int, request: Request,
     if not target or target.get("role") != "user" or not target.get("can_post_qc"):
         raise HTTPException(400, "Selected user is not eligible for Post-QC assignment.")
     db.assign_post_qc(record_id, int(assignee_id))
+    return RedirectResponse(url="/admin/records", status_code=303)
+
+
+@router.post("/admin/records/bulk-assign-post-qc")
+async def admin_bulk_assign_post_qc(request: Request, user=Depends(require_admin)):
+    """Assign every selected customer to one Post-QC user in a single action
+    — the checkbox + toolbar workflow on Customer Records, so an admin
+    doesn't have to pick a user from the row dropdown one customer at a
+    time. Only customers with at least one Pre-QC run are ever selectable
+    in the UI, but skip anything that isn't (or doesn't exist) defensively
+    rather than trusting the submitted IDs."""
+    form = await request.form()
+    record_ids = form.getlist("record_ids")
+    assignee_id = form.get("assignee_id", "")
+    if not assignee_id:
+        raise HTTPException(400, "No user selected.")
+    target = adb.get_user(int(assignee_id))
+    if not target or target.get("role") != "user" or not target.get("can_post_qc"):
+        raise HTTPException(400, "Selected user is not eligible for Post-QC assignment.")
+    for rid in record_ids:
+        try:
+            rid_int = int(rid)
+        except (TypeError, ValueError):
+            continue
+        record = db.get_quote(rid_int)
+        if not record:
+            continue
+        db.assign_post_qc(rid_int, int(assignee_id))
     return RedirectResponse(url="/admin/records", status_code=303)
 
 
