@@ -9,14 +9,14 @@
 
 <!-- Bulk Post-QC assignment toolbar — shown only while 1+ rows are checked -->
 {% if post_qc_users %}
-<div id="bulk-assign-bar" style="display:none;align-items:center;gap:14px;flex-wrap:nowrap;
-     background:#faf8f6;border:1px solid #ede8e0;border-radius:10px;padding:12px 18px;margin-bottom:14px;">
+<div id="bulk-assign-bar" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;
+     background:#faf8f6;border:1px solid #ede8e0;border-radius:10px;padding:12px 18px;margin-bottom:14px;max-width:100%;box-sizing:border-box;">
   <span id="bulk-assign-count" style="font-size:13px;font-weight:700;color:#1a1a1a;white-space:nowrap;flex-shrink:0;"></span>
   <form action="/admin/records/bulk-assign-post-qc" method="post" id="bulk-assign-form"
-        style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;flex:1;">
+        style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;min-width:0;">
     <span id="bulk-assign-ids-wrap"></span>
     <select name="assignee_id" required
-            style="font-size:13px;padding:7px 10px;border:1px solid var(--line2);border-radius:7px;background:#fff;color:var(--ink);flex-shrink:0;">
+            style="font-size:13px;padding:7px 10px;border:1px solid var(--line2);border-radius:7px;background:#fff;color:var(--ink);width:200px;max-width:100%;flex-shrink:0;">
       <option value="" disabled selected>Assign selected to…</option>
       {% for pu in post_qc_users %}
       <option value="{{ pu['id'] }}">{{ pu['username'] }}</option>
@@ -26,9 +26,8 @@
             style="padding:7px 16px;font-size:13px;font-weight:700;color:#1a1a1a;background:#fff;border:1.5px solid #ddd;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0;">
       Assign to Post-QC User
     </button>
-    <span style="flex:1;"></span>
     <button type="button" onclick="clearBulkSelection()"
-            style="padding:7px 16px;font-size:13px;font-weight:600;color:#1a1a1a;background:#fff;border:1.5px solid #ddd;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+            style="padding:7px 16px;font-size:13px;font-weight:600;color:#1a1a1a;background:#fff;border:1.5px solid #ddd;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0;margin-left:auto;">
       Clear
     </button>
   </form>
