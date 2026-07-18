@@ -12,7 +12,8 @@
 <div id="bulk-assign-bar" style="display:none;align-items:center;gap:14px;flex-wrap:nowrap;
      background:#faf8f6;border:1px solid #ede8e0;border-radius:10px;padding:12px 18px;margin-bottom:14px;">
   <span id="bulk-assign-count" style="font-size:13px;font-weight:700;color:#1a1a1a;white-space:nowrap;flex-shrink:0;"></span>
-  <form action="/admin/records/bulk-assign-post-qc" method="post" id="bulk-assign-form" style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;">
+  <form action="/admin/records/bulk-assign-post-qc" method="post" id="bulk-assign-form"
+        style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;flex:1;">
     <span id="bulk-assign-ids-wrap"></span>
     <select name="assignee_id" required
             style="font-size:13px;padding:7px 10px;border:1px solid var(--line2);border-radius:7px;background:#fff;color:var(--ink);flex-shrink:0;">
@@ -23,8 +24,9 @@
     </select>
     <button type="submit"
             style="padding:7px 16px;font-size:13px;font-weight:700;color:#1a1a1a;background:#fff;border:1.5px solid #ddd;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0;">
-      Assign Selected
+      Assign to Post-QC User
     </button>
+    <span style="flex:1;"></span>
     <button type="button" onclick="clearBulkSelection()"
             style="padding:7px 16px;font-size:13px;font-weight:600;color:#1a1a1a;background:#fff;border:1.5px solid #ddd;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0;">
       Clear
@@ -62,7 +64,8 @@
         {% if post_qc_users %}
         <td onclick="event.stopPropagation();">
           {% if r['pre_qc_count'] > 0 %}
-          <input type="checkbox" class="bulk-select-checkbox" value="{{ r['id'] }}" onclick="updateBulkBar()">
+          <input type="checkbox" class="bulk-select-checkbox" value="{{ r['id'] }}"
+                 data-post-done="{{ '1' if r['post_qc_count'] > 0 else '0' }}" onclick="updateBulkBar()">
           {% endif %}
         </td>
         {% endif %}
@@ -149,9 +152,13 @@
       inp.type = 'hidden'; inp.name = 'record_ids'; inp.value = cb.value;
       wrap.appendChild(inp);
     });
+    // Count only customers that still need Post-QC — checking an
+    // already-done customer selects it (still gets submitted, in case the
+    // admin wants to reassign it) but shouldn't inflate the headline count.
+    var remaining = checked.filter(function(cb) { return cb.dataset.postDone !== '1'; });
     if (checked.length > 0) {
       bar.style.display = 'flex';
-      document.getElementById('bulk-assign-count').textContent = checked.length + ' selected';
+      document.getElementById('bulk-assign-count').textContent = remaining.length + ' selected';
     } else {
       bar.style.display = 'none';
     }
