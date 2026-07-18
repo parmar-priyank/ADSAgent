@@ -21,9 +21,9 @@
 {% endif %}
 
 <!-- Top bar: network toggle + Add User -->
-<div style="display:flex;gap:14px;align-items:stretch;flex-wrap:wrap;margin-bottom:24px;">
+<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:24px;">
   <div class="dash-card" style="margin:0;flex:1;min-width:280px;">
-    <div class="dash-card-body" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:18px 22px;">
+    <div class="dash-card-body" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 20px;">
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--ink);">Restrict User Login to Office Network</div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5;">
@@ -50,8 +50,8 @@
   </div>
 
   <button type="button" onclick="openCreateModal()"
-          style="display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:#fff;border:none;border-radius:12px;padding:0 24px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(222,93,24,.28);flex-shrink:0;">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          style="display:inline-flex;align-items:center;gap:7px;background:var(--brand);color:#fff;border:none;border-radius:9px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(222,93,24,.25);flex-shrink:0;align-self:center;">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     Add User
   </button>
 </div>
@@ -65,19 +65,19 @@
    buttons, and anchors can't legally nest inside another anchor — browsers
    force-close the outer one and shatter the card into fragments. #}
 <div onclick="window.location='/admin/users/{{ u.id }}'" class="dash-card user-card"
-     style="margin:0;cursor:pointer;display:block;color:inherit;">
-  <div class="dash-card-body" style="padding:20px 22px;">
-    <div style="display:flex;align-items:flex-start;gap:14px;">
-      <div style="width:44px;height:44px;border-radius:12px;background:{{ avatar_colors[color_idx % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;{% if not is_admin_row and not u.is_active %}opacity:.4;{% endif %}">
-        <span style="font-size:16px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:-.5px;">{{ u.username[0] }}{{ u.username[1] if u.username|length > 1 else '' }}</span>
+     style="margin:0;cursor:pointer;display:block;color:inherit;border-radius:14px;">
+  <div class="dash-card-body" style="padding:14px 16px;">
+    <div style="display:flex;align-items:center;gap:11px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:{{ avatar_colors[color_idx % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;{% if not is_admin_row and not u.is_active %}opacity:.4;{% endif %}">
+        <span style="font-size:13px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:-.5px;">{{ u.username[0] }}{{ u.username[1] if u.username|length > 1 else '' }}</span>
       </div>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:15px;font-weight:800;color:var(--ink);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;{% if not is_admin_row and not u.is_active %}opacity:.55;{% endif %}">{{ u.username }}</div>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Joined {{ u.created_at[:10] }}</div>
+        <div style="font-size:13.5px;font-weight:800;color:var(--ink);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;{% if not is_admin_row and not u.is_active %}opacity:.55;{% endif %}">{{ u.username }}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px;">Joined {{ u.created_at[:10] }}</div>
       </div>
     </div>
 
-    <div style="display:flex;align-items:center;gap:6px;margin-top:14px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:5px;margin-top:10px;flex-wrap:wrap;">
       {% if is_admin_row %}
       <span style="font-size:10.5px;font-weight:700;color:#a35a1a;background:#fdf0e4;border:1px solid #f0d3ae;border-radius:20px;padding:2px 10px;letter-spacing:.03em;">ADMIN</span>
       {% else %}
@@ -90,21 +90,21 @@
       {% endif %}
     </div>
 
-    <div style="display:flex;gap:6px;margin-top:16px;flex-wrap:wrap;" onclick="event.stopPropagation();">
+    <div style="display:flex;gap:5px;margin-top:12px;flex-wrap:wrap;" onclick="event.stopPropagation();">
       <a href="/admin/users/{{ u.id }}"
-         style="font-size:12px;font-weight:600;color:var(--ink2);background:var(--surface3);border:1.5px solid var(--line2);border-radius:8px;padding:6px 13px;text-decoration:none;transition:border-color .12s;">
+         style="font-size:12px;font-weight:600;color:var(--ink2);background:var(--surface3);border:1.5px solid var(--line2);border-radius:8px;padding:4px 11px;text-decoration:none;transition:border-color .12s;">
         View
       </a>
       {% if not is_admin_row %}
       <form action="/admin/users/{{ u.id }}/toggle-active" method="post" style="margin:0;">
         {% if u.is_active %}
         <button type="submit"
-                style="font-size:12px;font-weight:600;color:#a35a1a;background:#fdf0e4;border:1.5px solid #f0d3ae;border-radius:8px;padding:6px 13px;cursor:pointer;">
+                style="font-size:12px;font-weight:600;color:#a35a1a;background:#fdf0e4;border:1.5px solid #f0d3ae;border-radius:8px;padding:4px 11px;cursor:pointer;">
           Deactivate
         </button>
         {% else %}
         <button type="submit"
-                style="font-size:12px;font-weight:600;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:8px;padding:6px 13px;cursor:pointer;">
+                style="font-size:12px;font-weight:600;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:8px;padding:4px 11px;cursor:pointer;">
           Activate
         </button>
         {% endif %}
@@ -113,7 +113,7 @@
       <form action="/admin/users/{{ u.id }}/delete" method="post"
             onsubmit="return confirm('Delete {{ u.username }}? This cannot be undone.');" style="margin:0;">
         <button type="submit"
-                style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:8px;padding:6px 13px;cursor:pointer;">
+                style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:8px;padding:4px 11px;cursor:pointer;">
           Delete
         </button>
       </form>
@@ -130,7 +130,7 @@
   <span style="font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.01em;">Admins</span>
   <span style="font-size:11px;font-weight:700;color:#a35a1a;background:#fdf0e4;border-radius:20px;padding:2px 10px;">{{ admins | length }}</span>
 </div>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:32px;">
+<div style="display:grid;grid-template-columns:repeat(auto-fill,272px);gap:14px;margin-bottom:32px;">
   {% for u in admins %}
   {{ user_card(u, true, loop.index0) }}
   {% endfor %}
@@ -150,7 +150,7 @@
   </div>
 </div>
 {% else %}
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;">
+<div style="display:grid;grid-template-columns:repeat(auto-fill,272px);gap:14px;">
   {% for u in regular_users %}
   {{ user_card(u, false, loop.index0) }}
   {% endfor %}
