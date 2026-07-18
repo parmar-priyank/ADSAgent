@@ -423,6 +423,21 @@ def get_qc_versions(quote_id: int) -> list:
     return [dict(r) for r in rows]
 
 
+def get_latest_qc_version(quote_id: int, kind: str):
+    """Latest (highest version number) qc_versions row of a given kind for
+    this quote, or None if that kind has no run yet — used to pull in the
+    "other" kind's checklist alongside whichever version an admin is
+    currently viewing, so both Pre-QC and Post-QC results can be shown on
+    one page instead of two separate ones."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM qc_versions WHERE quote_id = ? AND COALESCE(kind, 'pre') = ? "
+            "ORDER BY version DESC LIMIT 1",
+            (quote_id, kind),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def get_qc_version_excel(version_id: int) -> bytes | None:
     with get_db() as conn:
         row = conn.execute(

@@ -210,7 +210,7 @@
     </div>
     {% endif %}
 
-    <!-- Tile 3: ZIP Checklist -->
+    <!-- Tile 3: ZIP Checklist (this version's own kind — Pre-QC or Post-QC) -->
     <div onclick="{% if checklist_rows %}openChecklistModal(){% endif %}" class="card"
          style="margin-bottom:0;{% if checklist_rows %}cursor:pointer;{% else %}opacity:.55;{% endif %}transition:box-shadow .15s,border-color .15s;"
          {% if checklist_rows %}
@@ -220,7 +220,7 @@
         <div style="width:34px;height:34px;border-radius:9px;background:rgba(124,63,192,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3fc0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         </div>
-        <span style="font-size:14px;font-weight:800;color:var(--ink);">ZIP Checklist</span>
+        <span style="font-size:14px;font-weight:800;color:var(--ink);">{{ 'Post-QC Checklist' if tpl.kind == 'post' else 'Pre-QC Checklist' if other_version else 'ZIP Checklist' }}</span>
       </div>
       {% if checklist_rows %}
       <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ zip_filename or 'checklist' }}</div>
@@ -234,6 +234,31 @@
       <div style="font-size:12.5px;color:var(--muted);">No checklist rows for this version.</div>
       {% endif %}
     </div>
+
+    <!-- Tile 4: the OTHER kind's checklist (Pre-QC ↔ Post-QC) — only shown
+         when that other kind actually has a run for this customer. Read-only
+         summary here; opening it navigates to that version's own full page
+         (with its own working edit/save wiring) rather than reusing this
+         page's edit-mode JS, which is hardwired to revisit_version.id. -->
+    {% if other_version %}
+    <a href="/admin/qc-version/{{ other_version.id }}" class="card"
+       style="margin-bottom:0;cursor:pointer;text-decoration:none;display:block;transition:box-shadow .15s,border-color .15s;"
+       onmouseover="this.style.borderColor='#2d7a4a'" onmouseout="this.style.borderColor='var(--line2)'">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <div style="width:34px;height:34px;border-radius:9px;background:rgba(45,122,74,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2d7a4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <span style="font-size:14px;font-weight:800;color:var(--ink);">{{ 'Post-QC Checklist' if other_kind == 'post' else 'Pre-QC Checklist' }}</span>
+      </div>
+      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ other_version.zip_filename or 'checklist' }}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge-yes" style="border-radius:20px;">&#10003; {{ other_yes_count }}</span>
+        <span class="badge-no" style="border-radius:20px;">&#10007; {{ other_no_count }}</span>
+        <span class="badge-na" style="border-radius:20px;">&#8212; {{ other_na_count }}</span>
+      </div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">View &amp; modify &rsaquo;</div>
+    </a>
+    {% endif %}
 
   </div>
 

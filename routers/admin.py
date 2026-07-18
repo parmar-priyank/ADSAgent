@@ -485,6 +485,25 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
     na_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "N/A")
 
+    # Pull in the OTHER kind's latest version too, so an admin viewing
+    # either Pre-QC or Post-QC sees both on one page — a 4th tile appears
+    # only when that other kind actually has a run; otherwise the page
+    # looks exactly like it always has (3 tiles).
+    other_kind = "post" if tpl["kind"] == "pre" else "pre"
+    other_v = db.get_latest_qc_version(v["quote_id"], other_kind)
+    other_checklist_rows = None
+    other_yes_count = other_no_count = other_na_count = 0
+    if other_v:
+        try:
+            other_checklist_rows = json.loads(other_v["rows_json"]) if other_v.get("rows_json") else []
+            if not isinstance(other_checklist_rows, list):
+                other_checklist_rows = []
+        except Exception:
+            other_checklist_rows = []
+        other_yes_count = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "Yes")
+        other_no_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "No")
+        other_na_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "N/A")
+
     # Full PDF-extracted quote record — the Signed Agreement summary block is
     # view-only here (editing it belongs on the Customer Record page), but
     # it's shown so an admin can cross-check without leaving this page.
@@ -506,6 +525,12 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
         "preferred_install_date": v.get("preferred_install_date") or "",
         "today": datetime.now().strftime("%Y-%m-%d"),
         "record": record,
+        "other_kind": other_kind,
+        "other_version": other_v,
+        "other_checklist_rows": other_checklist_rows,
+        "other_yes_count": other_yes_count,
+        "other_no_count": other_no_count,
+        "other_na_count": other_na_count,
     })
     resp.headers.update(_NO_CACHE)
     return resp
