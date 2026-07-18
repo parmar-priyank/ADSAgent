@@ -20,40 +20,38 @@
 </div>
 {% endif %}
 
-<!-- User login network restriction toggle -->
-<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);padding:18px 22px;margin-bottom:20px;">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
-    <div>
-      <div style="font-size:13px;font-weight:700;color:#1a1a1a;">Restrict User Login to Office Network</div>
-      <div style="font-size:11.5px;color:#888;margin-top:3px;line-height:1.5;">
-        {% if login_ip_restricted %}
-        <strong style="color:#16a34a;">On</strong> — only office network IPs can sign in at the user login page. Admin login is never affected.
-        {% else %}
-        <strong style="color:#a35a1a;">Off</strong> — users can sign in from any network.
-        {% endif %}
+<!-- Top bar: network toggle + Add User -->
+<div style="display:flex;gap:14px;align-items:stretch;flex-wrap:wrap;margin-bottom:24px;">
+  <div class="dash-card" style="margin:0;flex:1;min-width:280px;">
+    <div class="dash-card-body" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:18px 22px;">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--ink);">Restrict User Login to Office Network</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5;">
+          {% if login_ip_restricted %}
+          <strong style="color:#16a34a;">On</strong> — only office network IPs can sign in at the user login page. Admin login is never affected.
+          {% else %}
+          <strong style="color:var(--brand);">Off</strong> — users can sign in from any network.
+          {% endif %}
+        </div>
       </div>
+      <form action="/admin/settings/login-ip-restriction" method="post" style="flex-shrink:0;margin:0;">
+        <input type="hidden" name="enabled" value="{{ '0' if login_ip_restricted else '1' }}">
+        <button type="submit"
+                style="padding:9px 20px;font-size:13px;font-weight:700;white-space:nowrap;border-radius:9px;cursor:pointer;
+                       {% if login_ip_restricted %}
+                       background:var(--surface3);border:1.5px solid var(--line2);color:var(--ink2);
+                       {% else %}
+                       background:var(--brand);border:none;color:#fff;
+                       {% endif %}">
+          Turn {{ 'Off' if login_ip_restricted else 'On' }}
+        </button>
+      </form>
     </div>
-    <form action="/admin/settings/login-ip-restriction" method="post" style="flex-shrink:0;">
-      <input type="hidden" name="enabled" value="{{ '0' if login_ip_restricted else '1' }}">
-      <button type="submit"
-              style="padding:8px 18px;font-size:13px;font-weight:700;white-space:nowrap;border-radius:8px;cursor:pointer;
-                     {% if login_ip_restricted %}
-                     background:#fff;border:1.5px solid #e2dbd4;color:#555;
-                     {% else %}
-                     background:#c45010;border:none;color:#fff;
-                     {% endif %}">
-        Turn {{ 'Off' if login_ip_restricted else 'On' }}
-      </button>
-    </form>
   </div>
-</div>
 
-<!-- Page header row -->
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-  <div></div>
   <button type="button" onclick="openCreateModal()"
-          style="display:inline-flex;align-items:center;gap:7px;background:#c45010;color:#fff;border:none;border-radius:9px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(196,80,16,.25);">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          style="display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:#fff;border:none;border-radius:12px;padding:0 24px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(222,93,24,.28);flex-shrink:0;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     Add User
   </button>
 </div>
@@ -62,136 +60,47 @@
 {% set admins = users | selectattr('role', 'equalto', 'admin') | list %}
 {% set regular_users = users | selectattr('role', 'equalto', 'user') | list %}
 
-<!-- ═══ Admins ═══ -->
-{% if admins %}
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-  <span style="font-size:13px;font-weight:700;color:#1a1a1a;letter-spacing:-.01em;">Admins</span>
-  <span style="font-size:11px;font-weight:700;color:#a35a1a;background:#fdf0e4;border-radius:20px;padding:1px 9px;">{{ admins | length }}</span>
-</div>
-<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;margin-bottom:28px;">
-
-  <!-- Table header -->
-  <div style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:10px 20px;background:#faf8f6;border-bottom:1px solid #f0ece8;">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">#</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">User</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Joined</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Role</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:right;">Actions</div>
-  </div>
-
-  {% for u in admins %}
-  <div onclick="window.location='/admin/users/{{ u.id }}'"
-       style="display:grid;grid-template-columns:40px 1fr 140px 120px 100px;gap:0;padding:13px 20px;border-top:1px solid #f0ece8;cursor:pointer;align-items:center;transition:background .12s;{% if loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}"
-       onmouseover="this.style.background='#faf5f0'" onmouseout="this.style.background='{% if loop.index is even %}#fdfcfb{% else %}#fff{% endif %}'">
-
-    <!-- Index -->
-    <div style="font-size:12px;font-weight:700;color:#bbb;">{{ loop.index }}</div>
-
-    <!-- Avatar + name -->
-    <div style="display:flex;align-items:center;gap:12px;">
-      <div style="width:36px;height:36px;border-radius:50%;background:{{ avatar_colors[loop.index0 % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <span style="font-size:14px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:-.5px;">{{ u.username[0] }}{{ u.username[1] if u.username|length > 1 else '' }}</span>
+{% macro user_card(u, is_admin_row, color_idx) %}
+<a href="/admin/users/{{ u.id }}" class="dash-card user-card" style="margin:0;text-decoration:none;display:block;color:inherit;">
+  <div class="dash-card-body" style="padding:20px 22px;">
+    <div style="display:flex;align-items:flex-start;gap:14px;">
+      <div style="width:44px;height:44px;border-radius:12px;background:{{ avatar_colors[color_idx % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;{% if not is_admin_row and not u.is_active %}opacity:.4;{% endif %}">
+        <span style="font-size:16px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:-.5px;">{{ u.username[0] }}{{ u.username[1] if u.username|length > 1 else '' }}</span>
       </div>
-      <div>
-        <div style="font-size:14px;font-weight:700;color:#1a1a1a;">{{ u.username }}</div>
-        <div style="font-size:11px;color:#aaa;margin-top:1px;">Admin account</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:15px;font-weight:800;color:var(--ink);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;{% if not is_admin_row and not u.is_active %}opacity:.55;{% endif %}">{{ u.username }}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Joined {{ u.created_at[:10] }}</div>
       </div>
     </div>
 
-    <!-- Joined -->
-    <div style="font-size:12px;color:#777;">{{ u.created_at[:10] }}</div>
-
-    <!-- Role -->
-    <div>
-      <span style="font-size:11px;font-weight:700;color:#a35a1a;background:#fdf0e4;border:1.5px solid #f0d3ae;border-radius:20px;padding:3px 12px;letter-spacing:.04em;">Admin</span>
-    </div>
-
-    <!-- Actions: admin accounts cannot be deleted or otherwise modified from the UI -->
-    <div style="display:flex;justify-content:flex-end;gap:6px;" onclick="event.stopPropagation();">
-      <a href="/admin/users/{{ u.id }}"
-         style="font-size:12px;font-weight:600;color:#555;background:#fff;border:1.5px solid #ddd;border-radius:7px;padding:4px 12px;text-decoration:none;transition:border-color .12s;"
-         onmouseover="this.style.borderColor='#c45010';this.style.color='#c45010'" onmouseout="this.style.borderColor='#ddd';this.style.color='#555'">View</a>
-    </div>
-
-  </div>
-  {% endfor %}
-
-</div>
-{% endif %}
-
-<!-- ═══ Users ═══ -->
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-  <span style="font-size:13px;font-weight:700;color:#1a1a1a;letter-spacing:-.01em;">Users</span>
-  <span style="font-size:11px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border-radius:20px;padding:1px 9px;">{{ regular_users | length }}</span>
-</div>
-
-{% if regular_users | length == 0 %}
-<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;text-align:center;padding:60px 20px;color:#bbb;font-size:14px;">
-  No users yet. Click "+ Add User" to create one.
-</div>
-{% else %}
-<div style="background:#fff;border:1px solid #ede8e0;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden;">
-
-  <!-- Table header -->
-  <div style="display:grid;grid-template-columns:40px 1fr 140px 100px 90px 190px;gap:0;padding:10px 20px;background:#faf8f6;border-bottom:1px solid #f0ece8;">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">#</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">User</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Joined</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Role</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;">Status</div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;text-align:right;">Actions</div>
-  </div>
-
-  {% for u in regular_users %}
-  <div onclick="window.location='/admin/users/{{ u.id }}'"
-       style="display:grid;grid-template-columns:40px 1fr 140px 100px 90px 190px;gap:0;padding:13px 20px;border-top:1px solid #f0ece8;cursor:pointer;align-items:center;transition:background .12s;{% if loop.index is even %}background:#fdfcfb;{% else %}background:#fff;{% endif %}"
-       onmouseover="this.style.background='#faf5f0'" onmouseout="this.style.background='{% if loop.index is even %}#fdfcfb{% else %}#fff{% endif %}'">
-
-    <!-- Index -->
-    <div style="font-size:12px;font-weight:700;color:#bbb;">{{ loop.index }}</div>
-
-    <!-- Avatar + name -->
-    <div style="display:flex;align-items:center;gap:12px;">
-      <div style="width:36px;height:36px;border-radius:50%;background:{{ avatar_colors[loop.index0 % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;{% if not u.is_active %}opacity:.45;{% endif %}">
-        <span style="font-size:14px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:-.5px;">{{ u.username[0] }}{{ u.username[1] if u.username|length > 1 else '' }}</span>
-      </div>
-      <div>
-        <div style="font-size:14px;font-weight:700;color:#1a1a1a;{% if not u.is_active %}opacity:.5;{% endif %}">{{ u.username }}</div>
-        <div style="font-size:11px;color:#aaa;margin-top:1px;">User account</div>
-      </div>
-    </div>
-
-    <!-- Joined -->
-    <div style="font-size:12px;color:#777;">{{ u.created_at[:10] }}</div>
-
-    <!-- Role -->
-    <div>
-      <span style="font-size:11px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:20px;padding:3px 12px;letter-spacing:.04em;">User</span>
-    </div>
-
-    <!-- Status -->
-    <div>
-      {% if u.is_active %}
-      <span style="font-size:11px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:20px;padding:3px 12px;letter-spacing:.04em;">Active</span>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:14px;flex-wrap:wrap;">
+      {% if is_admin_row %}
+      <span style="font-size:10.5px;font-weight:700;color:#a35a1a;background:#fdf0e4;border:1px solid #f0d3ae;border-radius:20px;padding:2px 10px;letter-spacing:.03em;">ADMIN</span>
       {% else %}
-      <span style="font-size:11px;font-weight:700;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:20px;padding:3px 12px;letter-spacing:.04em;">Inactive</span>
+      <span style="font-size:10.5px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border:1px solid #b8e0c6;border-radius:20px;padding:2px 10px;letter-spacing:.03em;">USER</span>
+        {% if u.is_active %}
+        <span style="font-size:10.5px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border:1px solid #b8e0c6;border-radius:20px;padding:2px 10px;letter-spacing:.03em;">ACTIVE</span>
+        {% else %}
+        <span style="font-size:10.5px;font-weight:700;color:#b83232;background:#fdeeed;border:1px solid #f5c0bc;border-radius:20px;padding:2px 10px;letter-spacing:.03em;">INACTIVE</span>
+        {% endif %}
       {% endif %}
     </div>
 
-    <!-- Actions -->
-    <div style="display:flex;justify-content:flex-end;gap:6px;" onclick="event.stopPropagation();">
+    <div style="display:flex;gap:6px;margin-top:16px;flex-wrap:wrap;" onclick="event.stopPropagation();event.preventDefault();">
       <a href="/admin/users/{{ u.id }}"
-         style="font-size:12px;font-weight:600;color:#555;background:#fff;border:1.5px solid #ddd;border-radius:7px;padding:4px 12px;text-decoration:none;transition:border-color .12s;"
-         onmouseover="this.style.borderColor='#c45010';this.style.color='#c45010'" onmouseout="this.style.borderColor='#ddd';this.style.color='#555'">View</a>
+         style="font-size:12px;font-weight:600;color:var(--ink2);background:var(--surface3);border:1.5px solid var(--line2);border-radius:8px;padding:6px 13px;text-decoration:none;transition:border-color .12s;">
+        View
+      </a>
+      {% if not is_admin_row %}
       <form action="/admin/users/{{ u.id }}/toggle-active" method="post" style="margin:0;">
         {% if u.is_active %}
         <button type="submit"
-                style="font-size:12px;font-weight:600;color:#a35a1a;background:#fdf0e4;border:1.5px solid #f0d3ae;border-radius:7px;padding:4px 12px;cursor:pointer;">
+                style="font-size:12px;font-weight:600;color:#a35a1a;background:#fdf0e4;border:1.5px solid #f0d3ae;border-radius:8px;padding:6px 13px;cursor:pointer;">
           Deactivate
         </button>
         {% else %}
         <button type="submit"
-                style="font-size:12px;font-weight:600;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:7px;padding:4px 12px;cursor:pointer;">
+                style="font-size:12px;font-weight:600;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:8px;padding:6px 13px;cursor:pointer;">
           Activate
         </button>
         {% endif %}
@@ -200,16 +109,47 @@
       <form action="/admin/users/{{ u.id }}/delete" method="post"
             onsubmit="return confirm('Delete {{ u.username }}? This cannot be undone.');" style="margin:0;">
         <button type="submit"
-                style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:7px;padding:4px 12px;cursor:pointer;">
+                style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:8px;padding:6px 13px;cursor:pointer;">
           Delete
         </button>
       </form>
       {% endif %}
+      {% endif %}
     </div>
-
   </div>
-  {% endfor %}
+</a>
+{% endmacro %}
 
+<!-- ═══ Admins ═══ -->
+{% if admins %}
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+  <span style="font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.01em;">Admins</span>
+  <span style="font-size:11px;font-weight:700;color:#a35a1a;background:#fdf0e4;border-radius:20px;padding:2px 10px;">{{ admins | length }}</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:32px;">
+  {% for u in admins %}
+  {{ user_card(u, true, loop.index0) }}
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══ Users ═══ -->
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+  <span style="font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.01em;">Users</span>
+  <span style="font-size:11px;font-weight:700;color:#2d7a4a;background:#eaf6ee;border-radius:20px;padding:2px 10px;">{{ regular_users | length }}</span>
+</div>
+
+{% if regular_users | length == 0 %}
+<div class="dash-card">
+  <div class="dash-card-body" style="text-align:center;padding:60px 20px;color:var(--muted);font-size:14px;">
+    No users yet. Click "+ Add User" to create one.
+  </div>
+</div>
+{% else %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;">
+  {% for u in regular_users %}
+  {{ user_card(u, false, loop.index0) }}
+  {% endfor %}
 </div>
 {% endif %}
 
@@ -217,16 +157,16 @@
 <div id="create-user-overlay"
      onclick="if(event.target===this)closeCreateModal()"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:500;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:16px;width:100%;max-width:440px;box-shadow:0 16px 48px rgba(0,0,0,.18);overflow:hidden;">
+  <div style="background:var(--surface2);border-radius:16px;width:100%;max-width:440px;box-shadow:0 16px 48px rgba(0,0,0,.25);overflow:hidden;">
 
     <!-- Modal header -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid #f0ece8;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--line2);">
       <div>
-        <div style="font-size:15px;font-weight:800;color:#1a1a1a;letter-spacing:-.02em;">Add New User</div>
-        <div style="font-size:12px;color:#999;margin-top:2px;">Create a login account and assign a role</div>
+        <div style="font-size:15px;font-weight:800;color:var(--ink);letter-spacing:-.02em;">Add New User</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">Create a login account and assign a role</div>
       </div>
       <button onclick="closeCreateModal()"
-              style="width:30px;height:30px;border-radius:50%;border:1px solid #e8e4e0;background:#f5f3f0;color:#666;font-size:16px;cursor:pointer;display:grid;place-items:center;line-height:1;padding:0;">
+              style="width:30px;height:30px;border-radius:50%;border:1px solid var(--line2);background:var(--surface3);color:var(--ink2);font-size:16px;cursor:pointer;display:grid;place-items:center;line-height:1;padding:0;">
         &times;
       </button>
     </div>
@@ -236,27 +176,27 @@
       <div style="display:flex;flex-direction:column;gap:16px;">
 
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Username</label>
+          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">Username</label>
           <input type="text" name="username" required placeholder="e.g. john_smith" autofocus
-                 style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;transition:border-color .15s;"
-                 onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'">
+                 style="width:100%;padding:10px 13px;border:1.5px solid var(--line2);border-radius:9px;font-size:14px;color:var(--ink);background:var(--surface3);outline:none;transition:border-color .15s;box-sizing:border-box;"
+                 onfocus="this.style.borderColor='var(--brand)'" onblur="this.style.borderColor='var(--line2)'">
         </div>
 
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Password</label>
+          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">Password</label>
           <input type="password" name="password" id="cu-pwd" required placeholder="Minimum 8 characters" minlength="8"
-                 style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;transition:border-color .15s;"
-                 onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'"
+                 style="width:100%;padding:10px 13px;border:1.5px solid var(--line2);border-radius:9px;font-size:14px;color:var(--ink);background:var(--surface3);outline:none;transition:border-color .15s;box-sizing:border-box;"
+                 onfocus="this.style.borderColor='var(--brand)'" onblur="this.style.borderColor='var(--line2)'"
                  oninput="checkCreateStrength();checkCreateMatch()">
           <!-- Strength bar -->
           <div style="margin-top:8px;">
             <div style="display:flex;gap:4px;margin-bottom:5px;">
-              <div id="cu-sb1" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
-              <div id="cu-sb2" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
-              <div id="cu-sb3" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
-              <div id="cu-sb4" style="height:3px;flex:1;border-radius:2px;background:#e8e2db;transition:background .2s;"></div>
+              <div id="cu-sb1" style="height:3px;flex:1;border-radius:2px;background:var(--line2);transition:background .2s;"></div>
+              <div id="cu-sb2" style="height:3px;flex:1;border-radius:2px;background:var(--line2);transition:background .2s;"></div>
+              <div id="cu-sb3" style="height:3px;flex:1;border-radius:2px;background:var(--line2);transition:background .2s;"></div>
+              <div id="cu-sb4" style="height:3px;flex:1;border-radius:2px;background:var(--line2);transition:background .2s;"></div>
             </div>
-            <div id="cu-strength-label" style="font-size:11px;font-weight:600;color:#bbb;"></div>
+            <div id="cu-strength-label" style="font-size:11px;font-weight:600;color:var(--muted);"></div>
           </div>
           <!-- Rules -->
           <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;">
@@ -269,35 +209,35 @@
         </div>
 
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Confirm Password</label>
+          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">Confirm Password</label>
           <input type="password" id="cu-confirm" required placeholder="Re-enter password"
-                 style="width:100%;padding:10px 13px;border:1.5px solid #e2dbd4;border-radius:9px;font-size:14px;color:#1a1a1a;background:#fafaf9;outline:none;transition:border-color .15s;"
-                 onfocus="this.style.borderColor='#c45010'" onblur="this.style.borderColor='#e2dbd4'"
+                 style="width:100%;padding:10px 13px;border:1.5px solid var(--line2);border-radius:9px;font-size:14px;color:var(--ink);background:var(--surface3);outline:none;transition:border-color .15s;box-sizing:border-box;"
+                 onfocus="this.style.borderColor='var(--brand)'" onblur="this.style.borderColor='var(--line2)'"
                  oninput="checkCreateMatch()">
           <div id="cu-match-msg" style="display:none;font-size:12px;font-weight:600;margin-top:6px;"></div>
         </div>
 
         <div>
-          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Role</label>
+          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;">Role</label>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <label id="role-user-lbl" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border:1.5px solid #c45010;border-radius:9px;cursor:pointer;background:#fdf9f7;">
+            <label id="role-user-lbl" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border:1.5px solid var(--brand);border-radius:9px;cursor:pointer;background:var(--brand-glow);">
               <input type="radio" name="role" value="user" checked style="display:none;" onchange="updateRoleUI()">
-              <div style="width:18px;height:18px;border-radius:50%;border:2px solid #c45010;display:grid;place-items:center;flex-shrink:0;" id="role-user-dot">
-                <div style="width:8px;height:8px;border-radius:50%;background:#c45010;"></div>
+              <div style="width:18px;height:18px;border-radius:50%;border:2px solid var(--brand);display:grid;place-items:center;flex-shrink:0;" id="role-user-dot">
+                <div style="width:8px;height:8px;border-radius:50%;background:var(--brand);"></div>
               </div>
               <div>
-                <div style="font-size:13px;font-weight:700;color:#1a1a1a;">User</div>
-                <div style="font-size:10px;color:#999;">Upload &amp; QC access</div>
+                <div style="font-size:13px;font-weight:700;color:var(--ink);">User</div>
+                <div style="font-size:10px;color:var(--muted);">Upload &amp; QC access</div>
               </div>
             </label>
-            <label id="role-admin-lbl" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border:1.5px solid #e2dbd4;border-radius:9px;cursor:pointer;background:#fafaf9;">
+            <label id="role-admin-lbl" style="display:flex;align-items:center;gap:10px;padding:11px 14px;border:1.5px solid var(--line2);border-radius:9px;cursor:pointer;background:var(--surface3);">
               <input type="radio" name="role" value="admin" style="display:none;" onchange="updateRoleUI()">
-              <div style="width:18px;height:18px;border-radius:50%;border:2px solid #ccc;display:grid;place-items:center;flex-shrink:0;" id="role-admin-dot">
+              <div style="width:18px;height:18px;border-radius:50%;border:2px solid var(--line2);display:grid;place-items:center;flex-shrink:0;" id="role-admin-dot">
                 <div style="width:8px;height:8px;border-radius:50%;background:transparent;"></div>
               </div>
               <div>
-                <div style="font-size:13px;font-weight:700;color:#1a1a1a;">Admin</div>
-                <div style="font-size:10px;color:#999;">Full dashboard access</div>
+                <div style="font-size:13px;font-weight:700;color:var(--ink);">Admin</div>
+                <div style="font-size:10px;color:var(--muted);">Full dashboard access</div>
               </div>
             </label>
           </div>
@@ -306,13 +246,13 @@
       </div>
 
       <!-- Modal footer -->
-      <div style="display:flex;gap:10px;margin-top:24px;padding-top:20px;border-top:1px solid #f0ece8;">
+      <div style="display:flex;gap:10px;margin-top:24px;padding-top:20px;border-top:1px solid var(--line2);">
         <button type="button" onclick="closeCreateModal()"
-                style="flex:1;padding:10px;border-radius:9px;border:1.5px solid #e2dbd4;background:#fff;color:#555;font-size:13px;font-weight:600;cursor:pointer;">
+                style="flex:1;padding:10px;border-radius:9px;border:1.5px solid var(--line2);background:var(--surface3);color:var(--ink2);font-size:13px;font-weight:600;cursor:pointer;">
           Cancel
         </button>
         <button type="submit"
-                style="flex:2;padding:10px;border-radius:9px;border:none;background:#c45010;color:#fff;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:-.01em;">
+                style="flex:2;padding:10px;border-radius:9px;border:none;background:var(--brand);color:#fff;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:-.01em;">
           Create User
         </button>
       </div>
@@ -324,6 +264,9 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .user-card:hover { border-color: var(--brand) !important; box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+</style>
 <script>
   function openCreateModal() {
     var overlay = document.getElementById('create-user-overlay');
@@ -346,22 +289,22 @@
     var adminDot = document.getElementById('role-admin-dot');
 
     if (userSelected) {
-      userLbl.style.borderColor  = '#c45010';
-      userLbl.style.background   = '#fdf9f7';
-      adminLbl.style.borderColor = '#e2dbd4';
-      adminLbl.style.background  = '#fafaf9';
-      userDot.style.borderColor  = '#c45010';
-      userDot.querySelector('div').style.background  = '#c45010';
-      adminDot.style.borderColor = '#ccc';
+      userLbl.style.borderColor  = 'var(--brand)';
+      userLbl.style.background   = 'var(--brand-glow)';
+      adminLbl.style.borderColor = 'var(--line2)';
+      adminLbl.style.background  = 'var(--surface3)';
+      userDot.style.borderColor  = 'var(--brand)';
+      userDot.querySelector('div').style.background  = 'var(--brand)';
+      adminDot.style.borderColor = 'var(--line2)';
       adminDot.querySelector('div').style.background = 'transparent';
     } else {
-      adminLbl.style.borderColor = '#c45010';
-      adminLbl.style.background  = '#fdf9f7';
-      userLbl.style.borderColor  = '#e2dbd4';
-      userLbl.style.background   = '#fafaf9';
-      adminDot.style.borderColor = '#c45010';
-      adminDot.querySelector('div').style.background  = '#c45010';
-      userDot.style.borderColor  = '#ccc';
+      adminLbl.style.borderColor = 'var(--brand)';
+      adminLbl.style.background  = 'var(--brand-glow)';
+      userLbl.style.borderColor  = 'var(--line2)';
+      userLbl.style.background   = 'var(--surface3)';
+      adminDot.style.borderColor = 'var(--brand)';
+      adminDot.querySelector('div').style.background  = 'var(--brand)';
+      userDot.style.borderColor  = 'var(--line2)';
       userDot.querySelector('div').style.background   = 'transparent';
     }
   }
@@ -390,7 +333,7 @@
     var barColor = score <= 1 ? '#dc2626' : score <= 3 ? '#f59e0b' : '#16a34a';
     var strengthLabels = ['','Weak','Fair','Good','Strong'];
     ['cu-sb1','cu-sb2','cu-sb3','cu-sb4'].forEach(function(id, i) {
-      document.getElementById(id).style.background = i < score ? barColor : '#e8e2db';
+      document.getElementById(id).style.background = i < score ? barColor : 'var(--line2)';
     });
     var lbl = document.getElementById('cu-strength-label');
     lbl.textContent = v ? (strengthLabels[score] || 'Strong') : '';
@@ -401,7 +344,7 @@
     var cp = document.getElementById('cu-confirm').value;
     var msg = document.getElementById('cu-match-msg');
     var confirmInput = document.getElementById('cu-confirm');
-    if (!cp) { msg.style.display='none'; confirmInput.style.borderColor='#e2dbd4'; return; }
+    if (!cp) { msg.style.display='none'; confirmInput.style.borderColor='var(--line2)'; return; }
     if (np === cp) {
       msg.style.display='block'; msg.style.color='#16a34a'; msg.textContent='✓ Passwords match';
       confirmInput.style.borderColor='#16a34a';
