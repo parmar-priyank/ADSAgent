@@ -78,32 +78,20 @@
           {% endif %}
         </td>
         <td style="text-align:center;white-space:nowrap;" onclick="event.stopPropagation();">
-          <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
-            {% if r['post_qc_count'] > 0 %}
-            <span style="display:inline-flex;align-items:center;gap:3px;color:#2d7a4a;font-size:12px;font-weight:700;white-space:nowrap;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              Done
-            </span>
-            {% endif %}
-            {% if r['pre_qc_count'] > 0 %}
-              {% if post_qc_users %}
-              <form action="/admin/records/{{ r['id'] }}/assign-post-qc" method="post"
-                    onsubmit="return true;" style="display:inline-flex;align-items:center;gap:4px;">
-                <select name="assignee_id" onchange="this.form.submit()"
-                        style="font-size:11px;padding:3px 4px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);width:78px;">
-                  <option value="">{{ 'Unassigned' if not r['post_qc_assignee'] else 'Reassign…' }}</option>
-                  {% for pu in post_qc_users %}
-                  <option value="{{ pu['id'] }}" {% if r['post_qc_assignee'] and r['post_qc_assignee']['user_id'] == pu['id'] %}selected{% endif %}>{{ pu['username'] }}</option>
-                  {% endfor %}
-                </select>
-              </form>
-              {% else %}
-              <span style="color:var(--text2);font-size:11px;white-space:nowrap;">No Post-QC users</span>
-              {% endif %}
+          {% if r['post_qc_count'] > 0 %}
+          <span style="display:inline-flex;align-items:center;gap:3px;color:#2d7a4a;font-size:12px;font-weight:700;white-space:nowrap;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Done
+          </span>
+          {% elif r['pre_qc_count'] > 0 %}
+            {% if r['post_qc_assignee'] %}
+            <span style="color:var(--brand);font-size:12px;font-weight:700;">{{ r['post_qc_assignee']['username'] }}</span>
             {% else %}
-            <span style="color:var(--text2);font-size:12px;">—</span>
+            <span style="color:#dc2626;font-size:12px;font-weight:700;">Not done</span>
             {% endif %}
-          </div>
+          {% else %}
+          <span style="color:var(--text2);font-size:12px;">—</span>
+          {% endif %}
         </td>
         <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
           <form action="/admin/records/{{ r['id'] }}/delete" method="post" style="display:inline;"
