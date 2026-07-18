@@ -40,7 +40,6 @@
         {% if post_qc_users %}
         <th style="width:32px;"><input type="checkbox" id="select-all-checkbox" onclick="toggleSelectAll(this)"></th>
         {% endif %}
-        <th>ID</th>
         <th>Quote</th>
         <th>Customer</th>
         <th>Email</th>
@@ -62,7 +61,6 @@
           {% endif %}
         </td>
         {% endif %}
-        <td><span class="id-pill">{{ r['display_num'] }}</span></td>
         <td>{{ r['quote_number'] }}</td>
         <td><strong>{{ r['customer_name'] }}</strong></td>
         <td class="muted">{{ r['email'] }}</td>
