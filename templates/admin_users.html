@@ -61,7 +61,11 @@
 {% set regular_users = users | selectattr('role', 'equalto', 'user') | list %}
 
 {% macro user_card(u, is_admin_row, color_idx) %}
-<a href="/admin/users/{{ u.id }}" class="dash-card user-card" style="margin:0;text-decoration:none;display:block;color:inherit;">
+{# div + onclick, NOT an <a>: the card contains its own <a>/<form> action
+   buttons, and anchors can't legally nest inside another anchor — browsers
+   force-close the outer one and shatter the card into fragments. #}
+<div onclick="window.location='/admin/users/{{ u.id }}'" class="dash-card user-card"
+     style="margin:0;cursor:pointer;display:block;color:inherit;">
   <div class="dash-card-body" style="padding:20px 22px;">
     <div style="display:flex;align-items:flex-start;gap:14px;">
       <div style="width:44px;height:44px;border-radius:12px;background:{{ avatar_colors[color_idx % 5] }};display:flex;align-items:center;justify-content:center;flex-shrink:0;{% if not is_admin_row and not u.is_active %}opacity:.4;{% endif %}">
@@ -86,7 +90,7 @@
       {% endif %}
     </div>
 
-    <div style="display:flex;gap:6px;margin-top:16px;flex-wrap:wrap;" onclick="event.stopPropagation();event.preventDefault();">
+    <div style="display:flex;gap:6px;margin-top:16px;flex-wrap:wrap;" onclick="event.stopPropagation();">
       <a href="/admin/users/{{ u.id }}"
          style="font-size:12px;font-weight:600;color:var(--ink2);background:var(--surface3);border:1.5px solid var(--line2);border-radius:8px;padding:6px 13px;text-decoration:none;transition:border-color .12s;">
         View
@@ -117,7 +121,7 @@
       {% endif %}
     </div>
   </div>
-</a>
+</div>
 {% endmacro %}
 
 <!-- ═══ Admins ═══ -->
