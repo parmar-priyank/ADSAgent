@@ -7,45 +7,14 @@
 
 {% block content %}
 
-<!-- Saved Templates list -->
-<div class="dash-card" style="margin-bottom:20px;">
-  <div class="dash-card-header">
-    <div class="dash-card-title">QC Checklist Templates</div>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <span class="dash-card-count">{{ templates|length }}</span>
-      <button type="button" class="link-btn" onclick="toggleTplUpload()" id="tpl-upload-toggle-btn">+ Upload New</button>
-    </div>
-  </div>
-
-  <!-- Upload form (hidden by default) -->
-  <div id="tpl-upload-form-wrap" style="display:none;padding:18px 22px;border-bottom:1px solid var(--line);">
-    <form action="/templates/upload" method="post" enctype="multipart/form-data">
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-        <div class="form-field" style="flex:1;min-width:180px;margin-bottom:0;">
-          <label>Template Name</label>
-          <input type="text" name="name" required placeholder="e.g. ADS Standard QC"
-                 style="width:100%;padding:9px 10px;border:1px solid var(--line2);border-radius:8px;font-size:14px;background:var(--surface3);color:var(--ink);">
-        </div>
-        <div class="form-field" style="flex:1;min-width:220px;margin-bottom:0;">
-          <label>Excel File (.xlsx)</label>
-          <input type="file" name="file" accept=".xlsx" required
-                 style="width:100%;padding:7px 10px;border:1px solid var(--line2);border-radius:8px;font-size:13px;background:var(--surface3);color:var(--ink);">
-        </div>
-        <div style="display:flex;gap:8px;padding-bottom:1px;">
-          <button type="submit">Upload</button>
-          <button type="button" class="link-btn" onclick="toggleTplUpload()">Cancel</button>
-        </div>
-      </div>
-    </form>
-  </div>
-
-  {% if templates %}
+{% macro template_table(templates_list) %}
+  {% if templates_list %}
   <table class="dash-table">
     <thead>
       <tr><th>ID</th><th>Name</th><th>Created</th><th style="text-align:right;">Actions</th></tr>
     </thead>
     <tbody>
-      {% for t in templates %}
+      {% for t in templates_list %}
       <tr class="tpl-admin-row" style="cursor:pointer;" onclick="loadTplEditor({{ t['id'] }}, this)">
         <td><span class="id-pill">{{ t["display_num"] }}</span></td>
         <td><strong>{{ t["name"] }}</strong></td>
@@ -63,9 +32,66 @@
   </table>
   {% else %}
   <div class="dash-card-body">
-    <div class="empty-state">No templates yet — upload your first checklist using the button above.</div>
+    <div class="empty-state">No templates yet — upload one using the button above.</div>
   </div>
   {% endif %}
+{% endmacro %}
+
+<!-- Upload form (hidden by default) -->
+<div class="dash-card" style="margin-bottom:20px;">
+  <div class="dash-card-header">
+    <div class="dash-card-title">QC Checklist Templates</div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span class="dash-card-count">{{ templates|length }}</span>
+      <button type="button" class="link-btn" onclick="toggleTplUpload()" id="tpl-upload-toggle-btn">+ Upload New</button>
+    </div>
+  </div>
+
+  <div id="tpl-upload-form-wrap" style="display:none;padding:18px 22px;border-bottom:1px solid var(--line);">
+    <form action="/templates/upload" method="post" enctype="multipart/form-data">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="form-field" style="flex:1;min-width:180px;margin-bottom:0;">
+          <label>Template Name</label>
+          <input type="text" name="name" required placeholder="e.g. ADS Standard QC"
+                 style="width:100%;padding:9px 10px;border:1px solid var(--line2);border-radius:8px;font-size:14px;background:var(--surface3);color:var(--ink);">
+        </div>
+        <div class="form-field" style="flex:0 0 170px;margin-bottom:0;">
+          <label>Stage</label>
+          <select name="kind" style="width:100%;padding:9px 10px;border:1px solid var(--line2);border-radius:8px;font-size:14px;background:var(--surface3);color:var(--ink);">
+            <option value="pre">Pre-Install QC</option>
+            <option value="post">Post-Install QC</option>
+          </select>
+        </div>
+        <div class="form-field" style="flex:1;min-width:220px;margin-bottom:0;">
+          <label>Excel File (.xlsx)</label>
+          <input type="file" name="file" accept=".xlsx" required
+                 style="width:100%;padding:7px 10px;border:1px solid var(--line2);border-radius:8px;font-size:13px;background:var(--surface3);color:var(--ink);">
+        </div>
+        <div style="display:flex;gap:8px;padding-bottom:1px;">
+          <button type="submit">Upload</button>
+          <button type="button" class="link-btn" onclick="toggleTplUpload()">Cancel</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Pre-Install QC templates -->
+<div class="dash-card" style="margin-bottom:20px;">
+  <div class="dash-card-header">
+    <div class="dash-card-title">Pre-Install QC</div>
+    <span class="dash-card-count">{{ pre_templates|length }}</span>
+  </div>
+  {{ template_table(pre_templates) }}
+</div>
+
+<!-- Post-Install QC templates -->
+<div class="dash-card" style="margin-bottom:20px;">
+  <div class="dash-card-header">
+    <div class="dash-card-title">Post-Install QC</div>
+    <span class="dash-card-count">{{ post_templates|length }}</span>
+  </div>
+  {{ template_table(post_templates) }}
 </div>
 
 <!-- Template Editor (shown when a template row is clicked) -->

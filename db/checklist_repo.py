@@ -24,6 +24,23 @@ def init_templates_db():
             )
             """
         )
+        t_cols = [r[1] for r in conn.execute("PRAGMA table_info(templates)")]
+        if "kind" not in t_cols:
+            # 'pre' = pre-installation QC (the only kind that existed before
+            # this column), 'post' = post-installation QC. Every pre-existing
+            # row is a pre-QC template, hence the 'pre' default.
+            conn.execute("ALTER TABLE templates ADD COLUMN kind TEXT NOT NULL DEFAULT 'pre'")
+        if "title" not in t_cols:
+            # The uploaded file's own title text (row 1, col A) — lets the
+            # rebuilt download reproduce it exactly instead of a generic
+            # default. Empty for pre-existing rows (blob still has it; will
+            # backfill on next re-upload).
+            conn.execute("ALTER TABLE templates ADD COLUMN title TEXT DEFAULT ''")
+        if "has_header_row" not in t_cols:
+            # Whether the uploaded file had a real "Sno./Checklist Item/..."
+            # column-label row of its own. Pre-existing rows default to 1
+            # (True) since that was the only layout the old parser assumed.
+            conn.execute("ALTER TABLE templates ADD COLUMN has_header_row INTEGER NOT NULL DEFAULT 1")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS checklist_items (
@@ -67,18 +84,27 @@ def init_templates_db():
 # ---------------------------------------------------------------------------
 
 def create_template(name: str, blob: bytes, items: list, note_text: str = "",
-                    header_labels: dict = None) -> int:
+                    header_labels: dict = None, kind: str = "pre",
+                    title: str = "", has_header_row: bool = True) -> int:
+    if kind not in ("pre", "post"):
+        kind = "pre"
     header_labels = header_labels or {}
     with get_db() as conn:
-        conn.execute("DELETE FROM templates WHERE LOWER(name) = LOWER(?)", (name,))
+        # Scoped to the same kind, so a Pre QC and a Post QC template can
+        # share a name without one silently deleting the other.
+        conn.execute(
+            "DELETE FROM templates WHERE LOWER(name) = LOWER(?) AND kind = ?",
+            (name, kind),
+        )
         cur = conn.execute(
-            """INSERT INTO templates (name, blob, note_text, customer_label, address_label, job_label)
-               VALUES (?,?,?,?,?,?)""",
+            """INSERT INTO templates (name, blob, note_text, customer_label, address_label, job_label, kind, title, has_header_row)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (
                 name, blob, note_text,
                 header_labels.get("customer_label") or "Customer Name  :",
                 header_labels.get("address_label") or "Correct Address  :",
                 header_labels.get("job_label") or "Job Details  :",
+                kind, title, 1 if has_header_row else 0,
             ),
         )
         tid = cur.lastrowid
@@ -108,11 +134,17 @@ def _insert_items(conn, template_id: int, items: list):
         )
 
 
-def list_templates():
+def list_templates(kind: str = None):
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT id, name, note_text, created_at FROM templates ORDER BY id DESC"
-        ).fetchall()
+        if kind is not None:
+            rows = conn.execute(
+                "SELECT id, name, note_text, created_at, kind FROM templates WHERE kind = ? ORDER BY id DESC",
+                (kind,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, name, note_text, created_at, kind FROM templates ORDER BY id DESC"
+            ).fetchall()
     result = []
     for display_num, row in enumerate(rows, start=1):
         d = dict(row)
@@ -243,7 +275,7 @@ def backfill_references():
             if has_refs:
                 continue
             try:
-                parsed_items, _, _ = parse_xlsx(bytes(blob))
+                parsed_items, _, _, _, _ = parse_xlsx(bytes(blob))
             except Exception:
                 continue
             ref_map = {

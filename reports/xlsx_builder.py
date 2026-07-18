@@ -11,14 +11,36 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 
 SECTION_HINT = re.compile(r"DETAILS|CEC|APPROVED|SYSTEM|CUSTOMER", re.IGNORECASE)
 
+# Column-label junk that sometimes ends up on the first data row instead of
+# a dedicated header row above it (e.g. "Document" / "Need to check/verify/
+# match" literally sitting in a section-header row's reference/prompt
+# cells) — a cell containing only this kind of text should be treated as
+# empty when deciding whether a row is a section header, not as real data.
+_HEADER_JUNK = re.compile(
+    r"^(document|reference|remark|prompt|what to verify|verify as per|"
+    r"need to check.*verify.*match)$",
+    re.IGNORECASE,
+)
+
+
+def _is_blank_or_header_junk(value: str) -> bool:
+    v = (value or "").strip()
+    return not v or bool(_HEADER_JUNK.match(v))
+
 THIN = Side(style="thin", color="999999")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
 
 def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
     """
-    Read a QC checklist sheet and return (items, header_labels, note_text).
+    Read a QC checklist sheet and return (items, header_labels, note_text, title, has_header_row).
     items: list of {position, sno, is_section, text, active}
+    title: the sheet's own title text (row 1, col A), if any — so the
+        downloaded/rebuilt file can reproduce it exactly instead of falling
+        back to a generic default.
+    has_header_row: True if a real "Sno./Checklist" column-label row was
+        found in the source file — lets the rebuilder skip synthesizing its
+        own header row when the original never had one at that spot.
     """
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
     if sheet_name and sheet_name in wb.sheetnames:
@@ -28,11 +50,14 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
             return sum(1 for r in range(1, s.max_row + 1) if s.cell(r, 4).value)
         ws = max(wb.worksheets, key=score)
 
+    title = str(ws.cell(1, 1).value or "").strip()
+
     note_text = ""
     items = []
     pos = 0
 
     start_row = None
+    has_header_row = False
     col_map = {"sno": 1, "text": 2, "yn": 3, "ref": 4, "prompt": 5}
 
     def _is_sno(v):
@@ -48,6 +73,7 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
         has_checklist = any(_is_checklist(v) for v in row_vals)
         if has_sno and has_checklist:
             start_row = r + 1
+            has_header_row = True
             for c, v in enumerate(row_vals, start=1):
                 if _is_sno(v):
                     col_map["sno"] = c
@@ -62,7 +88,17 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
             break
 
     if start_row is None:
+        # No recognizable header row (e.g. a sheet whose first "row" of
+        # column labels was never actually put on its own row) — fall back
+        # to the first row that looks like real data: a plain number or
+        # roman numeral in the Sno column with real text next to it.
         start_row = 9
+        for r in range(1, ws.max_row + 1):
+            sno_val = str(ws.cell(r, col_map["sno"]).value or "").strip()
+            text_val = str(ws.cell(r, col_map["text"]).value or "").strip()
+            if sno_val and text_val:
+                start_row = r
+                break
 
     note_cell = ws.cell(1, col_map["ref"]).value
     if note_cell and "note" not in str(note_cell).lower():
@@ -88,13 +124,31 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
         prompt_str = str(prompt_val).strip() if prompt_val is not None else ""
 
         pos += 1
-        # A row is a section header only when it's all-caps AND its text
-        # matches one of the known section-title keywords (e.g. "CUSTOMER
-        # DETAILS", "SYSTEM DETAILS") — not just "any all-caps text with a
-        # non-numeric S.No.", which used to misclassify real checklist items
-        # like "HBCF INSURANCE CERTIFICATE" as section headers, silently
-        # excluding them from ZIP file matching and AI analysis entirely.
-        is_section = bool(text.isupper() and SECTION_HINT.search(text))
+        # A row is a section header when either:
+        #  (a) it's all-caps AND matches a known section-title keyword
+        #      (e.g. "CUSTOMER DETAILS", "SYSTEM DETAILS") — the original
+        #      rule, kept as-is for templates that follow that convention; or
+        #  (b) its Sno is a plain top-level number (1, 2, 3...) AND both the
+        #      reference and prompt columns are empty (or contain only
+        #      leftover column-label text, see _HEADER_JUNK) — a structural
+        #      rule that doesn't depend on guessing every possible section
+        #      title's wording, so section titles like "DOCUMENTS AND
+        #      PHOTOS" or "Inverter Status" (mixed case) are still caught
+        #      even though they don't match the keyword list.
+        # Sub-items (roman numerals, blank Sno) never satisfy (b) even when
+        # they happen to have empty reference/prompt, since sno_str.isdigit()
+        # is False for "i", "ii", "" etc.
+        is_section = bool(text.isupper() and SECTION_HINT.search(text)) or (
+            sno_str.isdigit()
+            and _is_blank_or_header_junk(reference)
+            and _is_blank_or_header_junk(prompt_str)
+        )
+        # A section header never has real reference/prompt data of its own —
+        # if either field only had leftover column-label junk (see rule (b)
+        # above), don't carry that junk text into the stored item.
+        if is_section:
+            reference = ""
+            prompt_str = ""
 
         items.append({
             "position": pos,
@@ -111,7 +165,7 @@ def parse_xlsx(file_bytes: bytes, sheet_name: str = None):
         "address_label": _label_at(ws, "address"),
         "job_label": _label_at(ws, "job details"),
     }
-    return items, header_labels, note_text
+    return items, header_labels, note_text, title, has_header_row
 
 
 def _label_at(ws, needle: str):
@@ -274,11 +328,17 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
 
 
 def build_template_xlsx(items: list, header_labels: dict = None, note_text: str = "",
-                        title: str = "||  JOB COMPLIANCE CHECKLIST (QC)  ||") -> bytes:
+                        title: str = "||  JOB COMPLIANCE CHECKLIST (QC)  ||",
+                        has_header_row: bool = True) -> bytes:
     """
     Build a read-only reference .xlsx for the admin Templates page download —
     shows Sno./Checklist Item/Reference/What to verify (no Yes/No or Remarks,
     since those are filled in later during an actual QC run, not here).
+    has_header_row: when False (the source file never had a dedicated
+        "Sno./Checklist Item/..." label row of its own — e.g. its first
+        section header sits directly at the first data row), the synthetic
+        column-label row is skipped so the rebuilt file matches the
+        original's layout instead of inserting a row that wasn't there.
     """
     header_labels = header_labels or {}
 
@@ -311,15 +371,17 @@ def build_template_xlsx(items: list, header_labels: dict = None, note_text: str 
     ws.merge_cells("A7:E7")
     ws.cell(7, 1, header_labels.get("job_label") or "Job Details  :").font = bold
 
-    headers = ["Sno.", "Checklist Item", "Reference", "What to verify as per Agreement"]
-    for ci, h in enumerate(headers, start=1):
-        cell = ws.cell(8, ci, h)
-        cell.font = bold
-        cell.alignment = center
-        cell.border = BORDER
-    ws.row_dimensions[8].height = 20
+    r = 8
+    if has_header_row:
+        headers = ["Sno.", "Checklist Item", "Reference", "What to verify as per Agreement"]
+        for ci, h in enumerate(headers, start=1):
+            cell = ws.cell(r, ci, h)
+            cell.font = bold
+            cell.alignment = center
+            cell.border = BORDER
+        ws.row_dimensions[r].height = 20
+        r += 1
 
-    r = 9
     MIN_ROW_HEIGHT = 30
 
     for it in items:

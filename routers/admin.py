@@ -125,7 +125,12 @@ def admin_records_page(request: Request, user=Depends(require_admin)):
 
 @router.get("/admin/templates", response_class=HTMLResponse)
 def admin_templates_page(request: Request, user=Depends(require_admin)):
-    ctx = _admin_ctx(user, templates=tdb.list_templates())
+    ctx = _admin_ctx(
+        user,
+        templates=tdb.list_templates(),
+        pre_templates=tdb.list_templates(kind="pre"),
+        post_templates=tdb.list_templates(kind="post"),
+    )
     response = templates.TemplateResponse(request, "admin_templates.html", ctx)
     response.headers.update(_NO_CACHE)
     return response

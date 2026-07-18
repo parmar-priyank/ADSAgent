@@ -37,10 +37,17 @@ def favicon():
 
 if __name__ == "__main__":
     import uvicorn
+
+    try:
+        import uvloop  # noqa: F401 — Linux/macOS only, not available on Windows
+        _loop = "uvloop"
+    except ImportError:
+        _loop = "asyncio"
+
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=8000,
-        workers=4,          # 4 independent processes — up to 4 users run heavy jobs in parallel
-        loop="uvloop",      # faster async event loop (included in uvicorn[standard])
+        workers=4,     # 4 independent processes — up to 4 users run heavy jobs in parallel
+        loop=_loop,    # uvloop where available (faster), plain asyncio otherwise (e.g. local Windows dev)
     )

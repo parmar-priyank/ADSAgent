@@ -75,13 +75,17 @@ async def templates_upload(
     request: Request,
     name: str = Form(...),
     file: UploadFile = File(...),
+    kind: str = Form("pre"),
     user=Depends(require_admin),
 ):
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(400, "Please upload an .xlsx checklist template.")
+    if kind not in ("pre", "post"):
+        kind = "pre"
     blob = await file.read()
-    items, headers, note = parse_xlsx(blob)
-    tdb.create_template(name, blob, items, note, headers)
+    items, headers, note, title, has_header_row = parse_xlsx(blob)
+    tdb.create_template(name, blob, items, note, headers, kind=kind,
+                        title=title, has_header_row=has_header_row)
     return RedirectResponse(url="/admin/templates", status_code=303)
 
 
@@ -180,7 +184,10 @@ def template_download(template_id: int, user=Depends(require_admin)):
         "address_label":  tpl.get("address_label"),
         "job_label":      tpl.get("job_label"),
     }
-    blob = build_template_xlsx(items, hdrs, tpl.get("note_text", ""))
+    build_kwargs = {"has_header_row": bool(tpl.get("has_header_row", 1))}
+    if tpl.get("title"):
+        build_kwargs["title"] = tpl["title"]
+    blob = build_template_xlsx(items, hdrs, tpl.get("note_text", ""), **build_kwargs)
     safe = (tpl["name"] or "checklist").replace(" ", "_")
     safe = "".join(c for c in safe if c.isalnum() or c in "_-")[:80] or "checklist"
     return StreamingResponse(
