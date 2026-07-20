@@ -27,7 +27,6 @@ from config import (
     _NO_CACHE,
     _resolve_theme,
     require_admin,
-    require_login,
     templates,
 )
 
@@ -39,7 +38,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 @router.get("/Excel", response_class=HTMLResponse)
-def template_editor(request: Request, user=Depends(require_login)):
+def template_editor(request: Request, user=Depends(require_admin)):
     all_templates = tdb.list_templates()
     if not all_templates:
         raise HTTPException(404, "No templates found. Upload a checklist first.")
@@ -55,7 +54,7 @@ def template_editor(request: Request, user=Depends(require_login)):
 
 
 @router.get("/Excel/{template_id}", response_class=HTMLResponse)
-def template_editor_by_id(request: Request, template_id: int, user=Depends(require_login)):
+def template_editor_by_id(request: Request, template_id: int, user=Depends(require_admin)):
     tpl = tdb.get_template(template_id)
     if not tpl:
         raise HTTPException(404, "Template not found.")
