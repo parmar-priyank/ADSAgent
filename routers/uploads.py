@@ -74,6 +74,8 @@ def home(request: Request, user=Depends(require_login)):
 
 @router.get("/user_upload", response_class=HTMLResponse)
 def upload_get(request: Request, id: int = None, user=Depends(require_qc_access)):
+    if user.get("role") != "admin" and not user.get("can_pre_qc"):
+        raise HTTPException(403, "You do not have Pre-QC access.")
     result = None
     if id is not None:
         record = db.get_quote(id)
@@ -95,6 +97,8 @@ async def upload(
     preferred_install_date: str = Form(""),
     user=Depends(require_qc_access),
 ):
+    if user.get("role") != "admin" and not user.get("can_pre_qc"):
+        raise HTTPException(403, "You do not have Pre-QC access.")
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Please upload a PDF file.")
 
@@ -167,6 +171,8 @@ async def upload_confirm(
     preferred_install_date: str = Form(""),
     user=Depends(require_qc_access),
 ):
+    if user.get("role") != "admin" and not user.get("can_pre_qc"):
+        raise HTTPException(403, "You do not have Pre-QC access.")
     if action == "keep":
         db.pop_pending_pdf(pending_token)
         return RedirectResponse(url=f"/user_upload?id={existing_id}", status_code=303)

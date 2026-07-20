@@ -408,6 +408,8 @@ def _derive_email_summary(results: list) -> tuple:
 
 @router.get("/email-verify", response_class=HTMLResponse)
 def email_verify_page(request: Request, quote_id: str = "", user=Depends(require_qc_access)):
+    if user.get("role") != "admin" and not user.get("can_pre_qc"):
+        raise HTTPException(403, "You do not have Pre-QC access.")
     results = None
     emails_meta = None
     email_subject = None
@@ -473,6 +475,8 @@ async def email_verify_post(
     quote_id: str = Form(""),
     user=Depends(require_qc_access),
 ):
+    if user.get("role") != "admin" and not user.get("can_pre_qc"):
+        raise HTTPException(403, "You do not have Pre-QC access.")
     def _err(msg: str):
         resp = templates.TemplateResponse(request, "user_email_verify.html", {
             "current_user": user,
@@ -649,6 +653,11 @@ def email_verify_save_draft(
 @router.get("/qc-check", response_class=HTMLResponse)
 def qc_check_page(request: Request, quote_id: str = "", kind: str = "pre", user=Depends(require_qc_access)):
     kind = kind if kind in ("pre", "post") else "pre"
+    if user.get("role") != "admin":
+        if kind == "post" and not user.get("can_post_qc"):
+            raise HTTPException(403, "You do not have Post-QC access.")
+        if kind == "pre" and not user.get("can_pre_qc"):
+            raise HTTPException(403, "You do not have Pre-QC access.")
     saved = tdb.list_templates(kind=kind)
     resp = templates.TemplateResponse(request, "user_qc.html", {
         "current_user": user,
@@ -673,6 +682,8 @@ def qc_check_page_with_email(
     """Arrive from Step 2 (email verify) carrying the edited email results.
     Always Pre-QC — Post-QC's flow never goes through email verify (see
     /post-qc/customer/{quote_id}, which links straight to /qc-check?kind=post)."""
+    if user.get("role") != "admin" and not user.get("can_pre_qc"):
+        raise HTTPException(403, "You do not have Pre-QC access.")
     saved = tdb.list_templates(kind="pre")
     resp = templates.TemplateResponse(request, "user_qc.html", {
         "current_user": user,
@@ -702,6 +713,11 @@ async def upload_zip(
     user=Depends(require_qc_access),
 ):
     kind = kind if kind in ("pre", "post") else "pre"
+    if user.get("role") != "admin":
+        if kind == "post" and not user.get("can_post_qc"):
+            raise HTTPException(403, "You do not have Post-QC access.")
+        if kind == "pre" and not user.get("can_pre_qc"):
+            raise HTTPException(403, "You do not have Pre-QC access.")
     uid = user["id"]
     if uid in _active_jobs:
         saved = tdb.list_templates(kind=kind)
