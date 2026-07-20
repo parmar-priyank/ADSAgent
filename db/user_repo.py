@@ -12,6 +12,21 @@ from db.connection import get_db
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_.\-@]{1,64}$")
 
 
+def _is_strong_password(password: str) -> bool:
+    """Mirrors the client-side rules already shown in the Add User /
+    Reset Password forms (length, upper, lower, digit, symbol) — enforced
+    here too since the JS check alone can be bypassed by posting directly
+    to the create/change-password routes."""
+    if not (8 <= len(password) <= 256):
+        return False
+    return (
+        re.search(r"[A-Z]", password) is not None
+        and re.search(r"[a-z]", password) is not None
+        and re.search(r"[0-9]", password) is not None
+        and re.search(r"[^A-Za-z0-9]", password) is not None
+    )
+
+
 def init_auth_db():
     with get_db() as conn:
         conn.execute(
@@ -75,7 +90,7 @@ def create_user(username: str, password: str, role: str = "user") -> bool:
     username = username.strip()
     if not username or not _USERNAME_RE.match(username):
         return False
-    if len(password) < 8 or len(password) > 256:
+    if not _is_strong_password(password):
         return False
     try:
         with get_db() as conn:
@@ -129,7 +144,7 @@ def get_password_hash(user_id: int) -> str | None:
 
 
 def change_password(user_id: int, new_password: str) -> bool:
-    if len(new_password) < 8:
+    if not _is_strong_password(new_password):
         return False
     hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
     with get_db() as conn:

@@ -177,7 +177,10 @@ def user_change_password(request: Request,
     ok = adb.change_password(user["id"], new_password)
     if ok:
         return RedirectResponse(url="/user_home?pwd_ok=Password+changed+successfully.", status_code=303)
-    return RedirectResponse(url="/user_home?pwd_error=Password+must+be+at+least+8+characters.", status_code=303)
+    return RedirectResponse(
+        url="/user_home?pwd_error=Password+must+be+8-256+characters+with+uppercase,+lowercase,+a+number,+and+a+symbol.",
+        status_code=303,
+    )
 
 
 @router.post("/toggle-theme")

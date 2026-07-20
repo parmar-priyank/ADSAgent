@@ -205,7 +205,8 @@ def admin_create_user(
         return RedirectResponse(url="/admin/users?success=1", status_code=303)
     ctx = _admin_ctx(user,
         users=adb.list_users(),
-        error=f"Username '{username}' already exists, is invalid, or password is too short (min. 8 characters).",
+        error=f"Username '{username}' already exists, is invalid, or password doesn't meet the requirements "
+              f"(min. 8 characters, with uppercase, lowercase, a number, and a symbol).",
         success=None,
     )
     response = templates.TemplateResponse(request, "admin_users.html", ctx)
@@ -264,7 +265,10 @@ def admin_change_password(user_id: int, request: Request,
     ok = adb.change_password(user_id, new_password)
     if ok:
         return RedirectResponse(url=f"/admin/users/{user_id}?success=Password+changed+successfully.", status_code=303)
-    return RedirectResponse(url=f"/admin/users/{user_id}?error=Password+must+be+at+least+8+characters.", status_code=303)
+    return RedirectResponse(
+        url=f"/admin/users/{user_id}?error=Password+must+be+8-256+characters+with+uppercase,+lowercase,+a+number,+and+a+symbol.",
+        status_code=303,
+    )
 
 
 @router.post("/admin/users/{user_id}/change-role")
