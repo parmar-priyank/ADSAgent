@@ -54,6 +54,7 @@ from config import (
     _get_claude,
     _resolve_theme,
     _signer,
+    limiter,
     require_qc_access,
     templates,
 )
@@ -469,6 +470,7 @@ def _extract_email_address(from_header: str) -> str:
 
 
 @router.post("/email-verify", response_class=HTMLResponse)
+@limiter.limit("15/minute")
 async def email_verify_post(
     request: Request,
     eml_files: list[UploadFile] = File(..., alias="eml_file"),
@@ -703,6 +705,7 @@ def qc_check_page_with_email(
 # ---------------------------------------------------------------------------
 
 @router.post("/run-checklist", response_class=HTMLResponse)
+@limiter.limit("10/minute")
 async def upload_zip(
     request: Request,
     zip_file: UploadFile = File(...),
@@ -1171,7 +1174,9 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
 
 
 @router.post("/checklist-analyse-file")
+@limiter.limit("30/minute")
 async def checklist_analyse_file(
+    request: Request,
     file: UploadFile = File(...),
     item_text: str = Form(""),
     prompt: str = Form(""),
@@ -1663,7 +1668,9 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
 
 
 @router.post("/user/qc-version/{version_id}/add-email")
+@limiter.limit("15/minute")
 async def user_qc_version_add_email(
+    request: Request,
     version_id: int,
     eml_file: UploadFile = File(...),
     user=Depends(require_qc_access),
