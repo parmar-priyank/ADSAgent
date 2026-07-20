@@ -134,7 +134,8 @@ _CSP = (
     "connect-src 'self'; "
     "object-src 'none'; "
     "base-uri 'self'; "
-    "form-action 'self';"
+    "form-action 'self'; "
+    "frame-ancestors 'none';"
 )
 
 
