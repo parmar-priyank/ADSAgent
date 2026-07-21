@@ -230,7 +230,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ eml_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ eml_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:var(--brand);">{{ 'View &amp; modify &rsaquo;' if can_edit else 'View &rsaquo;' }}</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:var(--brand);">{{ 'View & modify ›' if can_edit else 'View ›' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">No email verification was run for this version.</div>
       {% if can_edit %}
@@ -257,7 +257,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ pre_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ pre_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View &amp; modify &rsaquo;' if can_edit else 'View &rsaquo;' }}</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View & modify ›' if can_edit else 'View ›' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">No Pre-QC run yet.</div>
       {% endif %}
@@ -279,7 +279,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ pre_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ pre_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View &amp; modify &rsaquo;' if is_admin else 'View &rsaquo;' }}</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View & modify ›' if is_admin else 'View ›' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">No Pre-QC run yet.</div>
       {% endif %}
@@ -304,7 +304,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View &amp; modify &rsaquo;' if can_edit else 'View &rsaquo;' }}</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View & modify ›' if can_edit else 'View ›' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">
         {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
@@ -328,7 +328,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View &amp; modify &rsaquo;' if is_admin else 'View &rsaquo;' }}</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View & modify ›' if is_admin else 'View ›' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">
         {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
