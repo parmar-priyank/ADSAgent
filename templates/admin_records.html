@@ -137,6 +137,20 @@
     </tbody>
   </table>
   </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 22px;border-top:1px solid var(--line2);flex-wrap:wrap;">
+    <span id="records-page-info" style="font-size:12.5px;color:var(--muted);"></span>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <button type="button" id="records-prev-btn" onclick="changeRecordsPage(-1)"
+              style="padding:6px 14px;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surface3);border:1.5px solid var(--line2);border-radius:7px;cursor:pointer;">
+        &lsaquo; Prev
+      </button>
+      <span id="records-page-numbers" style="display:flex;gap:4px;"></span>
+      <button type="button" id="records-next-btn" onclick="changeRecordsPage(1)"
+              style="padding:6px 14px;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surface3);border:1.5px solid var(--line2);border-radius:7px;cursor:pointer;">
+        Next &rsaquo;
+      </button>
+    </div>
+  </div>
   {% else %}
   <div class="dash-card-body">
     <div class="empty-state">No customer records yet.</div>
@@ -153,22 +167,75 @@
     });
   });
 
+  var RECORDS_PER_PAGE = 10;
+  var recordsCurrentPage = 1;
+
   function filterRecords() {
+    recordsCurrentPage = 1; // any new search starts back at page 1
+    paginateRecords();
+  }
+
+  function changeRecordsPage(delta) {
+    recordsCurrentPage += delta;
+    paginateRecords();
+  }
+
+  function goToRecordsPage(n) {
+    recordsCurrentPage = n;
+    paginateRecords();
+  }
+
+  function paginateRecords() {
     var q = document.getElementById('records-search').value.trim().toLowerCase();
-    var rows = document.querySelectorAll('#records-table tbody tr[data-search]');
-    var visible = 0;
-    rows.forEach(function(row) {
-      var match = !q || row.dataset.search.indexOf(q) !== -1;
-      row.style.display = match ? '' : 'none';
-      if (match) visible++;
+    var allRows = Array.from(document.querySelectorAll('#records-table tbody tr[data-search]'));
+    var matched = allRows.filter(function(row) {
+      return !q || row.dataset.search.indexOf(q) !== -1;
     });
+
+    var totalPages = Math.max(1, Math.ceil(matched.length / RECORDS_PER_PAGE));
+    if (recordsCurrentPage > totalPages) recordsCurrentPage = totalPages;
+    if (recordsCurrentPage < 1) recordsCurrentPage = 1;
+
+    var start = (recordsCurrentPage - 1) * RECORDS_PER_PAGE;
+    var end = start + RECORDS_PER_PAGE;
+
+    allRows.forEach(function(row) { row.style.display = 'none'; });
+    matched.slice(start, end).forEach(function(row) { row.style.display = ''; });
+
     var countEl = document.getElementById('records-visible-count');
-    if (countEl) countEl.textContent = visible;
+    if (countEl) countEl.textContent = matched.length;
+
+    var infoEl = document.getElementById('records-page-info');
+    if (infoEl) {
+      infoEl.textContent = matched.length === 0
+        ? 'No matching records'
+        : 'Showing ' + (start + 1) + '–' + Math.min(end, matched.length) + ' of ' + matched.length;
+    }
+
+    document.getElementById('records-prev-btn').disabled = recordsCurrentPage <= 1;
+    document.getElementById('records-next-btn').disabled = recordsCurrentPage >= totalPages;
+
+    var numbersEl = document.getElementById('records-page-numbers');
+    if (numbersEl) {
+      numbersEl.innerHTML = '';
+      for (var p = 1; p <= totalPages; p++) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = p;
+        btn.onclick = (function(pageNum) { return function() { goToRecordsPage(pageNum); }; })(p);
+        var active = p === recordsCurrentPage;
+        btn.style.cssText = 'padding:6px 11px;font-size:13px;font-weight:600;border-radius:7px;cursor:pointer;' +
+          (active
+            ? 'background:var(--brand);border:1.5px solid var(--brand);color:#fff;'
+            : 'background:var(--surface3);border:1.5px solid var(--line2);color:var(--ink2);');
+        numbersEl.appendChild(btn);
+      }
+    }
   }
 
   function toggleSelectAll(checkbox) {
     document.querySelectorAll('#records-table tbody tr').forEach(function(row) {
-      if (row.style.display === 'none') return; // skip rows hidden by search
+      if (row.style.display === 'none') return; // only the current page's visible rows
       var cb = row.querySelector('.bulk-select-checkbox');
       if (cb) cb.checked = checkbox.checked;
     });
@@ -203,6 +270,10 @@
     } else {
       bar.style.display = 'none';
     }
+  }
+
+  if (document.getElementById('records-table')) {
+    paginateRecords();
   }
 </script>
 {% endblock %}
