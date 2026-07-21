@@ -32,6 +32,12 @@
      Confirmed version; is_revisit (not is_readonly) decides which save
      endpoint the page talks to. #}
   {% set is_readonly = revisit_version and revisit_version.status == 'confirmed' %}
+  {# can_edit is only ever explicitly False when a route (user_qc_version_revisit)
+     determined the viewer isn't the one who saved/confirmed THIS specific
+     version — e.g. a Post-QC user viewing this customer's Pre-QC run someone
+     else did. Every other route (live in-progress run, admin's own view)
+     never sets it, meaning "always editable", hence the default(true). #}
+  {% set can_edit = can_edit | default(true) %}
 
   {% if is_revisit %}
   <!-- Revisiting a saved QC version — one clean row: identity on the left,
@@ -42,7 +48,12 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4D96FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       </div>
       <div style="min-width:0;">
-        <div style="font-size:18px;font-weight:800;color:var(--ink);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ (record.customer_name if record else '') or 'Customer' }}</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="font-size:18px;font-weight:800;color:var(--ink);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ (record.customer_name if record else '') or 'Customer' }}</div>
+          {% if not is_admin and not can_edit %}
+          <span style="font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surface3);border:1px solid var(--line2);border-radius:20px;padding:2px 9px;white-space:nowrap;flex-shrink:0;">View only</span>
+          {% endif %}
+        </div>
         <div style="font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           {{ (record.quote_number if record else '') or '—' }}
         </div>
@@ -219,10 +230,12 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ eml_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ eml_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:var(--brand);">View &amp; modify &rsaquo;</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:var(--brand);">{{ 'View &amp; modify &rsaquo;' if can_edit else 'View &rsaquo;' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">No email verification was run for this version.</div>
+      {% if can_edit %}
       <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:var(--brand);">Upload email &rsaquo;</div>
+      {% endif %}
       {% endif %}
     </div>
 
@@ -244,13 +257,13 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ pre_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ pre_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">View &amp; modify &rsaquo;</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View &amp; modify &rsaquo;' if can_edit else 'View &rsaquo;' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">No Pre-QC run yet.</div>
       {% endif %}
     </div>
     {% else %}
-    <a href="{% if pre_link_id %}/admin/qc-version/{{ pre_link_id }}{% endif %}" class="card"
+    <a href="{% if pre_link_id %}{{ '/admin/qc-version/' if is_admin else '/user/qc-version/' }}{{ pre_link_id }}{% endif %}" class="card"
        style="margin:0;border-radius:14px;text-decoration:none;display:block;{% if pre_link_id %}cursor:pointer;{% else %}opacity:.55;pointer-events:none;{% endif %}transition:box-shadow .15s,border-color .15s;"
        {% if pre_link_id %}onmouseover="this.style.borderColor='#c45010'" onmouseout="this.style.borderColor='var(--line2)'"{% endif %}>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
@@ -266,7 +279,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ pre_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ pre_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">View &amp; modify &rsaquo;</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View &amp; modify &rsaquo;' if is_admin else 'View &rsaquo;' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">No Pre-QC run yet.</div>
       {% endif %}
@@ -291,7 +304,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">View &amp; modify &rsaquo;</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View &amp; modify &rsaquo;' if can_edit else 'View &rsaquo;' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">
         {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
@@ -299,7 +312,7 @@
       {% endif %}
     </div>
     {% else %}
-    <a href="{% if post_link_id %}/admin/qc-version/{{ post_link_id }}{% endif %}" class="card"
+    <a href="{% if post_link_id %}{{ '/admin/qc-version/' if is_admin else '/user/qc-version/' }}{{ post_link_id }}{% endif %}" class="card"
        style="margin:0;border-radius:14px;text-decoration:none;display:block;{% if post_link_id %}cursor:pointer;{% else %}opacity:.55;pointer-events:none;{% endif %}transition:box-shadow .15s,border-color .15s;"
        {% if post_link_id %}onmouseover="this.style.borderColor='#2d7a4a'" onmouseout="this.style.borderColor='var(--line2)'"{% endif %}>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
@@ -315,7 +328,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">View &amp; modify &rsaquo;</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View &amp; modify &rsaquo;' if is_admin else 'View &rsaquo;' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">
         {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
@@ -330,8 +343,11 @@
        Admin has no such state (always revisiting a saved version) and can
        promote a draft to confirmed via the checklist modal's Confirm button
        instead. Editing is never locked once confirmed, so this always
-       shows the full Save Draft / Confirm form, never a read-only variant. -->
-  {% if quote_id and not is_admin %}
+       shows the full Save Draft / Confirm form, never a read-only variant
+       for the OWNER — but a user viewing someone else's version (e.g. a
+       Post-QC user looking at this customer's Pre-QC run) gets can_edit=False
+       and none of this, since the save endpoint would reject it anyway. -->
+  {% if quote_id and not is_admin and can_edit %}
   <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
 
     <div style="display:flex;align-items:center;gap:8px;">
@@ -489,7 +505,7 @@
         Email Verification
       </span>
       <div style="display:flex;gap:8px;align-items:center;">
-        {% if revisit_version %}
+        {% if revisit_version and can_edit %}
         <input type="file" id="eml-upload-input" accept=".eml" style="display:none;" onchange="emlUploadFile(this)">
         <button type="button" id="eml-modify-btn" onclick="emlEnterEditMode()"
                 style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:600;cursor:pointer;">
@@ -609,9 +625,11 @@
               style="cursor:pointer;user-select:none;background:var(--brand);color:#fff;">All</span>
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
+        {% if can_edit %}
         <button type="button" class="link-btn" id="modify-btn" onclick="enterEditMode()" style="font-weight:600;">
           &#9998; Modify
         </button>
+        {% endif %}
         <button onclick="closeChecklistModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
       </div>
     </div>

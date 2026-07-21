@@ -1522,11 +1522,11 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
     if not row:
         raise HTTPException(404, "QC version not found.")
     v = dict(row)
+    is_own_version = (
+        v.get("saved_by_user_id") == user["id"]
+        or v.get("confirmed_by_user_id") == user["id"]
+    )
     if user.get("role") != "admin":
-        is_own_version = (
-            v.get("saved_by_user_id") == user["id"]
-            or v.get("confirmed_by_user_id") == user["id"]
-        )
         # A user assigned to this customer for Post-QC has already been
         # vetted to see this customer's QC work (see post_qc_customer_detail)
         # — let them click through to ANY version for that customer (Pre-QC
@@ -1536,6 +1536,12 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         is_assigned_to_customer = assignee is not None and assignee.get("user_id") == user["id"]
         if not is_own_version and not is_assigned_to_customer:
             raise HTTPException(403, "Access denied.")
+    # Viewing someone else's version (reached only via the customer-assignment
+    # path above, or an admin browsing) is read-only — the save endpoint
+    # already rejects this, but the page shouldn't show Modify/Save/Confirm
+    # controls that would just fail, especially for a role like Post-QC that
+    # should never edit another person's Pre-QC work.
+    can_edit = user.get("role") == "admin" or is_own_version
     try:
         rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
         if not isinstance(rows, list):
@@ -1583,6 +1589,25 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
     # same data admin_qc_version_view fetches for its own equivalent block.
     record = db.get_quote(v["quote_id"])
 
+    # Pull in the OTHER kind's latest version too — same as admin's view, so
+    # a Post-QC user can see that customer's Pre-QC results (read-only, via
+    # its own view-only page) even though someone else ran it, instead of
+    # the tile just sitting empty.
+    other_kind = "post" if tpl["kind"] == "pre" else "pre"
+    other_v = db.get_latest_qc_version(v["quote_id"], other_kind)
+    other_checklist_rows = None
+    other_yes_count = other_no_count = other_na_count = 0
+    if other_v:
+        try:
+            other_checklist_rows = json.loads(other_v["rows_json"]) if other_v.get("rows_json") else []
+            if not isinstance(other_checklist_rows, list):
+                other_checklist_rows = []
+        except Exception:
+            other_checklist_rows = []
+        other_yes_count = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "Yes")
+        other_no_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "No")
+        other_na_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "N/A")
+
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
@@ -1599,6 +1624,13 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         "preferred_install_date": v.get("preferred_install_date") or "",
         "today": datetime.now().strftime("%Y-%m-%d"),
         "record": record,
+        "can_edit": can_edit,
+        "other_kind": other_kind,
+        "other_version": other_v,
+        "other_checklist_rows": other_checklist_rows,
+        "other_yes_count": other_yes_count,
+        "other_no_count": other_no_count,
+        "other_na_count": other_na_count,
     })
     resp.headers.update(_NO_CACHE)
     return resp
