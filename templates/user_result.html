@@ -984,6 +984,12 @@
   function _collectEmailRows() {
     var rows = [];
     document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
+      // Skip the "No email verification was run" placeholder row — it has
+      // no data-* attributes at all (id="eml-empty-row"), so collecting it
+      // like a real row serialized a bogus all-blank entry into the saved
+      // email_results, showing as a phantom "1 attachment" even on a run
+      // that never went through email verification (e.g. every Post-QC run).
+      if (tr.id === 'eml-empty-row') return;
       var statusEl = tr.querySelector('.status-edit');
       var remarkEl = tr.querySelector('.remark-edit');
       rows.push({
@@ -1327,6 +1333,7 @@
     document.getElementById('eml-modify-btn').style.display = 'none';
     _emlCard.classList.add('is-edit-mode');
     document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
+      if (tr.id === 'eml-empty-row') return; // no .status-edit to bind on the placeholder row
       tr.dataset.savedStatus = tr.dataset.status;
       tr.querySelector('.status-edit').addEventListener('change', function() {
         tr.dataset.status = this.value;
@@ -1341,6 +1348,7 @@
     document.getElementById('eml-modify-btn').style.display = '';
     _emlCard.classList.remove('is-edit-mode');
     document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
+      if (tr.id === 'eml-empty-row') return;
       tr.dataset.status = tr.dataset.savedStatus || tr.dataset.status;
       tr.querySelector('.status-edit').value = tr.dataset.status;
       var inp = tr.querySelector('.remark-edit');
@@ -1353,6 +1361,7 @@
 
   function _applyEmailRowsToDom() {
     document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
+      if (tr.id === 'eml-empty-row') return;
       var statusEl = tr.querySelector('.status-edit');
       var remarkEl = tr.querySelector('.remark-edit');
       if (!statusEl || !remarkEl) return;
