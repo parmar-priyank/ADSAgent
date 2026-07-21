@@ -64,12 +64,11 @@
     <h2>QC History</h2>
     <table>
       <thead>
-        <tr><th>Version</th><th>Kind</th><th>Template</th><th>Status</th><th>Date</th></tr>
+        <tr><th>Kind</th><th>Template</th><th>Status</th><th>Date</th></tr>
       </thead>
       <tbody>
         {% for v in qc_versions %}
-        <tr>
-          <td>v{{ v.version }}</td>
+        <tr class="clickable" data-href="/user/qc-version/{{ v.id }}" style="cursor:pointer;">
           <td>{{ 'Post-QC' if v.kind == 'post' else 'Pre-QC' }}</td>
           <td>{{ v.template_name or '—' }}</td>
           <td>{{ v.status | title }}</td>
@@ -89,4 +88,14 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.querySelectorAll('tr.clickable[data-href]').forEach(function(row) {
+    row.addEventListener('click', function() {
+      window.location.href = row.dataset.href;
+    });
+  });
+</script>
 {% endblock %}

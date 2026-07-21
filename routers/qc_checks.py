@@ -1522,10 +1522,20 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
     if not row:
         raise HTTPException(404, "QC version not found.")
     v = dict(row)
-    if (user.get("role") != "admin"
-            and v.get("saved_by_user_id") != user["id"]
-            and v.get("confirmed_by_user_id") != user["id"]):
-        raise HTTPException(403, "Access denied.")
+    if user.get("role") != "admin":
+        is_own_version = (
+            v.get("saved_by_user_id") == user["id"]
+            or v.get("confirmed_by_user_id") == user["id"]
+        )
+        # A user assigned to this customer for Post-QC has already been
+        # vetted to see this customer's QC work (see post_qc_customer_detail)
+        # — let them click through to ANY version for that customer (Pre-QC
+        # included), not just runs they personally confirmed, so the QC
+        # History list on their assigned-customer page is actually clickable.
+        assignee = db.get_post_qc_assignee(v["quote_id"])
+        is_assigned_to_customer = assignee is not None and assignee.get("user_id") == user["id"]
+        if not is_own_version and not is_assigned_to_customer:
+            raise HTTPException(403, "Access denied.")
     try:
         rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
         if not isinstance(rows, list):
