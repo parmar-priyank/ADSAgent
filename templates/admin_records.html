@@ -51,11 +51,23 @@
 <div class="dash-card">
   <div class="dash-card-header">
     <div class="dash-card-title">Customer Records</div>
-    <span class="dash-card-count">{{ records|length }}</span>
+    <span class="dash-card-count" id="records-visible-count">{{ records|length }}</span>
   </div>
   {% if records %}
+  <div style="padding:14px 22px;border-bottom:1px solid var(--line2);">
+    <div style="position:relative;max-width:360px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+           style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" id="records-search" placeholder="Search by customer name or quote number…"
+             oninput="filterRecords()"
+             style="width:100%;padding:9px 12px 9px 36px;border:1.5px solid var(--line2);border-radius:9px;font-size:13.5px;color:var(--ink);background:var(--surface3);outline:none;box-sizing:border-box;transition:border-color .15s;"
+             onfocus="this.style.borderColor='var(--brand)'" onblur="this.style.borderColor='var(--line2)'">
+    </div>
+  </div>
   <div style="overflow-x:auto;">
-  <table class="dash-table">
+  <table class="dash-table" id="records-table">
     <thead>
       <tr>
         {% if post_qc_users %}
@@ -73,7 +85,8 @@
     </thead>
     <tbody>
       {% for r in records %}
-      <tr class="clickable" data-href="/admin/record/{{ r['id'] }}">
+      <tr class="clickable" data-href="/admin/record/{{ r['id'] }}"
+          data-search="{{ ((r['customer_name'] or '') ~ ' ' ~ (r['quote_number'] or '')) | lower }}">
         {% if post_qc_users %}
         <td onclick="event.stopPropagation();">
           {% if r['pre_qc_count'] > 0 %}
@@ -140,9 +153,24 @@
     });
   });
 
+  function filterRecords() {
+    var q = document.getElementById('records-search').value.trim().toLowerCase();
+    var rows = document.querySelectorAll('#records-table tbody tr[data-search]');
+    var visible = 0;
+    rows.forEach(function(row) {
+      var match = !q || row.dataset.search.indexOf(q) !== -1;
+      row.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    var countEl = document.getElementById('records-visible-count');
+    if (countEl) countEl.textContent = visible;
+  }
+
   function toggleSelectAll(checkbox) {
-    document.querySelectorAll('.bulk-select-checkbox').forEach(function(cb) {
-      cb.checked = checkbox.checked;
+    document.querySelectorAll('#records-table tbody tr').forEach(function(row) {
+      if (row.style.display === 'none') return; // skip rows hidden by search
+      var cb = row.querySelector('.bulk-select-checkbox');
+      if (cb) cb.checked = checkbox.checked;
     });
     updateBulkBar();
   }
