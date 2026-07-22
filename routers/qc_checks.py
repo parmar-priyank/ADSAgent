@@ -808,14 +808,6 @@ async def upload_zip(
     user=Depends(require_qc_access),
 ):
     kind = kind if kind in ("pre", "post") else "pre"
-    # Captured immediately, under its own name: a loop further down in this
-    # function reuses the local name `kind` for something unrelated (the
-    # file-type a reference name implies — pdf/image/eml/other) and
-    # overwrites this request parameter by the time later code runs. That
-    # reuse was harmless before since nothing downstream re-read `kind`,
-    # but the Pre-QC-only batching logic added below needs the *request's*
-    # kind, so it reads _upload_kind instead of the shadowed `kind`.
-    _upload_kind = kind
     if user.get("role") != "admin":
         if kind == "post" and not user.get("can_post_qc"):
             raise HTTPException(403, "You do not have Post-QC access.")
@@ -1137,15 +1129,8 @@ async def upload_zip(
 
     non_section = [(i, item) for i, item in enumerate(items) if not item.get("is_section")]
 
-    # ── Pre-QC only: batch items that share one reference file into a single
-    # Claude call per file, instead of one call per item. Post-QC (kind ==
-    # "post") is completely untouched and still runs every item through
-    # _analyse_item exactly as before — this only changes Pre-QC.
-    #
-    # Uses _upload_kind (captured at the top of this function), not `kind` —
-    # the resolve-fallback loop above reassigns the local name `kind` for
-    # something unrelated (the file-type a reference name implies), which
-    # would otherwise silently disable batching by the time we get here.
+    # ── Batch items that share one reference file into a single Claude call,
+    # instead of one call per item — applies to both Pre-QC and Post-QC.
     #
     # Eligible for batching: item_resolved[i] has exactly one entry, that
     # entry actually resolved to a file (zdata is not None), and that file's
@@ -1154,24 +1139,23 @@ async def upload_zip(
     # reference for 2+ items. A file referenced by only one item gets no
     # benefit from batching, so it stays on the plain per-item path too.
     batch_groups: dict[str, list[int]] = {}
-    if _upload_kind == "pre":
-        for i, item in non_section:
-            resolved_entries = item_resolved.get(i, [])
-            if len(resolved_entries) != 1:
-                continue
-            rname, zname, zdata = resolved_entries[0]
-            if zdata is None or zname is None:
-                continue
-            if zname.lower().endswith(".eml"):
-                continue
-            if _actual_kind(zname, zdata) not in ("pdf", "image"):
-                continue
-            if not (item.get("prompt") or "").strip():
-                # No prompt defined — _analyse_item already returns a fixed
-                # N/A for this without calling Claude at all; keep that exact
-                # zero-cost behavior instead of pulling it into a paid batch call.
-                continue
-            batch_groups.setdefault(zname, []).append(i)
+    for i, item in non_section:
+        resolved_entries = item_resolved.get(i, [])
+        if len(resolved_entries) != 1:
+            continue
+        rname, zname, zdata = resolved_entries[0]
+        if zdata is None or zname is None:
+            continue
+        if zname.lower().endswith(".eml"):
+            continue
+        if _actual_kind(zname, zdata) not in ("pdf", "image"):
+            continue
+        if not (item.get("prompt") or "").strip():
+            # No prompt defined — _analyse_item already returns a fixed
+            # N/A for this without calling Claude at all; keep that exact
+            # zero-cost behavior instead of pulling it into a paid batch call.
+            continue
+        batch_groups.setdefault(zname, []).append(i)
     batched_item_indices = {
         i for idxs in batch_groups.values() if len(idxs) >= 2 for i in idxs
     }
