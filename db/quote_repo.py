@@ -631,6 +631,10 @@ def get_qc_monthly_stats(year_month: str) -> dict:
             by_user[key] = {
                 "user_id": uid,
                 "label": (r.get("full_name") or r.get("username") or "Unknown"),
+                # Kept separately so the UI can disambiguate two accounts that
+                # share the same full name (e.g. a super admin and a QC user
+                # both named "Priyank Parmar").
+                "username": r.get("username") or "",
                 "pre": 0, "post": 0, "total": 0,
             }
         by_user[key]["total"] += 1
