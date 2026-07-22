@@ -2,27 +2,24 @@
 <div data-tpl-name="{{ tpl['name'] }}" data-tpl-items="{{ items|length }}" style="display:none;"></div>
 
 {# ── Add new item form ────────────────────────────────────────────────────── #}
-<form action="/templates/{{ tpl['id'] }}/items/add" method="post" style="margin-bottom:18px;">
-  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-    <div class="form-field" style="flex:0 0 90px;margin-bottom:0;">
-      <label>Sno.</label>
-      <input type="text" name="sno" placeholder="35 or i"
-             style="width:100%;padding:8px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);">
-    </div>
-    <div class="form-field" style="flex:1;min-width:220px;margin-bottom:0;">
-      <label>New checklist text</label>
-      <input type="text" name="text" required placeholder="Add a new item"
-             style="width:100%;padding:8px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);">
-    </div>
-    <div class="form-field" style="flex:0 0 auto;margin-bottom:0;">
-      <label>&nbsp;</label>
-      <label style="font-weight:400;font-size:13px;color:var(--ink2);">
-        <input type="checkbox" name="is_section" value="1"> Section header
-      </label>
-    </div>
-    <button type="submit">Add</button>
+<form action="/templates/{{ tpl['id'] }}/items/add" method="post" style="margin-bottom:6px;">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <select name="is_section" title="Main point = a bold group heading. Sub point = an actual check."
+            style="flex:0 0 auto;padding:8px 10px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);font-size:13px;font-weight:600;cursor:pointer;">
+      <option value="">Sub point</option>
+      <option value="1">Main point</option>
+    </select>
+    <input type="text" name="sno" placeholder="Sno."
+           style="flex:0 0 64px;padding:8px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
+    <input type="text" name="text" required placeholder="Write the checklist point…"
+           style="flex:1;min-width:200px;padding:8px 10px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
+    <button type="submit">+ Add</button>
   </div>
 </form>
+<div style="font-size:11.5px;color:var(--muted);margin-bottom:16px;line-height:1.5;">
+  <strong style="color:var(--ink2);">Main point</strong> — a bold group heading (not checked against the ZIP).&nbsp;&nbsp;
+  <strong style="color:var(--ink2);">Sub point</strong> — an actual check the QC team answers Yes/No.
+</div>
 
 {# ── Items table ──────────────────────────────────────────────────────────── #}
 {% if items %}
@@ -54,14 +51,25 @@
   .prompt-btn svg { flex-shrink:0; opacity:.4; }
   .prompt-btn .prompt-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
   .prompt-btn .prompt-empty { color:var(--muted); font-style:italic; flex:1; }
+
+  /* Main/Sub point toggle — a real checkbox underneath (Save All reads
+     input[name="is_section"].checked), styled as a two-option pill. */
+  .pt-toggle { display:inline-flex; border:1px solid var(--line2); border-radius:14px; overflow:hidden; cursor:pointer; user-select:none; }
+  .pt-toggle input { display:none; }
+  .pt-opt { font-size:10px; font-weight:700; letter-spacing:.03em; padding:4px 9px; color:var(--muted); background:var(--surface3); white-space:nowrap; }
+  .pt-toggle input:not(:checked) ~ .pt-opt-sub  { background:var(--brand); color:#fff; }
+  .pt-toggle input:checked       ~ .pt-opt-main { background:#c45010; color:#fff; }
+  tr.is-main { background:rgba(196,80,16,.06); }
+  tr.is-main td:first-child { box-shadow:inset 3px 0 0 #c45010; }
 </style>
 <div style="overflow-x:auto;">
   <table id="checklist-table">
     <thead>
       <tr>
         <th style="width:46px;  text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Sno.</th>
-        <th style="width:200px; text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Checklist Item</th>
-        <th style="width:165px; text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Reference</th>
+        <th style="width:92px;  text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Type</th>
+        <th style="width:200px; text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Checklist Point</th>
+        <th style="width:150px; text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Reference</th>
         <th style="            text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Prompt</th>
         <th style="width:162px; text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Actions</th>
       </tr>
@@ -71,26 +79,32 @@
       <form id="frag-row-form-{{ it['id'] }}"
             action="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/update"
             method="post" style="display:none;"></form>
-      <tr data-item-id="{{ it['id'] }}" {% if it["is_section"] %}style="background:rgba(245,166,35,.06);"{% endif %}>
+      <tr data-item-id="{{ it['id'] }}" {% if it["is_section"] %}class="is-main"{% endif %}>
           <td style="padding:5px 6px;">
             <input type="text" name="sno" value="{{ it['sno'] }}"
                    form="frag-row-form-{{ it['id'] }}"
                    style="width:38px;padding:5px 4px;border:1px solid var(--line2);border-radius:6px;text-align:center;background:var(--surface3);color:var(--ink);font-size:13px;">
           </td>
           <td style="padding:5px 6px;">
+            <label class="pt-toggle" title="Main point = a bold group heading. Sub point = an actual check answered Yes/No. Saved on Save/Save All.">
+              <input type="checkbox" name="is_section" value="1" {% if it['is_section'] %}checked{% endif %}
+                     form="frag-row-form-{{ it['id'] }}">
+              <span class="pt-opt pt-opt-sub">Sub</span>
+              <span class="pt-opt pt-opt-main">Main</span>
+            </label>
+          </td>
+          <td style="padding:5px 6px;">
             <input type="text" name="text" value="{{ it['text'] }}"
                    form="frag-row-form-{{ it['id'] }}"
                    style="width:100%;padding:5px 6px;border:1px solid var(--line2);border-radius:6px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;{% if it['is_section'] %}font-weight:700;{% endif %}">
-            <label style="display:flex;align-items:center;gap:4px;margin-top:3px;font-size:11px;font-weight:400;color:var(--muted);cursor:pointer;">
-              <input type="checkbox" name="is_section" value="1" {% if it['is_section'] %}checked{% endif %}
-                     form="frag-row-form-{{ it['id'] }}" style="margin:0;">
-              Section header (excluded from ZIP matching)
-            </label>
           </td>
           <td style="padding:5px 6px;">
             <input type="hidden" name="reference" id="ref-hidden-{{ it['id'] }}"
                    form="frag-row-form-{{ it['id'] }}"
                    value="{{ it['reference'] or '' }}">
+            {% if it['is_section'] %}
+            <span style="color:var(--muted);font-size:12px;padding-left:4px;" title="Main points aren't matched against the ZIP">—</span>
+            {% else %}
             <button type="button" class="prompt-btn"
                     onclick="openRefModal(document.getElementById('ref-hidden-{{ it['id'] }}'), this)"
                     title="{{ it['reference'] or 'Click to add reference' }}">
@@ -103,11 +117,15 @@
               <span class="prompt-empty">Add reference…</span>
               {% endif %}
             </button>
+            {% endif %}
           </td>
           <td style="padding:5px 6px;">
             <input type="hidden" name="prompt" id="prompt-hidden-{{ it['id'] }}"
                    form="frag-row-form-{{ it['id'] }}"
                    value="{{ it['prompt'] or '' }}">
+            {% if it['is_section'] %}
+            <span style="color:var(--muted);font-size:12px;padding-left:4px;" title="Main points aren't matched against the ZIP">—</span>
+            {% else %}
             <button type="button" class="prompt-btn"
                     onclick="openPromptModal(document.getElementById('prompt-hidden-{{ it['id'] }}'), this)"
                     title="{{ it['prompt'] or 'Click to add prompt' }}">
@@ -121,6 +139,7 @@
               <span class="prompt-empty">Add prompt…</span>
               {% endif %}
             </button>
+            {% endif %}
           </td>
           <td style="text-align:center;white-space:nowrap;padding:5px 6px;">
             <button type="submit" form="frag-row-form-{{ it['id'] }}" class="link-btn">Save</button>
