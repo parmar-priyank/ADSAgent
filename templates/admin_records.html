@@ -48,11 +48,13 @@
 </div>
 {% endif %}
 
+<!-- Page heading: outside the card, so the card holds only search + table -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+  <span style="font-size:18px;font-weight:800;color:var(--ink);letter-spacing:-.01em;">Customer Records</span>
+  <span class="dash-card-count" id="records-visible-count">{{ records|length }}</span>
+</div>
+
 <div class="dash-card">
-  <div class="dash-card-header">
-    <div class="dash-card-title">Customer Records</div>
-    <span class="dash-card-count" id="records-visible-count">{{ records|length }}</span>
-  </div>
   {% if records %}
   <div style="padding:14px 22px;border-bottom:1px solid var(--line2);display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
 
