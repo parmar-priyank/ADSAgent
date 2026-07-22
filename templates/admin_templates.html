@@ -7,40 +7,37 @@
 
 {% block content %}
 
-{% macro template_table(templates_list) %}
-  {% if templates_list %}
-  <table class="dash-table">
-    <thead>
-      <tr><th>ID</th><th>Name</th><th>Created</th><th style="text-align:right;">Actions</th></tr>
-    </thead>
-    <tbody>
-      {% for t in templates_list %}
-      <tr class="tpl-admin-row" style="cursor:pointer;" onclick="loadTplEditor({{ t['id'] }}, this)">
-        <td><span class="id-pill">{{ t["display_num"] }}</span></td>
-        <td><strong>{{ t["name"] }}</strong></td>
-        <td class="muted">{{ t["created_at"] }}</td>
-        <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
-          <a href="#" class="link-btn" onclick="downloadAndGo({{ t['id'] }}, event)">Download</a>
-          <form action="/templates/{{ t['id'] }}/delete" method="post" style="display:inline;"
-                onsubmit="return confirm('Delete this template?');">
-            <button type="submit" class="link-btn danger">Delete</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="dash-card-body">
-    <div class="empty-state">No templates yet — upload one using the button above.</div>
+{% macro tpl_row(t) %}
+<div class="tpl-admin-row tpl-item" onclick="loadTplEditor({{ t['id'] }}, this)">
+  <div class="tpl-item-icon">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+      <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>
+    </svg>
   </div>
-  {% endif %}
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:13.5px;font-weight:800;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ t["name"] }}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:1px;">Added {{ t["created_at"][:10] }} &middot; click to edit checklist items</div>
+  </div>
+  <div style="display:flex;gap:6px;flex-shrink:0;" onclick="event.stopPropagation();">
+    <a href="#" onclick="downloadAndGo({{ t['id'] }}, event)"
+       style="font-size:12px;font-weight:600;color:var(--ink2);background:var(--surface3);border:1.5px solid var(--line2);border-radius:8px;padding:4px 12px;text-decoration:none;">Download</a>
+    <form action="/templates/{{ t['id'] }}/delete" method="post" style="margin:0;"
+          onsubmit="return confirm('Delete this template?');">
+      <button type="submit"
+              style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:8px;padding:4px 12px;cursor:pointer;">Delete</button>
+    </form>
+  </div>
+</div>
 {% endmacro %}
 
-<!-- Upload form (hidden by default) -->
+<!-- One card: header + upload form + both stages side by side -->
 <div class="dash-card" style="margin-bottom:20px;">
   <div class="dash-card-header">
-    <div class="dash-card-title">QC Checklist Templates</div>
+    <div>
+      <div class="dash-card-title">QC Checklist Templates</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">The Excel checklists the QC team runs against each customer's documents.</div>
+    </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <span class="dash-card-count">{{ templates|length }}</span>
       <button type="button" class="link-btn" onclick="toggleTplUpload()" id="tpl-upload-toggle-btn">+ Upload New</button>
@@ -74,24 +71,42 @@
       </div>
     </form>
   </div>
-</div>
 
-<!-- Pre-Install QC templates -->
-<div class="dash-card" style="margin-bottom:20px;">
-  <div class="dash-card-header">
-    <div class="dash-card-title">Pre-Install QC</div>
-    <span class="dash-card-count">{{ pre_templates|length }}</span>
-  </div>
-  {{ template_table(pre_templates) }}
-</div>
+  <div class="tpl-stage-grid">
 
-<!-- Post-Install QC templates -->
-<div class="dash-card" style="margin-bottom:20px;">
-  <div class="dash-card-header">
-    <div class="dash-card-title">Post-Install QC</div>
-    <span class="dash-card-count">{{ post_templates|length }}</span>
+    <!-- Pre-Install QC -->
+    <div class="tpl-stage">
+      <div class="tpl-stage-head">
+        <span class="tpl-stage-dot" style="background:#c45010;"></span>
+        <div>
+          <div style="font-size:13px;font-weight:800;color:var(--ink);">Pre-Install QC</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px;">Checked before the system is installed</div>
+        </div>
+        <span class="dash-card-count" style="margin-left:auto;">{{ pre_templates|length }}</span>
+      </div>
+      {% for t in pre_templates %}{{ tpl_row(t) }}{% endfor %}
+      {% if not pre_templates %}
+      <div class="tpl-empty">No Pre-Install template yet — upload one above.</div>
+      {% endif %}
+    </div>
+
+    <!-- Post-Install QC -->
+    <div class="tpl-stage">
+      <div class="tpl-stage-head">
+        <span class="tpl-stage-dot" style="background:#2d7a4a;"></span>
+        <div>
+          <div style="font-size:13px;font-weight:800;color:var(--ink);">Post-Install QC</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px;">Checked after installation is complete</div>
+        </div>
+        <span class="dash-card-count" style="margin-left:auto;">{{ post_templates|length }}</span>
+      </div>
+      {% for t in post_templates %}{{ tpl_row(t) }}{% endfor %}
+      {% if not post_templates %}
+      <div class="tpl-empty">No Post-Install template yet — upload one above.</div>
+      {% endif %}
+    </div>
+
   </div>
-  {{ template_table(post_templates) }}
 </div>
 
 <!-- Template Editor (shown when a template row is clicked) -->
@@ -111,6 +126,32 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .tpl-stage-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:16px 22px 20px; }
+  @media (max-width: 860px) { .tpl-stage-grid { grid-template-columns:1fr; } }
+
+  .tpl-stage { border:1px solid var(--line2); border-radius:12px; padding:14px 16px; background:var(--surface3); }
+  .tpl-stage-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .tpl-stage-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+  .tpl-item {
+    display:flex; align-items:center; gap:11px;
+    background:var(--surface2); border:1.5px solid var(--line2); border-radius:10px;
+    padding:11px 14px; cursor:pointer; transition:border-color .13s, box-shadow .13s;
+  }
+  .tpl-item + .tpl-item { margin-top:8px; }
+  .tpl-item:hover { border-color:var(--brand); box-shadow:0 3px 10px rgba(0,0,0,.06); }
+  .tpl-item.tpl-row-active { border-color:var(--brand); background:var(--brand-glow); }
+  .tpl-item-icon {
+    width:34px; height:34px; border-radius:9px; flex-shrink:0;
+    background:rgba(45,122,74,.1); color:#2d7a4a;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .tpl-empty {
+    border:1.5px dashed var(--line2); border-radius:10px;
+    padding:20px 14px; text-align:center; font-size:12.5px; color:var(--muted);
+  }
+</style>
 <script>
   function downloadAndGo(id, e) {
     e.preventDefault();
