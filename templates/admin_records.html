@@ -54,37 +54,46 @@
     <span class="dash-card-count" id="records-visible-count">{{ records|length }}</span>
   </div>
   {% if records %}
-  <div style="padding:14px 22px;border-bottom:1px solid var(--line2);display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
-    <div style="position:relative;max-width:360px;flex:1;min-width:220px;">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
-           style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;">
+  <div style="padding:12px 22px;border-bottom:1px solid var(--line2);display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+
+    <!-- Search pill -->
+    <div class="records-pill" style="flex:0 1 300px;min-width:200px;padding:0;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+           style="margin-left:14px;flex-shrink:0;pointer-events:none;">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
-      <input type="text" id="records-search" placeholder="Search by customer name or quote number…"
+      <input type="text" id="records-search" placeholder="Search name or quote no…"
              oninput="filterRecords()"
-             style="width:100%;padding:9px 12px 9px 36px;border:1.5px solid var(--line2);border-radius:9px;font-size:13.5px;color:var(--ink);background:var(--surface3);outline:none;box-sizing:border-box;transition:border-color .15s;"
-             onfocus="this.style.borderColor='var(--brand)'" onblur="this.style.borderColor='var(--line2)'">
+             style="flex:1;min-width:0;padding:8px 14px 8px 8px;border:none;border-radius:20px;font-size:13px;color:var(--ink);background:transparent;outline:none;">
     </div>
-    <div style="display:flex;align-items:center;gap:6px;">
-      <label for="pre-qc-filter" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">Pre-QC</label>
-      <select id="pre-qc-filter" onchange="filterRecords()"
-              style="font-size:13px;padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);cursor:pointer;">
+
+    <!-- Pre-QC filter pill -->
+    <div class="records-pill">
+      <span class="records-pill-label">Pre-QC</span>
+      <select id="pre-qc-filter" onchange="filterRecords()" class="records-pill-select">
         <option value="">Any</option>
         <option value="none">Not started</option>
         <option value="draft">Draft</option>
         <option value="confirmed">Confirmed</option>
       </select>
     </div>
-    <div style="display:flex;align-items:center;gap:6px;">
-      <label for="post-qc-filter" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">Post-QC</label>
-      <select id="post-qc-filter" onchange="filterRecords()"
-              style="font-size:13px;padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);cursor:pointer;">
+
+    <!-- Post-QC filter pill -->
+    <div class="records-pill">
+      <span class="records-pill-label">Post-QC</span>
+      <select id="post-qc-filter" onchange="filterRecords()" class="records-pill-select">
         <option value="">Any</option>
         <option value="none">Not started</option>
         <option value="draft">Draft</option>
         <option value="confirmed">Confirmed</option>
       </select>
     </div>
+
+    <!-- Clear: only appears while a search/filter is narrowing the list -->
+    <button type="button" id="records-clear-btn" onclick="clearRecordFilters()"
+            style="display:none;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--brand);background:var(--brand-glow);border:1.5px solid transparent;border-radius:20px;padding:6px 14px;cursor:pointer;white-space:nowrap;">
+      &#10005; Clear
+    </button>
   </div>
   <div style="overflow-x:auto;">
   <table class="dash-table" id="records-table">
@@ -185,6 +194,24 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .records-pill {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--surface3); border: 1.5px solid var(--line2);
+    border-radius: 20px; padding: 0 8px 0 14px;
+    transition: border-color .15s;
+  }
+  .records-pill:focus-within { border-color: var(--brand); }
+  .records-pill-label {
+    font-size: 10px; font-weight: 800; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted); white-space: nowrap;
+  }
+  .records-pill-select {
+    border: none; background: transparent; outline: none; cursor: pointer;
+    font-size: 12.5px; font-weight: 600; color: var(--ink);
+    padding: 8px 2px 8px 0;
+  }
+</style>
 <script>
   document.querySelectorAll('tr.clickable[data-href]').forEach(function(row) {
     row.addEventListener('click', function() {
@@ -198,6 +225,15 @@
   function filterRecords() {
     recordsCurrentPage = 1; // any new search starts back at page 1
     paginateRecords();
+  }
+
+  function clearRecordFilters() {
+    document.getElementById('records-search').value = '';
+    var pre = document.getElementById('pre-qc-filter');
+    var post = document.getElementById('post-qc-filter');
+    if (pre) pre.value = '';
+    if (post) post.value = '';
+    filterRecords();
   }
 
   function changeRecordsPage(delta) {
@@ -236,6 +272,9 @@
 
     var countEl = document.getElementById('records-visible-count');
     if (countEl) countEl.textContent = matched.length;
+
+    var clearBtn = document.getElementById('records-clear-btn');
+    if (clearBtn) clearBtn.style.display = (q || preFilter || postFilter) ? 'inline-flex' : 'none';
 
     var infoEl = document.getElementById('records-page-info');
     if (infoEl) {
