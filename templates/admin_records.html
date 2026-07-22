@@ -128,7 +128,7 @@
           {% endif %}
         </td>
         {% endif %}
-        <td>{{ r['quote_number'] }}</td>
+        <td style="font-weight:700;">{{ r['quote_number'] }}</td>
         <td><strong>{{ r['customer_name'] }}</strong></td>
         <td class="muted">{{ r['email'] }}</td>
         <td>{{ r['total_price'] }}</td>
@@ -209,10 +209,17 @@
   /* Column names: big, bold, plain-language — override the global table
      header's small grey uppercase treatment for this table only. */
   #records-table thead th {
-    font-size: 13.5px; font-weight: 800; color: var(--ink);
+    font-size: 14.5px; font-weight: 800; color: var(--ink);
     text-transform: none; letter-spacing: 0; white-space: nowrap;
-    padding-top: 13px; padding-bottom: 13px;
+    padding-top: 14px; padding-bottom: 14px;
   }
+  /* Row data: bigger and darker so every cell reads clearly, with the key
+     identifiers (quote no. + customer) in bold. */
+  #records-table tbody td {
+    font-size: 14px; color: var(--ink);
+    padding-top: 14px; padding-bottom: 14px;
+  }
+  #records-table tbody td strong { font-size: 14.5px; }        /* Customer */
 </style>
 <script>
   document.querySelectorAll('tr.clickable[data-href]').forEach(function(row) {

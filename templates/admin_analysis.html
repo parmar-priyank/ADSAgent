@@ -151,12 +151,7 @@
       <tbody>
         {% for u in stats.per_user %}
         <tr style="border-bottom:1px solid var(--line2);">
-          <td style="padding:11px 22px;font-weight:600;color:var(--ink);">
-            {{ u.label }}
-            {% if u.username and u.username != u.label %}
-            <span style="color:var(--muted);font-weight:400;font-size:11.5px;">@{{ u.username }}</span>
-            {% endif %}
-          </td>
+          <td style="padding:11px 22px;font-weight:600;color:var(--ink);">{{ u.label }}</td>
           <td style="padding:11px 12px;text-align:center;color:var(--ink2);">{{ u.pre }}</td>
           <td style="padding:11px 12px;text-align:center;color:var(--ink2);">{{ u.post }}</td>
           <td style="padding:11px 22px;text-align:center;font-weight:700;color:var(--ink);">{{ u.total }}</td>

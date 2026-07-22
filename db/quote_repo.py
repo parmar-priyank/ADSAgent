@@ -623,17 +623,41 @@ def get_qc_monthly_stats(year_month: str) -> dict:
     pre_count  = sum(1 for r in rows if r["kind"] == "pre")
     post_count = sum(1 for r in rows if r["kind"] == "post")
 
+    # Full team roster: every active non-super-admin account appears in the
+    # per-member breakdown even with zero runs this month, so the table reads
+    # as the whole team, not just whoever happened to confirm something.
+    # Super-admin accounts never appear here (per the privacy rule); their
+    # runs still count in the month totals and daily chart above.
+    with get_db() as conn:
+        roster = conn.execute(
+            "SELECT id, username, full_name, COALESCE(is_super_admin, 0) AS is_super_admin, "
+            "COALESCE(is_active, 1) AS is_active FROM users"
+        ).fetchall()
+    roster = [dict(r) for r in roster]
+    super_admin_ids = {r["id"] for r in roster if r["is_super_admin"]}
+
     by_user = {}
+    for r in roster:
+        if r["is_super_admin"] or not r["is_active"]:
+            continue
+        by_user[r["id"]] = {
+            "user_id": r["id"],
+            "label": (r["full_name"] or r["username"] or "Unknown"),
+            "username": r["username"] or "",
+            "pre": 0, "post": 0, "total": 0,
+        }
+
     for r in rows:
         uid = r.get("confirmed_by_user_id")
+        if uid in super_admin_ids:
+            continue
         key = uid if uid is not None else "unknown"
         if key not in by_user:
+            # Deactivated or deleted account that still has runs this month —
+            # keep its row so the numbers stay attributable.
             by_user[key] = {
                 "user_id": uid,
                 "label": (r.get("full_name") or r.get("username") or "Unknown"),
-                # Kept separately so the UI can disambiguate two accounts that
-                # share the same full name (e.g. a super admin and a QC user
-                # both named "Priyank Parmar").
                 "username": r.get("username") or "",
                 "pre": 0, "post": 0, "total": 0,
             }
@@ -643,7 +667,7 @@ def get_qc_monthly_stats(year_month: str) -> dict:
         else:
             by_user[key]["pre"] += 1
 
-    per_user = sorted(by_user.values(), key=lambda x: x["total"], reverse=True)
+    per_user = sorted(by_user.values(), key=lambda x: (-x["total"], x["label"].lower()))
 
     # One entry per calendar day of the month (even zero-count days), so the
     # Analysis page's daily trend chart has a consistent, gap-free x-axis.
