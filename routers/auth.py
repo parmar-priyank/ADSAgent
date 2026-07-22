@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 import db.user_repo as adb
+import db.audit_repo as audit
 from config import (
     _NO_CACHE,
     _POST_ONLY_PATHS,
@@ -69,12 +70,14 @@ def login_user_post(
         return resp
     user = adb.verify_user(username, password)
     if not user or user.get("role") == "admin":
+        audit.log_event(request, "login_failed", username=username, detail="user panel")
         resp = templates.TemplateResponse(
             request, "login_user.html",
             _login_ctx("Invalid username or password."),
         )
         resp.headers.update(_NO_CACHE)
         return resp
+    audit.log_event(request, "login_success", username=user["username"], user_id=user["id"], detail="user panel")
     response = RedirectResponse(url="/user_home", status_code=303)
     _set_session(response, user)
     return response
@@ -108,12 +111,14 @@ def login_admin_post(
         return resp
     user = adb.verify_user(username, password)
     if not user or user.get("role") != "admin":
+        audit.log_event(request, "admin_login_failed", username=username, detail="admin panel")
         resp = templates.TemplateResponse(
             request, "login_admin.html",
             _login_ctx("Invalid credentials."),
         )
         resp.headers.update(_NO_CACHE)
         return resp
+    audit.log_event(request, "admin_login_success", username=user["username"], user_id=user["id"], detail="admin panel")
     response = RedirectResponse(url="/admin", status_code=303)
     _set_session(response, user)
     return response
@@ -126,6 +131,11 @@ def logout(request: Request):
     # correctly even if the session had already gone idle/expired (e.g.
     # the 15-minute inactivity timeout) by the time Sign Out is clicked.
     dest = "/admin-dashboard" if request.cookies.get(COOKIE_ADMIN) else "/login"
+    # Best-effort actor for the audit row — the session may already be expired.
+    _who = _get_admin_session(request) or _get_session(request)
+    audit.log_event(request, "logout",
+                    username=(_who or {}).get("username", ""),
+                    user_id=(_who or {}).get("id"))
     response = RedirectResponse(url=dest, status_code=303)
     response.delete_cookie(COOKIE)
     response.delete_cookie(COOKIE_ADMIN)
@@ -176,6 +186,7 @@ def user_change_password(request: Request,
         return RedirectResponse(url="/user_home?pwd_error=Current+password+is+incorrect.", status_code=303)
     ok = adb.change_password(user["id"], new_password)
     if ok:
+        audit.log_event(request, "password_changed", username=user["username"], user_id=user["id"], detail="self-service")
         return RedirectResponse(url="/user_home?pwd_ok=Password+changed+successfully.", status_code=303)
     return RedirectResponse(
         url="/user_home?pwd_error=Password+must+be+8-256+characters+with+uppercase,+lowercase,+a+number,+and+a+symbol.",

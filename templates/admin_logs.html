@@ -39,9 +39,50 @@
 <!-- Console -->
 <div id="log-console"
      style="background:#15171b;border:1px solid #2b2f36;border-radius:12px;padding:16px 18px;
-            height:min(62vh, 640px);overflow-y:auto;
+            height:min(48vh, 480px);overflow-y:auto;
             font-family:ui-monospace,'Cascadia Code',Consolas,Menlo,monospace;font-size:12.5px;line-height:1.65;">
   <div style="color:#8a8f98;">Loading log…</div>
+</div>
+
+<!-- ── Security Audit ── -->
+<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:28px 0 10px;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span style="font-size:18px;font-weight:800;color:var(--ink);letter-spacing:-.01em;">Security Audit</span>
+    <span class="dash-card-count" id="audit-count">0</span>
+  </div>
+  <select id="audit-filter" onchange="renderAudit()"
+          style="font-size:13px;padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface2);color:var(--ink);cursor:pointer;">
+    <option value="">All events</option>
+    <option value="failed">Failed logins only</option>
+    <option value="login">Logins / logouts</option>
+    <option value="account">Account changes</option>
+    <option value="record">Record deletions</option>
+    <option value="db">Database access</option>
+  </select>
+</div>
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+  Who did what, from which IP address and device — logins and failed attempts, account changes,
+  record deletions, and database access. Kept for one year; evidence trail for any future incident.
+</div>
+
+<div class="dash-card">
+  <div style="overflow-x:auto;">
+    <table class="dash-table" style="width:100%;">
+      <thead>
+        <tr>
+          <th style="white-space:nowrap;">Time</th>
+          <th>Event</th>
+          <th>User</th>
+          <th style="white-space:nowrap;">IP Address</th>
+          <th>Details</th>
+          <th>Device</th>
+        </tr>
+      </thead>
+      <tbody id="audit-tbody">
+        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:26px;">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
 {% endblock %}
@@ -122,5 +163,86 @@
     box.scrollTop = box.scrollHeight;
   }, 400);
   _logTimer = setInterval(fetchLogs, 5000);
+
+  // ── Security Audit ──────────────────────────────────────────────────────
+  var _auditRows = [];
+
+  var _AUDIT_CATS = {
+    failed:  function(e) { return e.indexOf('failed') !== -1; },
+    login:   function(e) { return e === 'login_success' || e === 'admin_login_success' || e === 'logout' || e.indexOf('login') !== -1; },
+    account: function(e) { return ['user_created','user_deleted','user_activated','user_deactivated','role_changed','password_reset','password_changed','qc_access_changed','ip_restriction_changed'].indexOf(e) !== -1; },
+    record:  function(e) { return e.indexOf('record_') === 0; },
+    db:      function(e) { return e.indexOf('db_') === 0; },
+  };
+
+  function _auditChip(event) {
+    var color, bg;
+    if (event.indexOf('failed') !== -1 || event === 'record_purged' || event === 'db_restored') {
+      color = '#dc2626'; bg = 'rgba(248,113,113,.12)';
+    } else if (event === 'login_success' || event === 'admin_login_success' || event === 'record_restored' || event === 'user_activated') {
+      color = '#16a34a'; bg = 'rgba(52,211,153,.12)';
+    } else {
+      color = '#b45309'; bg = 'rgba(245,158,11,.12)';
+    }
+    var span = document.createElement('span');
+    span.textContent = event.replace(/_/g, ' ');
+    span.style.cssText = 'display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap;color:' + color + ';background:' + bg + ';';
+    return span;
+  }
+
+  function _shortUA(ua) {
+    if (!ua) return '—';
+    var browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Other';
+    var os = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac OS/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : '';
+    return browser + (os ? ' · ' + os : '');
+  }
+
+  function renderAudit() {
+    var filter = document.getElementById('audit-filter').value;
+    var rows = _auditRows;
+    if (filter && _AUDIT_CATS[filter]) rows = rows.filter(function(r) { return _AUDIT_CATS[filter](r.event); });
+
+    document.getElementById('audit-count').textContent = rows.length;
+    var tbody = document.getElementById('audit-tbody');
+    tbody.innerHTML = '';
+    if (!rows.length) {
+      var tr = document.createElement('tr');
+      var td = document.createElement('td');
+      td.colSpan = 6;
+      td.style.cssText = 'text-align:center;color:var(--muted);padding:26px;';
+      td.textContent = 'No events recorded yet.';
+      tr.appendChild(td); tbody.appendChild(tr);
+      return;
+    }
+    rows.forEach(function(r) {
+      var tr = document.createElement('tr');
+      function cell(text, css) {
+        var td = document.createElement('td');
+        td.textContent = text;
+        if (css) td.style.cssText = css;
+        return td;
+      }
+      tr.appendChild(cell(r.ts || '—', 'white-space:nowrap;font-size:12px;color:var(--muted);'));
+      var evTd = document.createElement('td'); evTd.appendChild(_auditChip(r.event)); tr.appendChild(evTd);
+      tr.appendChild(cell(r.username || '—', 'font-weight:600;color:var(--ink);font-size:13px;'));
+      tr.appendChild(cell(r.ip || '—', 'font-family:ui-monospace,Consolas,monospace;font-size:12.5px;white-space:nowrap;'));
+      tr.appendChild(cell(r.detail || '—', 'font-size:12.5px;color:var(--ink2);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'));
+      var uaTd = cell(_shortUA(r.user_agent), 'font-size:12px;color:var(--muted);white-space:nowrap;');
+      uaTd.title = r.user_agent || '';
+      tr.appendChild(uaTd);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function fetchAudit() {
+    if (_logPaused) return;
+    fetch('/admin/logs/audit?limit=300')
+      .then(function(r) { return r.json(); })
+      .then(function(data) { _auditRows = data.events || []; renderAudit(); })
+      .catch(function() { /* transient blip — next poll retries */ });
+  }
+
+  fetchAudit();
+  setInterval(fetchAudit, 10000);
 </script>
 {% endblock %}

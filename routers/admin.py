@@ -45,6 +45,7 @@ from datetime import datetime
 import db.user_repo as adb
 import db.quote_repo as db
 import db.checklist_repo as tdb
+import db.audit_repo as audit
 from reports.xlsx_builder import build_xlsx
 from db.connection import get_db
 
@@ -233,6 +234,8 @@ def admin_create_user(
         role = "user"
     ok = adb.create_user(username, password, role)
     if ok:
+        audit.log_event(request, "user_created", username=user["username"], user_id=user["id"],
+                        detail=f"created '{username}' ({role})")
         return RedirectResponse(url="/admin/users?success=1", status_code=303)
     ctx = _admin_ctx(user,
         users=adb.list_users(),
@@ -301,6 +304,8 @@ def admin_change_password(user_id: int, request: Request,
         raise HTTPException(403, "Only a super admin can change another admin's password.")
     ok = adb.change_password(user_id, new_password)
     if ok:
+        audit.log_event(request, "password_reset", username=user["username"], user_id=user["id"],
+                        detail=f"reset password of '{target.get('username')}'")
         return RedirectResponse(url=f"/admin/users/{user_id}?success=Password+changed+successfully.", status_code=303)
     return RedirectResponse(
         url=f"/admin/users/{user_id}?error=Password+must+be+8-256+characters+with+uppercase,+lowercase,+a+number,+and+a+symbol.",
@@ -323,6 +328,8 @@ def admin_change_role(user_id: int, request: Request,
         raise HTTPException(403, "Only a super admin can change another admin's role.")
     ok = adb.change_role(user_id, new_role)
     if ok:
+        audit.log_event(request, "role_changed", username=user["username"], user_id=user["id"],
+                        detail=f"'{target.get('username')}' -> {new_role}")
         label = "Admin" if new_role == "admin" else "User"
         return RedirectResponse(url=f"/admin/users/{user_id}?success=Role+changed+to+{label}.", status_code=303)
     return RedirectResponse(url=f"/admin/users/{user_id}?error=Invalid+role.", status_code=303)
@@ -340,6 +347,8 @@ def admin_toggle_active(user_id: int, request: Request, user=Depends(require_adm
     new_active = not target.get("is_active", 1)
     adb.set_active(user_id, new_active)
     label = "activated" if new_active else "deactivated"
+    audit.log_event(request, f"user_{label}", username=user["username"], user_id=user["id"],
+                    detail=f"'{target.get('username')}'")
     return RedirectResponse(url=f"/admin/users/{user_id}?success=User+{label}.", status_code=303)
 
 
@@ -353,6 +362,8 @@ def admin_set_qc_access(user_id: int, request: Request,
     if target.get("role") == "admin":
         raise HTTPException(403, "QC access does not apply to admin accounts.")
     adb.set_qc_access(user_id, can_pre_qc=bool(can_pre_qc), can_post_qc=bool(can_post_qc))
+    audit.log_event(request, "qc_access_changed", username=user["username"], user_id=user["id"],
+                    detail=f"'{target.get('username')}': pre={bool(can_pre_qc)}, post={bool(can_post_qc)}")
     return RedirectResponse(url=f"/admin/users/{user_id}?success=QC+access+updated.", status_code=303)
 
 
@@ -366,6 +377,8 @@ def admin_delete_user(user_id: int, request: Request, user=Depends(require_admin
     if target.get("role") == "admin":
         raise HTTPException(403, "Cannot delete another admin account.")
     adb.delete_user(user_id)
+    audit.log_event(request, "user_deleted", username=user["username"], user_id=user["id"],
+                    detail=f"deleted account '{target.get('username')}'")
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
@@ -409,7 +422,10 @@ def admin_delete_record(record_id: int, request: Request, user=Depends(require_a
     """A Team Leader's Delete is a SOFT delete — the record leaves every active
     view but stays in the DB, recoverable from the super-admin Deleted Records
     trash. Permanent deletion happens only from there."""
+    _rec = db.get_quote(record_id)
     db.soft_delete_quote(record_id, deleted_by_user_id=user["id"])
+    audit.log_event(request, "record_deleted", username=user["username"], user_id=user["id"],
+                    detail=f"quote {(_rec or {}).get('quote_number') or record_id} ({(_rec or {}).get('customer_name') or ''})")
     return RedirectResponse(url="/admin/records", status_code=303)
 
 
@@ -427,6 +443,9 @@ def admin_deleted_records_page(request: Request, user=Depends(require_superadmin
 def admin_restore_record(record_id: int, request: Request, user=Depends(require_superadmin)):
     """Restore a soft-deleted record back into the active list. Super-admin only."""
     db.restore_quote(record_id)
+    _rec = db.get_quote(record_id)
+    audit.log_event(request, "record_restored", username=user["username"], user_id=user["id"],
+                    detail=f"quote {(_rec or {}).get('quote_number') or record_id} ({(_rec or {}).get('customer_name') or ''})")
     return RedirectResponse(url="/admin/deleted-records", status_code=303)
 
 
@@ -435,7 +454,10 @@ def admin_delete_record_permanent(record_id: int, request: Request, user=Depends
     """Permanently remove a record from the database, including its QC versions
     and on-disk Excel files. Super-admin only, and only reachable from the
     trash — this is the irreversible delete."""
+    _rec = db.get_quote(record_id)
     db.delete_quote(record_id)
+    audit.log_event(request, "record_purged", username=user["username"], user_id=user["id"],
+                    detail=f"permanently deleted quote {(_rec or {}).get('quote_number') or record_id} ({(_rec or {}).get('customer_name') or ''})")
     return RedirectResponse(url="/admin/deleted-records", status_code=303)
 
 
@@ -476,6 +498,14 @@ def admin_logs_tail(lines: int = 300, user=Depends(require_superadmin)):
     tail_lines = text.splitlines()[-lines:]
     mtime = datetime.fromtimestamp(os.path.getmtime(_APP_LOG_PATH)).strftime("%Y-%m-%d %H:%M:%S")
     return {"lines": tail_lines, "size": size, "mtime": mtime}
+
+
+@router.get("/admin/logs/audit")
+def admin_logs_audit(limit: int = 200, user=Depends(require_superadmin)):
+    """Recent security-audit events (logins, failed logins, account changes,
+    record deletions, DB access) with actor, source IP, and device — polled
+    by the Logs page. Super admin only."""
+    return {"events": audit.get_recent(limit)}
 
 
 @router.post("/admin/records/{record_id}/assign-post-qc")
@@ -538,6 +568,8 @@ def admin_set_login_ip_restriction(request: Request, enabled: str = Form(...),
     network. On = only LOGIN_ALLOWED_IPS can. Admin login is never
     affected by this either way."""
     set_login_ip_restricted(enabled == "1")
+    audit.log_event(request, "ip_restriction_changed", username=user["username"], user_id=user["id"],
+                    detail="turned ON" if enabled == "1" else "turned OFF")
     return RedirectResponse(url=_redirect_back_to_admin(request), status_code=303)
 
 
@@ -717,8 +749,9 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
 # ---------------------------------------------------------------------------
 
 @router.get("/db/download")
-def db_download(user=Depends(require_admin)):
+def db_download(request: Request, user=Depends(require_admin)):
     from db.connection import DB_PATH
+    audit.log_event(request, "db_downloaded", username=user["username"], user_id=user["id"])
     src = sqlite3.connect(DB_PATH)
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
@@ -794,6 +827,8 @@ async def db_restore(request: Request, file: UploadFile = File(...), user=Depend
         tmp.write(data)
         tmp.close()
         shutil.move(tmp.name, DB_PATH)
+        audit.log_event(request, "db_restored", username=user["username"], user_id=user["id"],
+                        detail=f"uploaded {len(data)} bytes")
     except Exception:
         try:
             os.unlink(tmp.name)
