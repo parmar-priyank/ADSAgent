@@ -348,19 +348,12 @@
       : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
   }
 
+  // Thin wrappers over the shared implementation in _pwd_helpers.html —
+  // same ids/behavior as before (this form has no strength meter, only a
+  // match check; the server enforces complexity and reports back via
+  // redirect, so validateResetPwd deliberately doesn't call pwdIsStrong).
   function checkResetPwdMatch() {
-    var np  = document.getElementById('reset-pwd-new').value;
-    var cp  = document.getElementById('reset-pwd-confirm').value;
-    var msg = document.getElementById('reset-pwd-match-msg');
-    var confirmInput = document.getElementById('reset-pwd-confirm');
-    if (!cp) { msg.style.display = 'none'; confirmInput.style.borderColor = 'var(--line2)'; return; }
-    if (np === cp) {
-      msg.style.display = 'block'; msg.style.color = '#16a34a'; msg.textContent = '✓ Passwords match';
-      confirmInput.style.borderColor = '#16a34a';
-    } else {
-      msg.style.display = 'block'; msg.style.color = '#dc2626'; msg.textContent = '✗ Passwords do not match';
-      confirmInput.style.borderColor = '#dc2626';
-    }
+    pwdRenderMatch('reset-pwd-new', 'reset-pwd-confirm', 'reset-pwd-match-msg', 'var(--line2)');
   }
 
   function validateResetPwd(e) {

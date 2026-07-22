@@ -312,59 +312,19 @@
     num:   'Number (0–9)',
     sym:   'Symbol (!@#$…)',
   };
+  // Thin wrappers over the shared implementation in _pwd_helpers.html —
+  // same ids/behavior as before, logic lives in one place.
   function checkCreateStrength() {
-    var v = document.getElementById('cu-pwd').value;
-    var rules = { len: v.length>=8, upper:/[A-Z]/.test(v), lower:/[a-z]/.test(v), num:/[0-9]/.test(v), sym:/[^A-Za-z0-9]/.test(v) };
-    var score = Object.values(rules).filter(Boolean).length;
-    Object.keys(rules).forEach(function(k) {
-      var el = document.getElementById('cu-rule-' + k);
-      if (!el) return;
-      el.innerHTML = (rules[k] ? '&#10003; ' : '&#10007; ') + _cuRuleLabels[k];
-      el.classList.toggle('met', rules[k]);
+    pwdRenderStrength('cu-pwd', {
+      rulePrefix: 'cu-rule-', barIds: ['cu-sb1','cu-sb2','cu-sb3','cu-sb4'],
+      labelId: 'cu-strength-label', labels: _cuRuleLabels, emptyBar: 'var(--line2)',
     });
-    var barColor = score <= 1 ? '#dc2626' : score <= 3 ? '#f59e0b' : '#16a34a';
-    var strengthLabels = ['','Weak','Fair','Good','Strong'];
-    ['cu-sb1','cu-sb2','cu-sb3','cu-sb4'].forEach(function(id, i) {
-      document.getElementById(id).style.background = i < score ? barColor : 'var(--line2)';
-    });
-    var lbl = document.getElementById('cu-strength-label');
-    lbl.textContent = v ? (strengthLabels[score] || 'Strong') : '';
-    lbl.style.color = barColor;
   }
   function checkCreateMatch() {
-    var np = document.getElementById('cu-pwd').value;
-    var cp = document.getElementById('cu-confirm').value;
-    var msg = document.getElementById('cu-match-msg');
-    var confirmInput = document.getElementById('cu-confirm');
-    if (!cp) { msg.style.display='none'; confirmInput.style.borderColor='var(--line2)'; return; }
-    if (np === cp) {
-      msg.style.display='block'; msg.style.color='#16a34a'; msg.textContent='✓ Passwords match';
-      confirmInput.style.borderColor='#16a34a';
-    } else {
-      msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent='✗ Passwords do not match';
-      confirmInput.style.borderColor='#dc2626';
-    }
+    pwdRenderMatch('cu-pwd', 'cu-confirm', 'cu-match-msg', 'var(--line2)');
   }
   function validateCreateUser(e) {
-    var np = document.getElementById('cu-pwd').value;
-    var cp = document.getElementById('cu-confirm').value;
-    var strong = np.length>=8 && /[A-Z]/.test(np) && /[a-z]/.test(np) && /[0-9]/.test(np) && /[^A-Za-z0-9]/.test(np);
-    if (!strong) {
-      e.preventDefault();
-      document.getElementById('cu-pwd').style.borderColor='#dc2626';
-      document.getElementById('cu-pwd').focus();
-      return false;
-    }
-    if (np !== cp) {
-      e.preventDefault();
-      document.getElementById('cu-match-msg').style.display='block';
-      document.getElementById('cu-match-msg').style.color='#dc2626';
-      document.getElementById('cu-match-msg').textContent='✗ Passwords do not match';
-      document.getElementById('cu-confirm').style.borderColor='#dc2626';
-      document.getElementById('cu-confirm').focus();
-      return false;
-    }
-    return true;
+    return pwdValidateSubmit(e, 'cu-pwd', 'cu-confirm', 'cu-match-msg');
   }
 
   {% if error %}

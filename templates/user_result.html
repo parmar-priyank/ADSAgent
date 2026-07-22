@@ -1075,17 +1075,23 @@
     return rows;
   }
 
+  // Every real row of the Email Verification table — excludes the
+  // "No email verification was run" placeholder (id="eml-empty-row"), which
+  // has no data-* attributes: treating it as a real row once serialized a
+  // bogus all-blank entry into the saved email_results, showing a phantom
+  // "1 attachment" on runs that never had email verification.
+  function _emlRows() {
+    return Array.prototype.filter.call(
+      document.querySelectorAll('#email-results-tbody tr'),
+      function(tr) { return tr.id !== 'eml-empty-row'; }
+    );
+  }
+
   // Same idea as _collectRows() but for the Email Verification table —
   // independent data, independent table, independent modal.
   function _collectEmailRows() {
     var rows = [];
-    document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
-      // Skip the "No email verification was run" placeholder row — it has
-      // no data-* attributes at all (id="eml-empty-row"), so collecting it
-      // like a real row serialized a bogus all-blank entry into the saved
-      // email_results, showing as a phantom "1 attachment" even on a run
-      // that never went through email verification (e.g. every Post-QC run).
-      if (tr.id === 'eml-empty-row') return;
+    _emlRows().forEach(function(tr) {
       var statusEl = tr.querySelector('.status-edit');
       var remarkEl = tr.querySelector('.remark-edit');
       rows.push({
@@ -1428,8 +1434,7 @@
     document.getElementById('eml-edit-bar').style.display = 'flex';
     document.getElementById('eml-modify-btn').style.display = 'none';
     _emlCard.classList.add('is-edit-mode');
-    document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
-      if (tr.id === 'eml-empty-row') return; // no .status-edit to bind on the placeholder row
+    _emlRows().forEach(function(tr) {
       tr.dataset.savedStatus = tr.dataset.status;
       tr.querySelector('.status-edit').addEventListener('change', function() {
         tr.dataset.status = this.value;
@@ -1443,8 +1448,7 @@
     document.getElementById('eml-edit-bar').style.display = 'none';
     document.getElementById('eml-modify-btn').style.display = '';
     _emlCard.classList.remove('is-edit-mode');
-    document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
-      if (tr.id === 'eml-empty-row') return;
+    _emlRows().forEach(function(tr) {
       tr.dataset.status = tr.dataset.savedStatus || tr.dataset.status;
       tr.querySelector('.status-edit').value = tr.dataset.status;
       var inp = tr.querySelector('.remark-edit');
@@ -1456,8 +1460,7 @@
   }
 
   function _applyEmailRowsToDom() {
-    document.querySelectorAll('#email-results-tbody tr').forEach(function(tr) {
-      if (tr.id === 'eml-empty-row') return;
+    _emlRows().forEach(function(tr) {
       var statusEl = tr.querySelector('.status-edit');
       var remarkEl = tr.querySelector('.remark-edit');
       if (!statusEl || !remarkEl) return;
@@ -1465,15 +1468,8 @@
       var newRemark = remarkEl.value;
       tr.dataset.status = newStatus;
       tr.dataset.remark = newRemark;
-      var html;
-      if (newStatus === 'Yes') {
-        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(52,211,153,.12);color:#16a34a;border:1px solid rgba(52,211,153,.35);">&#10003; Match</span>';
-      } else if (newStatus === 'No') {
-        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(248,113,113,.12);color:#dc2626;border:1px solid rgba(248,113,113,.35);">&#10007; Mismatch</span>';
-      } else {
-        html = '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:var(--surface3);color:var(--muted);border:1px solid var(--line2);">— N/A</span>';
-      }
-      tr.querySelector('.status-view').innerHTML = html;
+      // Same badge markup _emlBuildRow uses — one source for the three states.
+      tr.querySelector('.status-view').innerHTML = _emlStatusBadgeHtml(newStatus);
       tr.querySelector('.remark-view').textContent = newRemark || '—';
       var btn = tr.querySelector('.remark-edit-btn');
       if (btn) btn.querySelector('.remark-btn-preview').textContent = newRemark;
