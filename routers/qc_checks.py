@@ -1334,6 +1334,11 @@ def checklist_confirm(
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
     zip_filename = zip_filename[:260].replace("\n", "").replace("\r", "")
     kind = tpl_kind if tpl_kind in ("pre", "post") else "pre"
+    # Post-QC never legitimately collects its own email verification data —
+    # refuse to persist any into a post-kind version, closing the same hole
+    # user_qc_version_save guards against.
+    if kind == "post":
+        email_results_json = "[]"
 
     record = None
     if quote_id:
@@ -1435,6 +1440,11 @@ def checklist_save_draft(
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
     zip_filename = zip_filename[:260].replace("\n", "").replace("\r", "")
     kind = tpl_kind if tpl_kind in ("pre", "post") else "pre"
+    # Post-QC never legitimately collects its own email verification data —
+    # refuse to persist any into a post-kind version, closing the same hole
+    # user_qc_version_save guards against.
+    if kind == "post":
+        email_results_json = "[]"
 
     record = None
     if quote_id:
@@ -1683,6 +1693,14 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
     # empty list is a legitimate value (all rows cleared) and must overwrite.
     has_email_edit = "email_results" in body
     email_results = body.get("email_results", [])
+    # Post-QC never legitimately collects its own email verification data —
+    # the client only ever shows email rows here when they belong to THIS
+    # version. But the Email Verification tile can display Pre-QC's data
+    # borrowed onto a Post-QC page (read-only in the UI); refuse to let a
+    # Post-QC save persist non-empty email results into its own row, so a
+    # stale client or future UI bug can't re-create that corruption server-side.
+    if (v.get("kind") or "pre") == "post" and email_results:
+        email_results = []
 
     try:
         filled = {}
