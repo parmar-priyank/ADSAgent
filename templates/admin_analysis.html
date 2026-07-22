@@ -111,39 +111,54 @@
 
 <div class="dash-card">
   <div class="dash-card-header">
-    <div class="dash-card-title">Confirmed Runs</div>
-    <span class="dash-card-count">{{ stats.runs | length }}</span>
+    <div class="dash-card-title">Daily Trend — {{ month_label(selected_month) }}</div>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--ink2);"><span style="width:9px;height:9px;border-radius:2px;background:#c45010;display:inline-block;"></span>Pre-QC</span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--ink2);"><span style="width:9px;height:9px;border-radius:2px;background:#2d7a4a;display:inline-block;"></span>Post-QC</span>
+    </div>
   </div>
-  {% if stats.runs %}
-  <div style="overflow-x:auto;">
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-      <thead>
-        <tr style="border-bottom:1px solid var(--line2);background:var(--surface3);">
-          <th style="text-align:left;padding:10px 22px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Customer</th>
-          <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Quote #</th>
-          <th style="text-align:center;padding:10px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Kind</th>
-          <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Confirmed By</th>
-          <th style="text-align:right;padding:10px 22px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Confirmed At</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in stats.runs %}
-        <tr style="border-bottom:1px solid var(--line2);">
-          <td style="padding:11px 22px;font-weight:600;color:var(--ink);">{{ r.customer_name or '—' }}</td>
-          <td style="padding:11px 12px;color:var(--ink2);">{{ r.quote_number or '—' }}</td>
-          <td style="padding:11px 12px;text-align:center;">
-            {% if r.kind == 'post' %}
-            <span class="badge-yes" style="border-radius:20px;">Post-QC</span>
-            {% else %}
-            <span class="badge-na" style="border-radius:20px;">Pre-QC</span>
-            {% endif %}
-          </td>
-          <td style="padding:11px 12px;color:var(--ink2);">{{ r.full_name or r.username or '—' }}</td>
-          <td style="padding:11px 22px;text-align:right;color:var(--muted);white-space:nowrap;">{{ r.confirmed_at or '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  {% if stats.total %}
+  {% set chart_w = 980 %}
+  {% set chart_h = 220 %}
+  {% set pad_left = 34 %}
+  {% set pad_bottom = 26 %}
+  {% set plot_w = chart_w - pad_left - 10 %}
+  {% set plot_h = chart_h - pad_bottom - 10 %}
+  {% set max_val = (stats.daily | map(attribute='total') | max) %}
+  {% set y_max = max_val if max_val > 0 else 1 %}
+  {% set n_days = stats.daily | length %}
+  {% set bar_slot = plot_w / n_days %}
+  {% set bar_w = [bar_slot * 0.55, 22] | min %}
+  <div style="padding:20px 22px 14px;overflow-x:auto;">
+    <svg viewBox="0 0 {{ chart_w }} {{ chart_h }}" style="width:100%;height:auto;min-width:640px;" preserveAspectRatio="none">
+      <!-- Gridlines + Y axis labels -->
+      {% for frac in [0, 0.25, 0.5, 0.75, 1] %}
+      {% set gy = 10 + plot_h - (plot_h * frac) %}
+      <line x1="{{ pad_left }}" y1="{{ gy }}" x2="{{ chart_w - 6 }}" y2="{{ gy }}" stroke="var(--line2)" stroke-width="1" />
+      <text x="{{ pad_left - 8 }}" y="{{ gy + 3 }}" text-anchor="end" font-size="9.5" fill="var(--muted)">{{ (y_max * frac) | round | int }}</text>
+      {% endfor %}
+
+      <!-- Bars -->
+      {% for d in stats.daily %}
+      {% set slot_x = pad_left + (loop.index0 * bar_slot) %}
+      {% set bar_x = slot_x + (bar_slot - bar_w) / 2 %}
+      {% set pre_h = (d.pre / y_max * plot_h) if y_max else 0 %}
+      {% set post_h = (d.post / y_max * plot_h) if y_max else 0 %}
+      {% set base_y = 10 + plot_h %}
+      <g>
+        <title>{{ month_label(selected_month) }} {{ d.day }}: {{ d.pre }} Pre-QC, {{ d.post }} Post-QC ({{ d.total }} total)</title>
+        {% if d.post > 0 %}
+        <rect x="{{ bar_x }}" y="{{ base_y - post_h }}" width="{{ bar_w }}" height="{{ post_h }}" fill="#2d7a4a" rx="1.5" />
+        {% endif %}
+        {% if d.pre > 0 %}
+        <rect x="{{ bar_x }}" y="{{ base_y - post_h - pre_h }}" width="{{ bar_w }}" height="{{ pre_h }}" fill="#c45010" rx="1.5" />
+        {% endif %}
+        {% if d.day == 1 or d.day % 5 == 0 or d.day == n_days %}
+        <text x="{{ bar_x + bar_w / 2 }}" y="{{ chart_h - 6 }}" text-anchor="middle" font-size="9.5" fill="var(--muted)">{{ d.day }}</text>
+        {% endif %}
+      </g>
+      {% endfor %}
+    </svg>
   </div>
   {% else %}
   <div style="padding:30px 22px;text-align:center;color:var(--muted);font-size:13px;">No confirmed QC checks in this month.</div>

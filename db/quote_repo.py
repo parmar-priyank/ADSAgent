@@ -462,6 +462,26 @@ def get_qc_monthly_stats(year_month: str) -> dict:
 
     per_user = sorted(by_user.values(), key=lambda x: x["total"], reverse=True)
 
+    # One entry per calendar day of the month (even zero-count days), so the
+    # Analysis page's daily trend chart has a consistent, gap-free x-axis.
+    import calendar as _calendar
+    y, m = (int(p) for p in year_month.split("-"))
+    days_in_month = _calendar.monthrange(y, m)[1]
+    by_day = {
+        f"{year_month}-{d:02d}": {"day": d, "pre": 0, "post": 0, "total": 0}
+        for d in range(1, days_in_month + 1)
+    }
+    for r in rows:
+        confirmed_at = r.get("confirmed_at") or ""
+        day_key = confirmed_at[:10]
+        if day_key in by_day:
+            by_day[day_key]["total"] += 1
+            if r["kind"] == "post":
+                by_day[day_key]["post"] += 1
+            else:
+                by_day[day_key]["pre"] += 1
+    daily = [by_day[k] for k in sorted(by_day.keys())]
+
     return {
         "year_month": year_month,
         "total": len(rows),
@@ -469,6 +489,7 @@ def get_qc_monthly_stats(year_month: str) -> dict:
         "post_count": post_count,
         "per_user": per_user,
         "runs": rows,
+        "daily": daily,
     }
 
 
