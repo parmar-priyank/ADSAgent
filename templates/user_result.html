@@ -20,9 +20,18 @@
   {% set yes_count = checklist_rows | selectattr('status','equalto','Yes') | list | length %}
   {% set no_count  = checklist_rows | selectattr('status','equalto','No')  | list | length %}
   {% set na_count  = checklist_rows | selectattr('status','equalto','N/A') | list | length %}
-  {% set eml_yes = email_results | selectattr('status','equalto','Yes') | list | length %}
-  {% set eml_no  = email_results | selectattr('status','equalto','No')  | list | length %}
-  {% set eml_na  = email_results | rejectattr('status','equalto','Yes') | rejectattr('status','equalto','No') | list | length %}
+  {# Same borrowing rule as the Pre-QC/Post-QC checklist tiles: this version's
+     own email results win when present; only fall back to the other kind's
+     saved results (view-only, via other_email_results) when this version has
+     none — e.g. every Post-QC run, which never collects its own email data
+     by design, previously always showed "No email verification was run"
+     even when the sibling Pre-QC run had real data. #}
+  {% set other_email_results = other_email_results | default(none) %}
+  {% set email_is_borrowed = (not email_results) and other_email_results %}
+  {% set display_email_results = email_results if email_results else (other_email_results or []) %}
+  {% set eml_yes = display_email_results | selectattr('status','equalto','Yes') | list | length %}
+  {% set eml_no  = display_email_results | selectattr('status','equalto','No')  | list | length %}
+  {% set eml_na  = display_email_results | rejectattr('status','equalto','Yes') | rejectattr('status','equalto','No') | list | length %}
 
   {% set is_admin = is_admin | default(false) %}
   {% set revisit_version = revisit_version | default(none) %}
@@ -221,14 +230,14 @@
         </div>
         <span style="font-size:14px;font-weight:800;color:var(--ink);">Email Verification</span>
       </div>
-      {% if email_results %}
-      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ email_results | length }} attachment{{ 's' if email_results | length != 1 else '' }}</div>
+      {% if display_email_results %}
+      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ display_email_results | length }} attachment{{ 's' if display_email_results | length != 1 else '' }}{% if email_is_borrowed %} <span style="font-weight:400;color:var(--muted);">({{ 'Pre-QC' if other_kind == 'pre' else 'Post-QC' }})</span>{% endif %}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <span class="badge-yes" style="border-radius:20px;">&#10003; {{ eml_yes }}</span>
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ eml_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ eml_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:var(--brand);">{{ 'View & modify ›' if can_edit else 'View ›' }}</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:var(--brand);">{{ 'View & modify ›' if (can_edit and not email_is_borrowed) else 'View ›' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">No email verification was run for this version.</div>
       {% if can_edit %}
@@ -501,9 +510,12 @@
       <span style="font-size:15px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:10px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
         Email Verification
+        {% if email_is_borrowed %}
+        <span style="font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surface3);border:1px solid var(--line2);border-radius:20px;padding:2px 9px;">{{ 'Pre-QC' if other_kind == 'pre' else 'Post-QC' }} &middot; View only</span>
+        {% endif %}
       </span>
       <div style="display:flex;gap:8px;align-items:center;">
-        {% if revisit_version and can_edit %}
+        {% if revisit_version and can_edit and not email_is_borrowed %}
         <input type="file" id="eml-upload-input" accept=".eml" style="display:none;" onchange="emlUploadFile(this)">
         <button type="button" id="eml-modify-btn" onclick="emlEnterEditMode()"
                 style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:600;cursor:pointer;">
@@ -546,10 +558,10 @@
           </tr>
         </thead>
         <tbody id="email-results-tbody">
-          {% if not email_results %}
+          {% if not display_email_results %}
           <tr id="eml-empty-row"><td colspan="3" style="padding:24px 12px;text-align:center;color:var(--muted);font-size:12.5px;">No email verification was run for this version. Use "Upload Email" above to add one.</td></tr>
           {% endif %}
-          {% for er in email_results %}
+          {% for er in display_email_results %}
           <tr style="border-bottom:1px solid var(--line2);"
               data-name="{{ er.name | e }}"
               data-status="{{ er.status or 'N/A' }}"

@@ -1608,6 +1608,21 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         other_no_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "No")
         other_na_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "N/A")
 
+    # Same borrowing rule as the checklist tiles: this version's own email
+    # results win when present; only fall back to the other kind's saved
+    # results when this version has none (e.g. every Post-QC run, which
+    # never collects its own email data by design).
+    other_email_results = None
+    if not saved_email_results and other_v:
+        raw_other_email_json = other_v.get("email_results_json") or ""
+        if raw_other_email_json.strip():
+            try:
+                parsed_other_email = json.loads(raw_other_email_json)
+                if isinstance(parsed_other_email, list):
+                    other_email_results = parsed_other_email
+            except Exception:
+                pass
+
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
@@ -1631,6 +1646,7 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         "other_yes_count": other_yes_count,
         "other_no_count": other_no_count,
         "other_na_count": other_na_count,
+        "other_email_results": other_email_results,
     })
     resp.headers.update(_NO_CACHE)
     return resp

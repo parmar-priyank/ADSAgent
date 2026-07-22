@@ -549,6 +549,22 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     # Only needed for the Post-QC tile's empty state (who it's assigned to,
     # if no Post-QC run has happened yet).
     post_qc_assignee = db.get_post_qc_assignee(v["quote_id"]) if other_kind == "post" and not other_v else None
+
+    # Same borrowing rule as the checklist tiles: this version's own email
+    # results win when present; only fall back to the other kind's saved
+    # results when this version has none (e.g. every Post-QC run, which
+    # never collects its own email data by design).
+    other_email_results = None
+    if not email_results and other_v:
+        raw_other_email_json = other_v.get("email_results_json") or ""
+        if raw_other_email_json.strip():
+            try:
+                parsed_other_email = json.loads(raw_other_email_json)
+                if isinstance(parsed_other_email, list):
+                    other_email_results = parsed_other_email
+            except Exception:
+                pass
+
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
@@ -573,6 +589,7 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
         "other_no_count": other_no_count,
         "other_na_count": other_na_count,
         "post_qc_assignee": post_qc_assignee,
+        "other_email_results": other_email_results,
     })
     resp.headers.update(_NO_CACHE)
     return resp
