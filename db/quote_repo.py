@@ -53,6 +53,16 @@ def init_db():
         # disk-first-then-blob fallback in get_quote consumers.
         if "qc_excel_path" not in cols:
             conn.execute("ALTER TABLE quotes ADD COLUMN qc_excel_path TEXT")
+        # Soft delete: a Team Leader's "Delete" only flags the row (is_deleted=1)
+        # so it vanishes from every active view but stays in the DB. Only a
+        # super admin, from the Deleted Records trash, can restore it or delete
+        # it permanently. Every active-record read filters is_deleted = 0.
+        if "is_deleted" not in cols:
+            conn.execute("ALTER TABLE quotes ADD COLUMN is_deleted INTEGER DEFAULT 0")
+        if "deleted_at" not in cols:
+            conn.execute("ALTER TABLE quotes ADD COLUMN deleted_at TIMESTAMP")
+        if "deleted_by_user_id" not in cols:
+            conn.execute("ALTER TABLE quotes ADD COLUMN deleted_by_user_id INTEGER")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS qc_versions (
@@ -140,8 +150,30 @@ def init_db():
 
 def save_extraction(filename: str, data: dict) -> int:
     quote_number = (data.get("quote_number") or "").strip()
+    _orphan_paths = []
     with get_db() as conn:
         if quote_number:
+            # Re-uploading an existing quote number replaces whatever is there
+            # — active OR soft-deleted (the UNIQUE index on quote_number would
+            # otherwise block the insert). Collect any on-disk Excel files of
+            # the rows we're about to remove so they don't leak.
+            dup_ids = [
+                r["id"] for r in conn.execute(
+                    "SELECT id FROM quotes WHERE quote_number = ?", (quote_number,)
+                ).fetchall()
+            ]
+            if dup_ids:
+                ph = ",".join("?" * len(dup_ids))
+                for r in conn.execute(
+                    f"SELECT qc_excel_path FROM quotes WHERE id IN ({ph}) AND qc_excel_path IS NOT NULL",
+                    dup_ids,
+                ).fetchall():
+                    _orphan_paths.append(r["qc_excel_path"])
+                for r in conn.execute(
+                    f"SELECT excel_path FROM qc_versions WHERE quote_id IN ({ph}) AND excel_path IS NOT NULL",
+                    dup_ids,
+                ).fetchall():
+                    _orphan_paths.append(r["excel_path"])
             conn.execute("DELETE FROM quotes WHERE quote_number = ?", (quote_number,))
         columns = ["filename"] + QUOTE_FIELDS
         placeholders = ",".join("?" for _ in columns)
@@ -167,7 +199,11 @@ def save_extraction(filename: str, data: dict) -> int:
                     li.get("specification", ""), li.get("price", ""),
                 ),
             )
-        return quote_id
+    # Remove any on-disk Excel files that belonged to the rows we replaced,
+    # after the DB write has committed.
+    for p in _orphan_paths:
+        blob_store.delete_excel(p)
+    return quote_id
 
 
 def _attach_line_items(conn, quotes: list) -> list:
@@ -226,18 +262,24 @@ def get_draft_email_results(quote_id: int) -> str:
 
 def count_quotes() -> int:
     with get_db() as conn:
-        return conn.execute("SELECT COUNT(*) FROM quotes").fetchone()[0]
+        return conn.execute(
+            "SELECT COUNT(*) FROM quotes WHERE COALESCE(is_deleted, 0) = 0"
+        ).fetchone()[0]
 
 
 def get_recent(limit: int | None = 20):
     """limit=None returns every quote record — used by the Customer Records
-    page, which must show the full list, not just the most recent ones."""
+    page, which must show the full list, not just the most recent ones.
+    Soft-deleted records are excluded; they live in the super-admin trash."""
     with get_db() as conn:
         if limit is None:
-            rows = conn.execute("SELECT * FROM quotes ORDER BY id DESC").fetchall()
+            rows = conn.execute(
+                "SELECT * FROM quotes WHERE COALESCE(is_deleted, 0) = 0 ORDER BY id DESC"
+            ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM quotes ORDER BY id DESC LIMIT ?", (limit,)
+                "SELECT * FROM quotes WHERE COALESCE(is_deleted, 0) = 0 "
+                "ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         quotes = _attach_line_items(conn, [dict(r) for r in rows])
         if quotes:
@@ -321,7 +363,52 @@ def find_by_quote_number(quote_number: str):
         return _attach_line_items(conn, [dict(row)])[0]
 
 
+def soft_delete_quote(quote_id: int, deleted_by_user_id: int = None) -> bool:
+    """Flag a quote as deleted (a Team Leader's "Delete") without removing it.
+    It disappears from every active view but stays in the DB, visible only in
+    the super-admin Deleted Records trash. Returns False if the quote doesn't
+    exist or is already deleted."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE quotes SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, "
+            "deleted_by_user_id = ? WHERE id = ? AND COALESCE(is_deleted, 0) = 0",
+            (deleted_by_user_id, quote_id),
+        )
+        return cur.rowcount > 0
+
+
+def restore_quote(quote_id: int) -> bool:
+    """Undo a soft delete — bring the quote back into every active view.
+    Super-admin only. Returns False if the quote isn't currently deleted."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE quotes SET is_deleted = 0, deleted_at = NULL, "
+            "deleted_by_user_id = NULL WHERE id = ? AND COALESCE(is_deleted, 0) = 1",
+            (quote_id,),
+        )
+        return cur.rowcount > 0
+
+
+def get_deleted_quotes() -> list:
+    """All soft-deleted quotes, newest-deleted first — powers the super-admin
+    Deleted Records trash page. Includes who deleted it and when."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT q.*, u.username AS deleted_by_username, u.full_name AS deleted_by_full_name
+            FROM quotes q
+            LEFT JOIN users u ON u.id = q.deleted_by_user_id
+            WHERE COALESCE(q.is_deleted, 0) = 1
+            ORDER BY q.deleted_at DESC, q.id DESC
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def delete_quote(quote_id: int):
+    """PERMANENT delete — removes the quote, its QC versions (cascade), and all
+    associated on-disk Excel files. Super-admin only (from the trash page).
+    A Team Leader's Delete goes through soft_delete_quote instead."""
     # Gather every on-disk Excel this quote owns (its own latest copy + one per
     # QC version) so the files can be removed after the DB rows are gone. The
     # qc_versions rows cascade-delete with the quote, so collect paths first.
@@ -487,19 +574,24 @@ def get_confirmed_quote_ids() -> set:
     excluding drafts and quotes with no QC run yet."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT DISTINCT quote_id FROM qc_versions "
-            "WHERE COALESCE(status, 'confirmed') = 'confirmed'"
+            "SELECT DISTINCT qv.quote_id FROM qc_versions qv "
+            "JOIN quotes q ON q.id = qv.quote_id "
+            "WHERE COALESCE(qv.status, 'confirmed') = 'confirmed' "
+            "AND COALESCE(q.is_deleted, 0) = 0"
         ).fetchall()
     return {r["quote_id"] for r in rows}
 
 
 def get_qc_analysis_months() -> list:
     """Distinct 'YYYY-MM' months that have at least one confirmed QC version,
-    newest first — powers the Analysis page's month picker."""
+    newest first — powers the Analysis page's month picker. Excludes versions
+    belonging to soft-deleted quotes."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT DISTINCT strftime('%Y-%m', confirmed_at) as ym FROM qc_versions "
-            "WHERE COALESCE(status, 'confirmed') = 'confirmed' AND confirmed_at IS NOT NULL "
+            "SELECT DISTINCT strftime('%Y-%m', qv.confirmed_at) as ym FROM qc_versions qv "
+            "JOIN quotes q ON q.id = qv.quote_id "
+            "WHERE COALESCE(qv.status, 'confirmed') = 'confirmed' AND qv.confirmed_at IS NOT NULL "
+            "AND COALESCE(q.is_deleted, 0) = 0 "
             "ORDER BY ym DESC"
         ).fetchall()
     return [r["ym"] for r in rows if r["ym"]]
@@ -518,8 +610,9 @@ def get_qc_monthly_stats(year_month: str) -> dict:
                    q.customer_name, q.quote_number
             FROM qc_versions qv
             LEFT JOIN users u ON u.id = qv.confirmed_by_user_id
-            LEFT JOIN quotes q ON q.id = qv.quote_id
+            JOIN quotes q ON q.id = qv.quote_id
             WHERE COALESCE(qv.status, 'confirmed') = 'confirmed'
+              AND COALESCE(q.is_deleted, 0) = 0
               AND strftime('%Y-%m', qv.confirmed_at) = ?
             ORDER BY qv.confirmed_at DESC
             """,
@@ -664,8 +757,9 @@ def get_qc_history_by_user(user_id: int) -> list:
                    q.customer_name, q.quote_number,
                    q.install_date, q.total_price
             FROM qc_versions qv
-            LEFT JOIN quotes q ON q.id = qv.quote_id
-            WHERE qv.saved_by_user_id = ? OR qv.confirmed_by_user_id = ?
+            JOIN quotes q ON q.id = qv.quote_id
+            WHERE (qv.saved_by_user_id = ? OR qv.confirmed_by_user_id = ?)
+              AND COALESCE(q.is_deleted, 0) = 0
             ORDER BY COALESCE(qv.confirmed_at, qv.saved_at) DESC
             """,
             (user_id, user_id),
@@ -716,7 +810,7 @@ def get_assigned_quotes_for_user(user_id: int) -> list:
             SELECT q.*, pqa.assigned_at
             FROM post_qc_assignments pqa
             JOIN quotes q ON q.id = pqa.quote_id
-            WHERE pqa.user_id = ?
+            WHERE pqa.user_id = ? AND COALESCE(q.is_deleted, 0) = 0
             ORDER BY pqa.assigned_at DESC
             """,
             (user_id,),

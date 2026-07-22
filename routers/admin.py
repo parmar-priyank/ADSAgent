@@ -17,6 +17,9 @@ Routes:
   POST /admin/users/{user_id}/qc-access
   POST /admin/users/{user_id}/delete
   POST /admin/records/{record_id}/delete
+  GET  /admin/deleted-records
+  POST /admin/deleted-records/{record_id}/restore
+  POST /admin/deleted-records/{record_id}/delete-permanent
   POST /admin/records/{record_id}/assign-post-qc
   POST /admin/records/bulk-assign-post-qc
   POST /admin/settings/theme
@@ -369,6 +372,11 @@ def admin_record_detail(record_id: int, request: Request, user=Depends(require_a
     record = db.get_quote(record_id)
     if not record:
         raise HTTPException(404, "Record not found.")
+    # A soft-deleted record is invisible to regular Team Leaders — a saved link
+    # or guessed URL 404s just as if it were gone. Super admins reach it only
+    # through the Deleted Records trash, not here.
+    if record.get("is_deleted") and not user.get("is_super_admin"):
+        raise HTTPException(404, "Record not found.")
     qc_versions = db.get_qc_versions(record_id)
     # Jump straight to the checklist page (which now shows both Pre-QC and
     # Post-QC tiles together — see admin_qc_version_view) instead of an
@@ -396,8 +404,37 @@ def admin_record_detail(record_id: int, request: Request, user=Depends(require_a
 
 @router.post("/admin/records/{record_id}/delete")
 def admin_delete_record(record_id: int, request: Request, user=Depends(require_admin)):
-    db.delete_quote(record_id)
+    """A Team Leader's Delete is a SOFT delete — the record leaves every active
+    view but stays in the DB, recoverable from the super-admin Deleted Records
+    trash. Permanent deletion happens only from there."""
+    db.soft_delete_quote(record_id, deleted_by_user_id=user["id"])
     return RedirectResponse(url="/admin/records", status_code=303)
+
+
+@router.get("/admin/deleted-records", response_class=HTMLResponse)
+def admin_deleted_records_page(request: Request, user=Depends(require_superadmin)):
+    """Super-admin-only trash: every soft-deleted customer record, with the
+    option to restore it or delete it permanently."""
+    ctx = _admin_ctx(user, deleted_records=db.get_deleted_quotes())
+    response = templates.TemplateResponse(request, "admin_deleted_records.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.post("/admin/deleted-records/{record_id}/restore")
+def admin_restore_record(record_id: int, request: Request, user=Depends(require_superadmin)):
+    """Restore a soft-deleted record back into the active list. Super-admin only."""
+    db.restore_quote(record_id)
+    return RedirectResponse(url="/admin/deleted-records", status_code=303)
+
+
+@router.post("/admin/deleted-records/{record_id}/delete-permanent")
+def admin_delete_record_permanent(record_id: int, request: Request, user=Depends(require_superadmin)):
+    """Permanently remove a record from the database, including its QC versions
+    and on-disk Excel files. Super-admin only, and only reachable from the
+    trash — this is the irreversible delete."""
+    db.delete_quote(record_id)
+    return RedirectResponse(url="/admin/deleted-records", status_code=303)
 
 
 @router.post("/admin/records/{record_id}/assign-post-qc")
@@ -515,7 +552,7 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
             """SELECT qv.*, q.customer_name, q.quote_number, q.install_date,
                       q.email, q.phone, q.total_price, q.system_price,
                       q.deposit, q.balance, q.payment_terms, q.billing_address,
-                      q.preferred_install_date
+                      q.preferred_install_date, q.is_deleted AS quote_is_deleted
                FROM qc_versions qv JOIN quotes q ON q.id = qv.quote_id
                WHERE qv.id = ?""",
             (version_id,),
@@ -523,6 +560,10 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     if not row:
         raise HTTPException(404, "QC version not found.")
     v = dict(row)
+    # QC data for a soft-deleted customer is off-limits to regular Team Leaders,
+    # same as the record detail page — only the trash exposes deleted records.
+    if v.get("quote_is_deleted") and not user.get("is_super_admin"):
+        raise HTTPException(404, "QC version not found.")
     try:
         rows = json.loads(v["rows_json"]) if v.get("rows_json") else []
         if not isinstance(rows, list):

@@ -1,0 +1,74 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Deleted Records{% endblock %}
+{% block nav_deleted %}active{% endblock %}
+{% block page_title %}Deleted Records{% endblock %}
+{% block page_crumb %}Trash{% endblock %}
+
+{% block content %}
+
+<div style="background:#fdf0e4;border:1px solid #f0d3ae;border-radius:10px;padding:12px 18px;margin-bottom:18px;">
+  <span style="font-size:13px;color:#a35a1a;">
+    Records a Team Leader deleted are kept here, hidden from every active view.
+    <strong>Restore</strong> brings one back into Customer Records;
+    <strong>Delete Permanently</strong> removes it and its QC files from the database for good — this cannot be undone.
+  </span>
+</div>
+
+<div class="dash-card">
+  <div class="dash-card-header">
+    <div class="dash-card-title">Deleted Records</div>
+    <span class="dash-card-count">{{ deleted_records | length }}</span>
+  </div>
+
+  {% if deleted_records %}
+  <div style="overflow-x:auto;">
+  <table class="dash-table">
+    <thead>
+      <tr>
+        <th>Quote</th>
+        <th>Customer</th>
+        <th>Email</th>
+        <th>Total</th>
+        <th>Deleted By</th>
+        <th>Deleted At</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in deleted_records %}
+      <tr>
+        <td>{{ r['quote_number'] or '—' }}</td>
+        <td><strong>{{ r['customer_name'] or '—' }}</strong></td>
+        <td class="muted">{{ r['email'] or '—' }}</td>
+        <td>{{ r['total_price'] or '—' }}</td>
+        <td class="muted">{{ r['deleted_by_full_name'] or r['deleted_by_username'] or '—' }}</td>
+        <td class="muted" style="white-space:nowrap;">{{ r['deleted_at'] or '—' }}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <form action="/admin/deleted-records/{{ r['id'] }}/restore" method="post" style="display:inline;">
+            <button type="submit"
+                    style="font-size:12px;font-weight:600;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:8px;padding:5px 13px;cursor:pointer;">
+              Restore
+            </button>
+          </form>
+          <form action="/admin/deleted-records/{{ r['id'] }}/delete-permanent" method="post" style="display:inline;margin-left:6px;"
+                onsubmit="return confirm('Permanently delete {{ (r['customer_name'] or 'this record') | e }}? This removes it and its QC files from the database and cannot be undone.');">
+            <button type="submit"
+                    style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:8px;padding:5px 13px;cursor:pointer;">
+              Delete Permanently
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="dash-card-body" style="text-align:center;padding:60px 20px;color:var(--muted);font-size:14px;">
+    No deleted records. When a Team Leader deletes a customer, it will appear here.
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
