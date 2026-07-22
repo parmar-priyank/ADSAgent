@@ -124,7 +124,6 @@ def admin_users_page(request: Request, user=Depends(require_admin), success: str
         users=visible_users,
         success="User created successfully." if success else None,
         error=None,
-        login_ip_restricted=is_login_ip_restricted(),
     )
     response = templates.TemplateResponse(request, "admin_users.html", ctx)
     response.headers.update(_NO_CACHE)
@@ -474,7 +473,7 @@ _APP_LOG_PATH = os.path.abspath(
 def admin_logs_page(request: Request, user=Depends(require_superadmin)):
     """Super-admin-only live view of the backend log (logs/app.log — app
     errors, DB warnings, and crashes). The page polls /admin/logs/tail."""
-    ctx = _admin_ctx(user)
+    ctx = _admin_ctx(user, login_ip_restricted=is_login_ip_restricted())
     response = templates.TemplateResponse(request, "admin_logs.html", ctx)
     response.headers.update(_NO_CACHE)
     return response
@@ -562,11 +561,12 @@ def admin_set_theme(request: Request, theme: str = Form(...), user=Depends(requi
 
 @router.post("/admin/settings/login-ip-restriction")
 def admin_set_login_ip_restriction(request: Request, enabled: str = Form(...),
-                                    user=Depends(require_admin)):
+                                    user=Depends(require_superadmin)):
     """Toggle whether /login (the user-side login page) is restricted to
     the office IP allowlist. Off = anyone can reach /login from any
     network. On = only LOGIN_ALLOWED_IPS can. Admin login is never
-    affected by this either way."""
+    affected by this either way. Super-admin only — the control lives on
+    the Logs page with the rest of the security tooling."""
     set_login_ip_restricted(enabled == "1")
     audit.log_event(request, "ip_restriction_changed", username=user["username"], user_id=user["id"],
                     detail="turned ON" if enabled == "1" else "turned OFF")

@@ -36,6 +36,34 @@
   It only records problems (WARNING level and above), so an empty log is good news. Refreshes every 5 seconds.
 </div>
 
+<!-- Office-network login restriction (security control, lives with the audit trail) -->
+<div class="dash-card" style="margin-bottom:16px;">
+  <div class="dash-card-body" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 20px;">
+    <div>
+      <div style="font-size:13px;font-weight:700;color:var(--ink);">Restrict User Login to Office Network</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5;">
+        {% if login_ip_restricted %}
+        <strong style="color:#16a34a;">On</strong> — only office network IPs can sign in at the user login page. Admin login is never affected.
+        {% else %}
+        <strong style="color:var(--brand);">Off</strong> — users can sign in from any network.
+        {% endif %}
+      </div>
+    </div>
+    <form action="/admin/settings/login-ip-restriction" method="post" style="flex-shrink:0;margin:0;">
+      <input type="hidden" name="enabled" value="{{ '0' if login_ip_restricted else '1' }}">
+      <button type="submit"
+              style="padding:9px 20px;font-size:13px;font-weight:700;white-space:nowrap;border-radius:9px;cursor:pointer;
+                     {% if login_ip_restricted %}
+                     background:var(--surface3);border:1.5px solid var(--line2);color:var(--ink2);
+                     {% else %}
+                     background:var(--brand);border:none;color:#fff;
+                     {% endif %}">
+        Turn {{ 'Off' if login_ip_restricted else 'On' }}
+      </button>
+    </form>
+  </div>
+</div>
+
 <!-- Console -->
 <div id="log-console"
      style="background:#15171b;border:1px solid #2b2f36;border-radius:12px;padding:16px 18px;
