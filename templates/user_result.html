@@ -187,14 +187,12 @@
   {% set pre_yes        = yes_count      if tpl.kind != 'post' else other_yes_count %}
   {% set pre_no         = no_count       if tpl.kind != 'post' else other_no_count %}
   {% set pre_na         = na_count       if tpl.kind != 'post' else other_na_count %}
-  {% set pre_link_id    = revisit_version.id if (tpl.kind != 'post' and revisit_version) else (other_version.id if other_version else none) %}
 
   {% set post_rows      = checklist_rows if tpl.kind == 'post' else other_checklist_rows %}
   {% set post_zip       = zip_filename   if tpl.kind == 'post' else (other_version.zip_filename if other_version else '') %}
   {% set post_yes       = yes_count      if tpl.kind == 'post' else other_yes_count %}
   {% set post_no        = no_count       if tpl.kind == 'post' else other_no_count %}
   {% set post_na        = na_count       if tpl.kind == 'post' else other_na_count %}
-  {% set post_link_id   = revisit_version.id if (tpl.kind == 'post' and revisit_version) else (other_version.id if other_version else none) %}
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:24px;">
 
@@ -263,9 +261,9 @@
       {% endif %}
     </div>
     {% else %}
-    <a href="{% if pre_link_id %}{{ '/admin/qc-version/' if is_admin else '/user/qc-version/' }}{{ pre_link_id }}{% endif %}" class="card"
-       style="margin:0;border-radius:14px;text-decoration:none;display:block;{% if pre_link_id %}cursor:pointer;{% else %}opacity:.55;pointer-events:none;{% endif %}transition:box-shadow .15s,border-color .15s;"
-       {% if pre_link_id %}onmouseover="this.style.borderColor='#c45010'" onmouseout="this.style.borderColor='var(--line2)'"{% endif %}>
+    <div onclick="{% if other_checklist_rows %}openOtherChecklistModal(){% endif %}" class="card"
+       style="margin:0;border-radius:14px;{% if other_checklist_rows %}cursor:pointer;{% else %}opacity:.55;{% endif %}transition:box-shadow .15s,border-color .15s;"
+       {% if other_checklist_rows %}onmouseover="this.style.borderColor='#c45010'" onmouseout="this.style.borderColor='var(--line2)'"{% endif %}>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <div style="width:34px;height:34px;border-radius:9px;background:rgba(196,80,16,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c45010" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -279,11 +277,11 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ pre_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ pre_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View & modify ›' if is_admin else 'View ›' }}</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">View ›</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">No Pre-QC run yet.</div>
       {% endif %}
-    </a>
+    </div>
     {% endif %}
 
     <!-- Tile 4: Post-QC Checklist -->
@@ -312,9 +310,9 @@
       {% endif %}
     </div>
     {% else %}
-    <a href="{% if post_link_id %}{{ '/admin/qc-version/' if is_admin else '/user/qc-version/' }}{{ post_link_id }}{% endif %}" class="card"
-       style="margin:0;border-radius:14px;text-decoration:none;display:block;{% if post_link_id %}cursor:pointer;{% else %}opacity:.55;pointer-events:none;{% endif %}transition:box-shadow .15s,border-color .15s;"
-       {% if post_link_id %}onmouseover="this.style.borderColor='#2d7a4a'" onmouseout="this.style.borderColor='var(--line2)'"{% endif %}>
+    <div onclick="{% if other_checklist_rows %}openOtherChecklistModal(){% endif %}" class="card"
+       style="margin:0;border-radius:14px;{% if other_checklist_rows %}cursor:pointer;{% else %}opacity:.55;{% endif %}transition:box-shadow .15s,border-color .15s;"
+       {% if other_checklist_rows %}onmouseover="this.style.borderColor='#2d7a4a'" onmouseout="this.style.borderColor='var(--line2)'"{% endif %}>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <div style="width:34px;height:34px;border-radius:9px;background:rgba(45,122,74,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2d7a4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -328,13 +326,13 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View & modify ›' if is_admin else 'View ›' }}</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">View ›</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">
         {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
       </div>
       {% endif %}
-    </a>
+    </div>
     {% endif %}
 
   </div>
@@ -737,6 +735,69 @@
 </div>
 {% endif %}
 
+<!-- ═══════════════════════════ Modal 3b: Other-kind Checklist (read-only, borrowed from the sibling QC run) ═══════════════════════════ -->
+{% if other_checklist_rows %}
+<div id="other-checklist-modal-overlay"
+     onclick="if(event.target===this)closeOtherChecklistModal()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 20px;">
+  <div class="card result-card" style="margin:0;max-width:min(1500px,96vw);width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div class="dl-bar">
+      <span style="font-size:15px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:10px;">
+        {{ 'Pre-QC Checklist' if other_kind == 'pre' else 'Post-QC Checklist' }}
+        <span style="font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surface3);border:1px solid var(--line2);border-radius:20px;padding:2px 9px;">View only</span>
+      </span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button onclick="closeOtherChecklistModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
+      </div>
+    </div>
+
+    <div style="overflow-x:auto;max-height:78vh;overflow-y:auto;">
+      <table class="checklist-table">
+        <thead style="position:sticky;top:0;z-index:1;">
+          <tr>
+            <th class="checklist-sno-cell">Sno.</th>
+            <th class="checklist-item-cell">Checklist Item</th>
+            <th class="checklist-ref-cell">Reference</th>
+            <th class="checklist-prompt-cell">Prompt</th>
+            <th class="checklist-status-cell">Yes/No</th>
+            <th class="remark-cell">Remark</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in other_checklist_rows %}
+          {% if row.is_section %}
+          <tr class="section-row" data-section="1">
+            <td colspan="6">{{ row.text }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td class="checklist-sno-cell">{{ row.sno }}</td>
+            <td class="checklist-item-cell">{{ row.text }}</td>
+            <td class="checklist-ref-cell">{{ row.reference or '—' }}</td>
+            <td class="checklist-prompt-cell">{{ row.prompt or '—' }}</td>
+            <td class="checklist-status-cell status-cell">
+              {% if row.status == 'Yes' %}
+                <span class="badge-yes">Yes</span>
+              {% elif row.status == 'No' %}
+                <span class="badge-no">No</span>
+              {% else %}
+                <span class="badge-na">N/A</span>
+              {% endif %}
+            </td>
+            <td class="remark-cell">
+              <span class="remark-view" title="{{ row.remark or '' }}"
+                    {% if row.remark %}onclick="openRemarkView(this)" style="cursor:pointer;"{% endif %}>{{ row.remark or '' }}</span>
+            </td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Remark view modal (read-only, always rendered) -->
 <div id="remark-view-overlay"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center;">
@@ -933,6 +994,15 @@
     if (_editMode && !confirm('Discard unsaved checklist changes?')) return;
     if (_editMode) cancelEditMode();
     document.getElementById('checklist-modal-overlay').style.display = 'none';
+  }
+
+  function openOtherChecklistModal() {
+    var ov = document.getElementById('other-checklist-modal-overlay');
+    if (ov) ov.style.display = 'flex';
+  }
+  function closeOtherChecklistModal() {
+    var ov = document.getElementById('other-checklist-modal-overlay');
+    if (ov) ov.style.display = 'none';
   }
 
   // ── Remark view modal (read-only) ────────────────────────────────────────
