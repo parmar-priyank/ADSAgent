@@ -125,7 +125,7 @@ def verify_user(username: str, password: str):
 def list_users():
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id, username, role, created_at, is_active, can_pre_qc, can_post_qc "
+            "SELECT id, username, role, created_at, is_active, can_pre_qc, can_post_qc, is_super_admin "
             "FROM users ORDER BY id ASC"
         ).fetchall()
     return [dict(r) for r in rows]

@@ -110,8 +110,12 @@ def admin_dashboard(request: Request, user=Depends(require_admin), cal: str = ""
 
 @router.get("/admin/users", response_class=HTMLResponse)
 def admin_users_page(request: Request, user=Depends(require_admin), success: str = None):
+    # Super-admin accounts never appear in this list — for anyone, including
+    # another super admin viewing their own account — to keep who holds
+    # super-admin privileges from being visible/browsable here at all.
+    visible_users = [u for u in adb.list_users() if not u.get("is_super_admin")]
     ctx = _admin_ctx(user,
-        users=adb.list_users(),
+        users=visible_users,
         success="User created successfully." if success else None,
         error=None,
         login_ip_restricted=is_login_ip_restricted(),
@@ -241,6 +245,12 @@ def admin_user_detail(user_id: int, request: Request, user=Depends(require_admin
                       success: str = None, error: str = None):
     target = adb.get_user(user_id)
     if not target:
+        raise HTTPException(404, "User not found.")
+    # A super admin's profile is never visible here — not even to another
+    # super admin — same rule as the Users list; direct-URL access must not
+    # bypass it, so this is a 404 (not 403) to avoid even confirming the
+    # account exists.
+    if target.get("is_super_admin"):
         raise HTTPException(404, "User not found.")
     qc_history = db.get_qc_history_by_user(user_id)
     ctx = _admin_ctx(user,
