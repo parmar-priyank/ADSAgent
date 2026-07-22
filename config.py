@@ -53,6 +53,12 @@ _log_file_handler.setLevel(logging.WARNING)
 logging.getLogger().addHandler(_log_file_handler)
 logging.getLogger().setLevel(logging.WARNING)
 
+# pdfminer (inside pdfplumber) logs a harmless "Could not get FontBBox"
+# warning for every font with sparse metadata in an uploaded PDF — dozens of
+# lines per upload that drown out real problems. Extraction is unaffected, so
+# keep only its genuine errors.
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
+
 ANTHROPIC_API_KEY    = os.environ.get("ANTHROPIC_API_KEY")
 CLAUDE_MODEL         = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 SECRET_KEY           = os.environ.get("SECRET_KEY")
