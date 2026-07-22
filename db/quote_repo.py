@@ -407,6 +407,71 @@ def get_confirmed_quote_ids() -> set:
     return {r["quote_id"] for r in rows}
 
 
+def get_qc_analysis_months() -> list:
+    """Distinct 'YYYY-MM' months that have at least one confirmed QC version,
+    newest first — powers the Analysis page's month picker."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT strftime('%Y-%m', confirmed_at) as ym FROM qc_versions "
+            "WHERE COALESCE(status, 'confirmed') = 'confirmed' AND confirmed_at IS NOT NULL "
+            "ORDER BY ym DESC"
+        ).fetchall()
+    return [r["ym"] for r in rows if r["ym"]]
+
+
+def get_qc_monthly_stats(year_month: str) -> dict:
+    """Confirmed QC throughput for one 'YYYY-MM' month: total, pre/post
+    split, and a per-technician breakdown (who confirmed how many, of each
+    kind) — used by the super-admin Analysis page to track team throughput."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT qv.id, qv.quote_id, COALESCE(qv.kind, 'pre') as kind,
+                   qv.confirmed_at, qv.confirmed_by_user_id,
+                   u.username, u.full_name,
+                   q.customer_name, q.quote_number
+            FROM qc_versions qv
+            LEFT JOIN users u ON u.id = qv.confirmed_by_user_id
+            LEFT JOIN quotes q ON q.id = qv.quote_id
+            WHERE COALESCE(qv.status, 'confirmed') = 'confirmed'
+              AND strftime('%Y-%m', qv.confirmed_at) = ?
+            ORDER BY qv.confirmed_at DESC
+            """,
+            (year_month,),
+        ).fetchall()
+    rows = [dict(r) for r in rows]
+
+    pre_count  = sum(1 for r in rows if r["kind"] == "pre")
+    post_count = sum(1 for r in rows if r["kind"] == "post")
+
+    by_user = {}
+    for r in rows:
+        uid = r.get("confirmed_by_user_id")
+        key = uid if uid is not None else "unknown"
+        if key not in by_user:
+            by_user[key] = {
+                "user_id": uid,
+                "label": (r.get("full_name") or r.get("username") or "Unknown"),
+                "pre": 0, "post": 0, "total": 0,
+            }
+        by_user[key]["total"] += 1
+        if r["kind"] == "post":
+            by_user[key]["post"] += 1
+        else:
+            by_user[key]["pre"] += 1
+
+    per_user = sorted(by_user.values(), key=lambda x: x["total"], reverse=True)
+
+    return {
+        "year_month": year_month,
+        "total": len(rows),
+        "pre_count": pre_count,
+        "post_count": post_count,
+        "per_user": per_user,
+        "runs": rows,
+    }
+
+
 def get_qc_versions(quote_id: int) -> list:
     with get_db() as conn:
         rows = conn.execute(

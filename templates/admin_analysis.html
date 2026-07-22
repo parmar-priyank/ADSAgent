@@ -1,0 +1,155 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Analysis{% endblock %}
+{% block nav_analysis %}active{% endblock %}
+{% block page_title %}Analysis{% endblock %}
+{% block page_crumb %}QC Throughput{% endblock %}
+
+{% block content %}
+
+{% set mon_names = {
+  '01':'January','02':'February','03':'March','04':'April','05':'May','06':'June',
+  '07':'July','08':'August','09':'September','10':'October','11':'November','12':'December'
+} %}
+{% macro month_label(ym) %}{{ mon_names.get(ym[5:7], ym[5:7]) }} {{ ym[0:4] }}{% endmacro %}
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:20px;">
+  <div style="font-size:13px;color:var(--muted);">
+    Confirmed Pre-QC and Post-QC checks, by month.
+  </div>
+  {% if available_months %}
+  <form method="get" action="/admin/analysis" style="display:flex;align-items:center;gap:8px;">
+    <label for="month-select" style="font-size:12.5px;font-weight:700;color:var(--muted);">Month</label>
+    <select id="month-select" name="month" onchange="this.form.submit()"
+            style="font-size:13px;padding:7px 12px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface2);color:var(--ink);cursor:pointer;">
+      {% for ym in available_months %}
+      <option value="{{ ym }}" {% if ym == selected_month %}selected{% endif %}>{{ month_label(ym) }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  {% endif %}
+</div>
+
+{% if not available_months %}
+<div class="dash-card">
+  <div style="padding:40px 22px;text-align:center;color:var(--muted);font-size:13.5px;">
+    No confirmed QC checks yet — stats will show up here once at least one Pre-QC or Post-QC run is confirmed.
+  </div>
+</div>
+{% else %}
+
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch;margin-bottom:24px;">
+  <div class="metric-card">
+    <div class="metric-icon-wrap purple">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+    </div>
+    <div>
+      <div class="metric-num">{{ stats.total }}</div>
+      <div class="metric-label">Total QC Confirmed — {{ month_label(selected_month) }}</div>
+    </div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-icon-wrap orange">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+      </svg>
+    </div>
+    <div>
+      <div class="metric-num">{{ stats.pre_count }}</div>
+      <div class="metric-label">Pre-QC Confirmed</div>
+    </div>
+  </div>
+
+  <div class="metric-card">
+    <div class="metric-icon-wrap green">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+      </svg>
+    </div>
+    <div>
+      <div class="metric-num">{{ stats.post_count }}</div>
+      <div class="metric-label">Post-QC Confirmed</div>
+    </div>
+  </div>
+</div>
+
+<div class="dash-card" style="margin-bottom:24px;">
+  <div class="dash-card-header">
+    <div class="dash-card-title">By Team Member</div>
+    <span class="dash-card-count">{{ stats.per_user | length }}</span>
+  </div>
+  {% if stats.per_user %}
+  <div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--line2);background:var(--surface3);">
+          <th style="text-align:left;padding:10px 22px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Team Member</th>
+          <th style="text-align:center;padding:10px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Pre-QC</th>
+          <th style="text-align:center;padding:10px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Post-QC</th>
+          <th style="text-align:center;padding:10px 22px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in stats.per_user %}
+        <tr style="border-bottom:1px solid var(--line2);">
+          <td style="padding:11px 22px;font-weight:600;color:var(--ink);">{{ u.label }}</td>
+          <td style="padding:11px 12px;text-align:center;color:var(--ink2);">{{ u.pre }}</td>
+          <td style="padding:11px 12px;text-align:center;color:var(--ink2);">{{ u.post }}</td>
+          <td style="padding:11px 22px;text-align:center;font-weight:700;color:var(--ink);">{{ u.total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding:30px 22px;text-align:center;color:var(--muted);font-size:13px;">No confirmed QC checks in this month.</div>
+  {% endif %}
+</div>
+
+<div class="dash-card">
+  <div class="dash-card-header">
+    <div class="dash-card-title">Confirmed Runs</div>
+    <span class="dash-card-count">{{ stats.runs | length }}</span>
+  </div>
+  {% if stats.runs %}
+  <div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--line2);background:var(--surface3);">
+          <th style="text-align:left;padding:10px 22px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Customer</th>
+          <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Quote #</th>
+          <th style="text-align:center;padding:10px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Kind</th>
+          <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Confirmed By</th>
+          <th style="text-align:right;padding:10px 22px;font-weight:600;color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Confirmed At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in stats.runs %}
+        <tr style="border-bottom:1px solid var(--line2);">
+          <td style="padding:11px 22px;font-weight:600;color:var(--ink);">{{ r.customer_name or '—' }}</td>
+          <td style="padding:11px 12px;color:var(--ink2);">{{ r.quote_number or '—' }}</td>
+          <td style="padding:11px 12px;text-align:center;">
+            {% if r.kind == 'post' %}
+            <span class="badge-yes" style="border-radius:20px;">Post-QC</span>
+            {% else %}
+            <span class="badge-na" style="border-radius:20px;">Pre-QC</span>
+            {% endif %}
+          </td>
+          <td style="padding:11px 12px;color:var(--ink2);">{{ r.full_name or r.username or '—' }}</td>
+          <td style="padding:11px 22px;text-align:right;color:var(--muted);white-space:nowrap;">{{ r.confirmed_at or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding:30px 22px;text-align:center;color:var(--muted);font-size:13px;">No confirmed QC checks in this month.</div>
+  {% endif %}
+</div>
+
+{% endif %}
+
+{% endblock %}

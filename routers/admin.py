@@ -5,6 +5,7 @@ Routes:
   GET  /admin
   GET  /admin/users
   GET  /admin/records
+  GET  /admin/analysis
   GET  /admin/templates
   GET  /admin/api-status
   GET  /admin/database
@@ -55,6 +56,7 @@ from config import (
     _signer,
     is_login_ip_restricted,
     require_admin,
+    require_superadmin,
     set_login_ip_restricted,
     templates,
 )
@@ -124,6 +126,26 @@ def admin_records_page(request: Request, user=Depends(require_admin)):
     post_qc_users = [u for u in adb.list_users() if u.get("can_post_qc") and u.get("is_active", 1)]
     ctx = _admin_ctx(user, records=db.get_recent(limit=None), post_qc_users=post_qc_users)
     response = templates.TemplateResponse(request, "admin_records.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.get("/admin/analysis", response_class=HTMLResponse)
+def admin_analysis_page(request: Request, month: str = "", user=Depends(require_superadmin)):
+    """Super-admin-only QC throughput tracker: pick a month, see how many
+    Pre-QC/Post-QC checks were confirmed and by whom."""
+    available_months = db.get_qc_analysis_months()
+    selected_month = month.strip() if month.strip() in available_months else (
+        available_months[0] if available_months else datetime.now().strftime("%Y-%m")
+    )
+    stats = db.get_qc_monthly_stats(selected_month)
+    ctx = _admin_ctx(
+        user,
+        available_months=available_months,
+        selected_month=selected_month,
+        stats=stats,
+    )
+    response = templates.TemplateResponse(request, "admin_analysis.html", ctx)
     response.headers.update(_NO_CACHE)
     return response
 
