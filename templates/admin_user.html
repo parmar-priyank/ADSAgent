@@ -236,6 +236,22 @@
       </tbody>
     </table>
   </div>
+  {% if qc_history|length > 5 %}
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 22px;border-top:1px solid var(--line2);">
+    <span id="qc-page-info" style="font-size:12.5px;color:var(--muted);"></span>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <button type="button" id="qc-prev-btn" onclick="changeQcPage(-1)"
+              style="padding:6px 14px;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surface3);border:1.5px solid var(--line2);border-radius:7px;cursor:pointer;">
+        &lsaquo; Prev
+      </button>
+      <span id="qc-page-numbers" style="display:flex;gap:4px;"></span>
+      <button type="button" id="qc-next-btn" onclick="changeQcPage(1)"
+              style="padding:6px 14px;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surface3);border:1.5px solid var(--line2);border-radius:7px;cursor:pointer;">
+        Next &rsaquo;
+      </button>
+    </div>
+  </div>
+  {% endif %}
   {% else %}
   <div class="dash-card-body" style="color:var(--muted);font-size:13px;text-align:center;padding:32px 20px;">
     No QC runs by <strong>{{ target.username }}</strong> yet.
@@ -266,6 +282,62 @@
   document.querySelectorAll('tr.clickable[data-href]').forEach(function(row) {
     row.addEventListener('click', function() { window.location.href = row.dataset.href; });
   });
+
+  // ── QC Activity pagination: 5 runs per page ──
+  var QC_PER_PAGE = 5;
+  var qcCurrentPage = 1;
+
+  function changeQcPage(delta) {
+    qcCurrentPage += delta;
+    paginateQcActivity();
+  }
+
+  function goToQcPage(n) {
+    qcCurrentPage = n;
+    paginateQcActivity();
+  }
+
+  function paginateQcActivity() {
+    // Controls only render when there are more than 5 runs; with 5 or fewer
+    // this is a no-op and every row simply stays visible.
+    if (!document.getElementById('qc-prev-btn')) return;
+    var rows = Array.from(document.querySelectorAll('tr.clickable[data-href]'));
+    var totalPages = Math.max(1, Math.ceil(rows.length / QC_PER_PAGE));
+    if (qcCurrentPage > totalPages) qcCurrentPage = totalPages;
+    if (qcCurrentPage < 1) qcCurrentPage = 1;
+
+    var start = (qcCurrentPage - 1) * QC_PER_PAGE;
+    var end = start + QC_PER_PAGE;
+    rows.forEach(function(row, i) {
+      row.style.display = (i >= start && i < end) ? '' : 'none';
+    });
+
+    var infoEl = document.getElementById('qc-page-info');
+    if (infoEl) {
+      infoEl.textContent = 'Showing ' + (start + 1) + '–' + Math.min(end, rows.length) + ' of ' + rows.length + ' runs';
+    }
+
+    document.getElementById('qc-prev-btn').disabled = qcCurrentPage <= 1;
+    document.getElementById('qc-next-btn').disabled = qcCurrentPage >= totalPages;
+
+    var numbersEl = document.getElementById('qc-page-numbers');
+    if (numbersEl) {
+      numbersEl.innerHTML = '';
+      for (var p = 1; p <= totalPages; p++) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = p;
+        btn.onclick = (function(pageNum) { return function() { goToQcPage(pageNum); }; })(p);
+        var active = p === qcCurrentPage;
+        btn.style.cssText = 'padding:6px 11px;font-size:13px;font-weight:600;border-radius:7px;cursor:pointer;' +
+          (active
+            ? 'background:var(--brand);border:1.5px solid var(--brand);color:#fff;'
+            : 'background:var(--surface3);border:1.5px solid var(--line2);color:var(--ink2);');
+        numbersEl.appendChild(btn);
+      }
+    }
+  }
+  paginateQcActivity();
 
   function toggleResetPwdVisibility(inputId, btn) {
     var input = document.getElementById(inputId);
