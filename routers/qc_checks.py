@@ -148,6 +148,93 @@ def _parse_claude_json(raw: str) -> dict | None:
         return None
 
 
+_QC_BATCH_SYSTEM = (
+    "You are a QC document checker. You will be shown ONE reference document "
+    "(as text and/or page images) followed by a numbered list of independent "
+    "checklist items that all apply to that SAME document. Evaluate each item "
+    "completely independently — the requirement, status, and remark for one "
+    "item must not be influenced by any other item's requirement or answer. "
+    'Reply with JSON only: a single array, one object per item in the same '
+    'order given, each shaped exactly like '
+    '{"item_index": <the item\'s given index number>, "status": "Yes" or "No" or "N/A", '
+    '"remark": "one sentence explanation"}. Do not omit any item, do not add '
+    "extra items, and do not wrap the array in any other object."
+)
+
+
+def _claude_check_batch(client, user_content, item_indices: list[int]) -> dict[int, dict]:
+    """Same request/response contract as _claude_check, but for N checklist
+    items that all share one reference file: one Claude call instead of N,
+    since the expensive part of the request (the file's page images) would
+    otherwise be re-uploaded once per item. user_content already contains the
+    shared document content followed by each item's numbered requirement
+    text (built by the caller); item_indices lists the item_index values
+    used in that text, in order, so a response can be validated against
+    exactly the set of items that were actually asked about.
+
+    Returns {item_index: {"status":..., "remark":...}} for every index in
+    item_indices. On any failure (bad JSON twice, missing/extra indices,
+    exception), every item_index maps to the same N/A fallback — callers
+    must never assume a partial batch result, only all-or-nothing.
+    """
+    wanted = set(item_indices)
+    messages = [{"role": "user", "content": user_content}]
+
+    def _fallback(remark: str) -> dict[int, dict]:
+        return {idx: {"status": "N/A", "remark": remark} for idx in item_indices}
+
+    def _try_parse(raw: str):
+        parsed = _parse_claude_json(raw)
+        if not isinstance(parsed, list):
+            return None
+        by_idx = {}
+        for entry in parsed:
+            if not isinstance(entry, dict) or "item_index" not in entry:
+                return None
+            try:
+                idx = int(entry["item_index"])
+            except (TypeError, ValueError):
+                return None
+            by_idx[idx] = {"status": entry.get("status", "N/A"), "remark": entry.get("remark", "")}
+        if set(by_idx.keys()) != wanted:
+            # Claude dropped, duplicated, or invented an item_index — the
+            # response can't be trusted to map back onto the right rows.
+            return None
+        return by_idx
+
+    try:
+        resp = client.messages.create(
+            model=CLAUDE_MODEL, max_tokens=max(500, 150 * len(item_indices)),
+            system=_QC_BATCH_SYSTEM, messages=messages,
+        )
+        raw = resp.content[0].text if resp.content else ""
+        result = _try_parse(raw)
+        if result is None:
+            # Same corrective-retry pattern as _claude_check, adapted for an
+            # array reply — give the model one chance to fix its own format.
+            messages.append({"role": "assistant", "content": raw})
+            messages.append({"role": "user", "content":
+                "That was not a valid response. Reply with ONLY a JSON array, one object "
+                "per item, covering EXACTLY these item_index values and no others: "
+                f"{sorted(wanted)}. Each object: "
+                '{"item_index": <number>, "status": "Yes" or "No" or "N/A", "remark": "one sentence explanation"}'})
+            resp2 = client.messages.create(
+                model=CLAUDE_MODEL, max_tokens=max(500, 150 * len(item_indices)),
+                system=_QC_BATCH_SYSTEM, messages=messages,
+            )
+            raw2 = resp2.content[0].text if resp2.content else ""
+            result = _try_parse(raw2)
+            if result is None:
+                logger.warning(
+                    "Claude batch check returned unparseable/mismatched JSON twice "
+                    "for item_indices=%s; raw replies: %r / %r", item_indices, raw, raw2,
+                )
+                return _fallback("AI returned an unreadable response for this batched check.")
+        return result
+    except Exception as e:
+        return _fallback(f"Error analysing batched file: {e}")
+
+
 def _claude_check(client, user_content) -> dict:
     messages = [{"role": "user", "content": user_content}]
     resp = client.messages.create(
@@ -721,6 +808,14 @@ async def upload_zip(
     user=Depends(require_qc_access),
 ):
     kind = kind if kind in ("pre", "post") else "pre"
+    # Captured immediately, under its own name: a loop further down in this
+    # function reuses the local name `kind` for something unrelated (the
+    # file-type a reference name implies — pdf/image/eml/other) and
+    # overwrites this request parameter by the time later code runs. That
+    # reuse was harmless before since nothing downstream re-read `kind`,
+    # but the Pre-QC-only batching logic added below needs the *request's*
+    # kind, so it reads _upload_kind instead of the shadowed `kind`.
+    _upload_kind = kind
     if user.get("role") != "admin":
         if kind == "post" and not user.get("can_post_qc"):
             raise HTTPException(403, "You do not have Post-QC access.")
@@ -1042,11 +1137,108 @@ async def upload_zip(
 
     non_section = [(i, item) for i, item in enumerate(items) if not item.get("is_section")]
 
+    # ── Pre-QC only: batch items that share one reference file into a single
+    # Claude call per file, instead of one call per item. Post-QC (kind ==
+    # "post") is completely untouched and still runs every item through
+    # _analyse_item exactly as before — this only changes Pre-QC.
+    #
+    # Uses _upload_kind (captured at the top of this function), not `kind` —
+    # the resolve-fallback loop above reassigns the local name `kind` for
+    # something unrelated (the file-type a reference name implies), which
+    # would otherwise silently disable batching by the time we get here.
+    #
+    # Eligible for batching: item_resolved[i] has exactly one entry, that
+    # entry actually resolved to a file (zdata is not None), and that file's
+    # kind is pdf/image (never .eml — email items keep their own dedicated
+    # _analyse_eml_item path) AND the SAME file is the sole resolved
+    # reference for 2+ items. A file referenced by only one item gets no
+    # benefit from batching, so it stays on the plain per-item path too.
+    batch_groups: dict[str, list[int]] = {}
+    if _upload_kind == "pre":
+        for i, item in non_section:
+            resolved_entries = item_resolved.get(i, [])
+            if len(resolved_entries) != 1:
+                continue
+            rname, zname, zdata = resolved_entries[0]
+            if zdata is None or zname is None:
+                continue
+            if zname.lower().endswith(".eml"):
+                continue
+            if _actual_kind(zname, zdata) not in ("pdf", "image"):
+                continue
+            if not (item.get("prompt") or "").strip():
+                # No prompt defined — _analyse_item already returns a fixed
+                # N/A for this without calling Claude at all; keep that exact
+                # zero-cost behavior instead of pulling it into a paid batch call.
+                continue
+            batch_groups.setdefault(zname, []).append(i)
+    batched_item_indices = {
+        i for idxs in batch_groups.values() if len(idxs) >= 2 for i in idxs
+    }
+
+    def _build_batch_user_content(zname: str, idxs: list[int]) -> list:
+        """Same content shape _analyse_item builds for a single item (text
+        context + document text + page images), but with one shared
+        document section followed by every batched item's own numbered
+        requirement — so the model still answers each item from its own
+        exact prompt text, just without re-uploading the file per item."""
+        fdata = zip_files[zname]
+        mime = _actual_kind(zname, fdata)
+
+        items_block_lines = []
+        for i in idxs:
+            item = items[i]
+            items_block_lines.append(
+                f"item_index {i}: Checklist item: {item['text']}\nRequirement: {(item.get('prompt') or '').strip()}"
+            )
+        items_block = "\n\n".join(items_block_lines)
+
+        ref_section = (
+            f"\n\n--- MAIN REFERENCE PDF (Signed Agreement) ---\n{reference_pdf_text}"
+            if reference_pdf_text else ""
+        )
+        header_text = f"--- REFERENCE DOCUMENT: {zname} ---{ref_section}\n\nChecklist items to evaluate against the document above:\n\n{items_block}"
+
+        user_content: list = [{"type": "text", "text": header_text}]
+        if mime == "pdf":
+            cached_text, cached_pages = pdf_cache.get(zname, ("", []))
+            if cached_text.strip():
+                user_content.append({"type": "text", "text": f"Document text (for reference):{cached_text[:8000]}"})
+            for page_png in cached_pages[:_PDF_MAX_PAGES]:
+                b64 = base64.standard_b64encode(page_png).decode()
+                user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
+        else:
+            b64 = base64.standard_b64encode(fdata).decode()
+            user_content.append({"type": "image", "source": {"type": "base64", "media_type": mimetypes.guess_type(zname)[0] or "image/png", "data": b64}})
+        return user_content
+
+    def _run_batch(zname: str, idxs: list[int]) -> dict[int, dict]:
+        try:
+            user_content = _build_batch_user_content(zname, idxs)
+            return _claude_check_batch(_claude_client, user_content, idxs)
+        except Exception as e:
+            return {i: {"status": "N/A", "remark": f"Error analysing batched file: {e}"} for i in idxs}
+
     _active_jobs.add(uid)
     try:
-        results = await asyncio.gather(
-            *[asyncio.to_thread(_analyse_item, i, item) for i, item in non_section]
+        batch_results_by_index: dict[int, dict] = {}
+        if batched_item_indices:
+            batch_jobs = [
+                (zname, idxs) for zname, idxs in batch_groups.items() if len(idxs) >= 2
+            ]
+            batch_outcomes = await asyncio.gather(
+                *[asyncio.to_thread(_run_batch, zname, idxs) for zname, idxs in batch_jobs]
+            )
+            for outcome in batch_outcomes:
+                batch_results_by_index.update(outcome)
+
+        remaining = [(i, item) for i, item in non_section if i not in batched_item_indices]
+        remaining_results = await asyncio.gather(
+            *[asyncio.to_thread(_analyse_item, i, item) for i, item in remaining]
         )
+        results_by_index: dict[int, dict] = dict(zip((i for i, _ in remaining), remaining_results))
+        results_by_index.update(batch_results_by_index)
+        results = [results_by_index[i] for i, _ in non_section]
     finally:
         _active_jobs.discard(uid)
 
