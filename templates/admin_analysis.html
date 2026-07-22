@@ -94,7 +94,7 @@
   {% endif %}
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;align-items:stretch;margin-bottom:24px;">
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch;margin-bottom:20px;">
   <div class="metric-card">
     <div class="metric-icon-wrap purple">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -130,8 +130,12 @@
       <div class="metric-label">Post-QC Confirmed</div>
     </div>
   </div>
+</div>
 
-  {% set _total_cost = ((stats.total_input_tokens or 0) / 1000000 * claude_price_in) + ((stats.total_output_tokens or 0) / 1000000 * claude_price_out) %}
+{% set _total_cost = ((stats.total_input_tokens or 0) / 1000000 * claude_price_in) + ((stats.total_output_tokens or 0) / 1000000 * claude_price_out) %}
+{% set _pre_cost    = ((stats.pre_input_tokens or 0)  / 1000000 * claude_price_in) + ((stats.pre_output_tokens or 0)  / 1000000 * claude_price_out) %}
+{% set _post_cost   = ((stats.post_input_tokens or 0) / 1000000 * claude_price_in) + ((stats.post_output_tokens or 0) / 1000000 * claude_price_out) %}
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch;margin-bottom:24px;">
   <div class="metric-card" title="{{ '{:,}'.format(stats.total_input_tokens or 0) }} input + {{ '{:,}'.format(stats.total_output_tokens or 0) }} output tokens">
     <div class="metric-icon-wrap blue">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -140,7 +144,31 @@
     </div>
     <div>
       <div class="metric-num">&#36;{{ '%.2f' | format(_total_cost) }}</div>
-      <div class="metric-label">Claude Cost — {{ '{:,}'.format((stats.total_input_tokens or 0) + (stats.total_output_tokens or 0)) }} tokens</div>
+      <div class="metric-label">Total Claude Cost — {{ '{:,}'.format((stats.total_input_tokens or 0) + (stats.total_output_tokens or 0)) }} tokens</div>
+    </div>
+  </div>
+
+  <div class="metric-card" title="{{ '{:,}'.format(stats.pre_input_tokens or 0) }} input + {{ '{:,}'.format(stats.pre_output_tokens or 0) }} output tokens">
+    <div class="metric-icon-wrap orange">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+      </svg>
+    </div>
+    <div>
+      <div class="metric-num">&#36;{{ '%.2f' | format(_pre_cost) }}</div>
+      <div class="metric-label">Pre-QC Cost — {{ '{:,}'.format((stats.pre_input_tokens or 0) + (stats.pre_output_tokens or 0)) }} tokens</div>
+    </div>
+  </div>
+
+  <div class="metric-card" title="{{ '{:,}'.format(stats.post_input_tokens or 0) }} input + {{ '{:,}'.format(stats.post_output_tokens or 0) }} output tokens">
+    <div class="metric-icon-wrap green">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+      </svg>
+    </div>
+    <div>
+      <div class="metric-num">&#36;{{ '%.2f' | format(_post_cost) }}</div>
+      <div class="metric-label">Post-QC Cost — {{ '{:,}'.format((stats.post_input_tokens or 0) + (stats.post_output_tokens or 0)) }} tokens</div>
     </div>
   </div>
 </div>

@@ -701,6 +701,10 @@ def get_qc_monthly_stats(year_month: str) -> dict:
     post_count = sum(1 for r in rows if r["kind"] == "post")
     total_input_tokens  = sum(r.get("input_tokens")  or 0 for r in rows)
     total_output_tokens = sum(r.get("output_tokens") or 0 for r in rows)
+    pre_input_tokens   = sum(r.get("input_tokens")  or 0 for r in rows if r["kind"] == "pre")
+    pre_output_tokens  = sum(r.get("output_tokens") or 0 for r in rows if r["kind"] == "pre")
+    post_input_tokens  = sum(r.get("input_tokens")  or 0 for r in rows if r["kind"] == "post")
+    post_output_tokens = sum(r.get("output_tokens") or 0 for r in rows if r["kind"] == "post")
 
     # Full team roster: every active non-super-admin account appears in the
     # per-member breakdown even with zero runs this month, so the table reads
@@ -778,6 +782,10 @@ def get_qc_monthly_stats(year_month: str) -> dict:
         "daily": daily,
         "total_input_tokens": total_input_tokens,
         "total_output_tokens": total_output_tokens,
+        "pre_input_tokens": pre_input_tokens,
+        "pre_output_tokens": pre_output_tokens,
+        "post_input_tokens": post_input_tokens,
+        "post_output_tokens": post_output_tokens,
     }
 
 
