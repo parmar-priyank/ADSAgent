@@ -1,0 +1,126 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Logs{% endblock %}
+{% block nav_logs %}active{% endblock %}
+{% block page_title %}Logs{% endblock %}
+{% block page_crumb %}Backend Log{% endblock %}
+
+{% block content %}
+
+<!-- Heading + controls -->
+<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span style="font-size:18px;font-weight:800;color:var(--ink);letter-spacing:-.01em;">Backend Log</span>
+    <span id="log-live-dot" style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:#16a34a;">
+      <span style="width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block;"></span>
+      LIVE
+    </span>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <span id="log-meta" style="font-size:12px;color:var(--muted);"></span>
+    <select id="log-lines" onchange="fetchLogs()"
+            style="font-size:13px;padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface2);color:var(--ink);cursor:pointer;">
+      <option value="100">Last 100 lines</option>
+      <option value="300" selected>Last 300 lines</option>
+      <option value="1000">Last 1000 lines</option>
+    </select>
+    <button type="button" id="log-pause-btn" onclick="toggleLogPause()"
+            style="font-size:13px;font-weight:700;padding:7px 16px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface2);color:var(--ink);cursor:pointer;">
+      &#10074;&#10074; Pause
+    </button>
+  </div>
+</div>
+
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+  This is the server's <code>logs/app.log</code> — application errors, database warnings, and crashes.
+  It only records problems (WARNING level and above), so an empty log is good news. Refreshes every 5 seconds.
+</div>
+
+<!-- Console -->
+<div id="log-console"
+     style="background:#15171b;border:1px solid #2b2f36;border-radius:12px;padding:16px 18px;
+            height:min(62vh, 640px);overflow-y:auto;
+            font-family:ui-monospace,'Cascadia Code',Consolas,Menlo,monospace;font-size:12.5px;line-height:1.65;">
+  <div style="color:#8a8f98;">Loading log…</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var _logPaused = false;
+  var _logTimer  = null;
+
+  function toggleLogPause() {
+    _logPaused = !_logPaused;
+    var btn = document.getElementById('log-pause-btn');
+    var dot = document.getElementById('log-live-dot');
+    if (_logPaused) {
+      btn.innerHTML = '&#9654; Resume';
+      dot.style.color = 'var(--muted)';
+      dot.firstElementChild.style.background = 'var(--muted)';
+      dot.lastChild.textContent = '';
+      dot.childNodes[dot.childNodes.length - 1].textContent = ' PAUSED';
+    } else {
+      btn.innerHTML = '&#10074;&#10074; Pause';
+      dot.style.color = '#16a34a';
+      dot.firstElementChild.style.background = '#16a34a';
+      dot.childNodes[dot.childNodes.length - 1].textContent = ' LIVE';
+      fetchLogs();
+    }
+  }
+
+  function _lineColor(line) {
+    if (line.indexOf(' CRITICAL ') !== -1 || line.indexOf(' ERROR ') !== -1) return '#ff7b72';
+    if (line.indexOf(' WARNING ') !== -1) return '#e3b341';
+    return '#c9d1d9';
+  }
+
+  function fetchLogs() {
+    if (_logPaused) return;
+    var lines = document.getElementById('log-lines').value;
+    fetch('/admin/logs/tail?lines=' + encodeURIComponent(lines))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var box = document.getElementById('log-console');
+        // Stick to the bottom only if the viewer is already there — don't
+        // yank the scroll position away from someone reading older lines.
+        var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+
+        box.innerHTML = '';
+        if (!data.lines || !data.lines.length) {
+          var empty = document.createElement('div');
+          empty.style.color = '#8a8f98';
+          empty.textContent = 'Log is empty — no warnings, errors, or crashes recorded. All good.';
+          box.appendChild(empty);
+        } else {
+          data.lines.forEach(function(line) {
+            var el = document.createElement('div');
+            el.style.color = _lineColor(line);
+            el.style.whiteSpace = 'pre-wrap';
+            el.style.wordBreak = 'break-word';
+            el.textContent = line || ' ';
+            box.appendChild(el);
+          });
+        }
+        if (atBottom) box.scrollTop = box.scrollHeight;
+
+        var meta = document.getElementById('log-meta');
+        if (data.mtime) {
+          meta.textContent = (data.size / 1024).toFixed(0) + ' KB · last write ' + data.mtime;
+        } else {
+          meta.textContent = 'No log file yet';
+        }
+      })
+      .catch(function() { /* transient network blip — next poll retries */ });
+  }
+
+  fetchLogs();
+  // First load scrolls to the newest lines regardless of position.
+  setTimeout(function() {
+    var box = document.getElementById('log-console');
+    box.scrollTop = box.scrollHeight;
+  }, 400);
+  _logTimer = setInterval(fetchLogs, 5000);
+</script>
+{% endblock %}

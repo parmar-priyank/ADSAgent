@@ -20,6 +20,8 @@ Routes:
   GET  /admin/deleted-records
   POST /admin/deleted-records/{record_id}/restore
   POST /admin/deleted-records/{record_id}/delete-permanent
+  GET  /admin/logs
+  GET  /admin/logs/tail
   POST /admin/records/{record_id}/assign-post-qc
   POST /admin/records/bulk-assign-post-qc
   POST /admin/settings/theme
@@ -435,6 +437,45 @@ def admin_delete_record_permanent(record_id: int, request: Request, user=Depends
     trash — this is the irreversible delete."""
     db.delete_quote(record_id)
     return RedirectResponse(url="/admin/deleted-records", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Backend logs (super admin only)
+# ---------------------------------------------------------------------------
+
+_APP_LOG_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "logs", "app.log")
+)
+
+
+@router.get("/admin/logs", response_class=HTMLResponse)
+def admin_logs_page(request: Request, user=Depends(require_superadmin)):
+    """Super-admin-only live view of the backend log (logs/app.log — app
+    errors, DB warnings, and crashes). The page polls /admin/logs/tail."""
+    ctx = _admin_ctx(user)
+    response = templates.TemplateResponse(request, "admin_logs.html", ctx)
+    response.headers.update(_NO_CACHE)
+    return response
+
+
+@router.get("/admin/logs/tail")
+def admin_logs_tail(lines: int = 300, user=Depends(require_superadmin)):
+    """Last N lines of logs/app.log as JSON — polled by the Logs page every
+    few seconds for a live view. Reads only the file's tail (max 512 KB), so
+    it stays cheap even when the log approaches its 10 MB rotation cap."""
+    lines = max(10, min(lines, 2000))
+    if not os.path.exists(_APP_LOG_PATH):
+        return {"lines": [], "size": 0, "mtime": None}
+    size = os.path.getsize(_APP_LOG_PATH)
+    read_bytes = min(size, 512 * 1024)
+    with open(_APP_LOG_PATH, "rb") as f:
+        if size > read_bytes:
+            f.seek(size - read_bytes)
+        data = f.read()
+    text = data.decode("utf-8", errors="replace")
+    tail_lines = text.splitlines()[-lines:]
+    mtime = datetime.fromtimestamp(os.path.getmtime(_APP_LOG_PATH)).strftime("%Y-%m-%d %H:%M:%S")
+    return {"lines": tail_lines, "size": size, "mtime": mtime}
 
 
 @router.post("/admin/records/{record_id}/assign-post-qc")
