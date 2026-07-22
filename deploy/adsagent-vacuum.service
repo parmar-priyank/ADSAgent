@@ -1,0 +1,10 @@
+[Unit]
+Description=ADS Agent — monthly SQLite VACUUM (reclaim deleted-row space)
+After=network.target
+
+[Service]
+Type=oneshot
+User=adsagent
+Group=adsagent
+WorkingDirectory=/var/www/adsagent
+ExecStart=/bin/bash /var/www/adsagent/deploy/vacuum_db.sh

@@ -248,7 +248,7 @@ def quote_detail(request: Request, id: int = None, user=Depends(require_qc_acces
             "current_user": user,
             "theme": _resolve_theme(user),
             "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
-            "has_qc_excel": bool(record.get("qc_excel")),
+            "has_qc_excel": bool(record.get("qc_excel_path") or record.get("qc_excel")),
             "qc_versions": qc_versions,
         },
     )

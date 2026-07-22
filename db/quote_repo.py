@@ -5,6 +5,7 @@ and the pending-PDF duplicate-confirmation flow.
 import secrets as _secrets
 
 from db.connection import get_db
+from db import blob_store
 
 QUOTE_FIELDS = [
     # Customer & Quote Details
@@ -47,6 +48,11 @@ def init_db():
             conn.execute("ALTER TABLE quotes ADD COLUMN preferred_install_date TEXT")
         if "draft_email_results_json" not in cols:
             conn.execute("ALTER TABLE quotes ADD COLUMN draft_email_results_json TEXT")
+        # On-disk path to the latest QC Excel for this quote — supersedes the
+        # in-DB qc_excel blob. Old rows keep their blob and read fine via the
+        # disk-first-then-blob fallback in get_quote consumers.
+        if "qc_excel_path" not in cols:
+            conn.execute("ALTER TABLE quotes ADD COLUMN qc_excel_path TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS qc_versions (
@@ -76,6 +82,10 @@ def init_db():
             # Which checklist stage this run was against — 'pre' for every
             # version that existed before Post-QC, hence the default.
             ("kind",                 "TEXT DEFAULT 'pre'"),
+            # On-disk path to this version's Excel — supersedes excel_blob.
+            # Old versions keep their blob; reads fall back to it when path
+            # is NULL (lazy migration, no bulk rewrite).
+            ("excel_path",           "TEXT"),
         ]:
             if col not in qcv_cols:
                 conn.execute(f"ALTER TABLE qc_versions ADD COLUMN {col} {defn}")
@@ -312,8 +322,25 @@ def find_by_quote_number(quote_number: str):
 
 
 def delete_quote(quote_id: int):
+    # Gather every on-disk Excel this quote owns (its own latest copy + one per
+    # QC version) so the files can be removed after the DB rows are gone. The
+    # qc_versions rows cascade-delete with the quote, so collect paths first.
     with get_db() as conn:
+        paths = []
+        q = conn.execute(
+            "SELECT qc_excel_path FROM quotes WHERE id = ?", (quote_id,)
+        ).fetchone()
+        if q and q["qc_excel_path"]:
+            paths.append(q["qc_excel_path"])
+        for r in conn.execute(
+            "SELECT excel_path FROM qc_versions WHERE quote_id = ? AND excel_path IS NOT NULL",
+            (quote_id,),
+        ).fetchall():
+            if r["excel_path"]:
+                paths.append(r["excel_path"])
         conn.execute("DELETE FROM quotes WHERE id = ?", (quote_id,))
+    for p in paths:
+        blob_store.delete_excel(p)
 
 
 # ---------------------------------------------------------------------------
@@ -321,10 +348,20 @@ def delete_quote(quote_id: int):
 # ---------------------------------------------------------------------------
 
 def save_qc_excel(quote_id: int, xlsx_bytes: bytes):
+    """Store the latest QC Excel for this quote on disk (not in the DB), and
+    remove any previous on-disk file for this quote so old copies don't pile
+    up. The legacy in-DB qc_excel blob is cleared for rows we newly write."""
+    new_path = blob_store.save_excel(xlsx_bytes, kind="quote", ident=quote_id)
     with get_db() as conn:
+        old = conn.execute(
+            "SELECT qc_excel_path FROM quotes WHERE id = ?", (quote_id,)
+        ).fetchone()
         conn.execute(
-            "UPDATE quotes SET qc_excel = ? WHERE id = ?", (xlsx_bytes, quote_id)
+            "UPDATE quotes SET qc_excel_path = ?, qc_excel = NULL WHERE id = ?",
+            (new_path, quote_id),
         )
+    if old and old["qc_excel_path"]:
+        blob_store.delete_excel(old["qc_excel_path"])
 
 
 def add_qc_version(
@@ -344,6 +381,8 @@ def add_qc_version(
 ) -> tuple:
     if kind not in ("pre", "post"):
         kind = "pre"
+    # Excel goes to disk, not into the DB — excel_blob stays NULL for new rows.
+    excel_path = blob_store.save_excel(xlsx_bytes, kind="version", ident=quote_id) if xlsx_bytes else None
     with get_db() as conn:
         row = conn.execute(
             "SELECT COALESCE(MAX(version), 0) FROM qc_versions WHERE quote_id = ?",
@@ -354,12 +393,12 @@ def add_qc_version(
             """
             INSERT INTO qc_versions
                 (quote_id, version, template_name, zip_filename,
-                 yes_count, no_count, na_count, excel_blob, rows_json,
+                 yes_count, no_count, na_count, excel_blob, excel_path, rows_json,
                  email_results_json, confirmed_by_user_id, status, saved_by_user_id, saved_at, kind)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
             """,
             (quote_id, next_version, template_name, zip_filename,
-             yes_count, no_count, na_count, xlsx_bytes, rows_json,
+             yes_count, no_count, na_count, excel_path, rows_json,
              email_results_json or "", confirmed_by_user_id, status, saved_by_user_id, kind),
         )
         version_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -373,56 +412,73 @@ def update_qc_version(version_id: int, xlsx_bytes: bytes, rows_json: str,
     """email_results_json is optional — pass None (default) to leave the
     version's stored email-verification results untouched, or a JSON string
     to overwrite them (used when the Email Verification table was edited
-    alongside the checklist rows)."""
+    alongside the checklist rows).
+
+    The rebuilt Excel is written to disk (excel_path) and excel_blob is
+    cleared; any previous on-disk file for this version is removed afterward,
+    and a previous in-DB blob is dropped by the excel_blob=NULL set."""
+    # Look up the current on-disk path first so we can delete it after a
+    # successful update (a fresh file is written below with a new name).
+    with get_db() as conn:
+        prev = conn.execute(
+            "SELECT quote_id, excel_path FROM qc_versions WHERE id = ?", (version_id,)
+        ).fetchone()
+    quote_id_for_name = prev["quote_id"] if prev else version_id
+    old_path = prev["excel_path"] if prev else None
+    new_path = blob_store.save_excel(xlsx_bytes, kind="version", ident=quote_id_for_name) if xlsx_bytes else None
+
     with get_db() as conn:
         if email_results_json is not None:
             if confirm:
                 conn.execute(
                     """
                     UPDATE qc_versions
-                       SET excel_blob=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
+                       SET excel_blob=NULL, excel_path=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
                            email_results_json=?,
                            status='confirmed', confirmed_at=CURRENT_TIMESTAMP,
                            confirmed_by_user_id=?
                      WHERE id=?
                     """,
-                    (xlsx_bytes, rows_json, yes_count, no_count, na_count,
+                    (new_path, rows_json, yes_count, no_count, na_count,
                      email_results_json, confirmed_by_user_id, version_id),
                 )
             else:
                 conn.execute(
                     """
                     UPDATE qc_versions
-                       SET excel_blob=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
+                       SET excel_blob=NULL, excel_path=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
                            email_results_json=?,
                            status='draft'
                      WHERE id=?
                     """,
-                    (xlsx_bytes, rows_json, yes_count, no_count, na_count,
+                    (new_path, rows_json, yes_count, no_count, na_count,
                      email_results_json, version_id),
                 )
         elif confirm:
             conn.execute(
                 """
                 UPDATE qc_versions
-                   SET excel_blob=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
+                   SET excel_blob=NULL, excel_path=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
                        status='confirmed', confirmed_at=CURRENT_TIMESTAMP,
                        confirmed_by_user_id=?
                  WHERE id=?
                 """,
-                (xlsx_bytes, rows_json, yes_count, no_count, na_count,
+                (new_path, rows_json, yes_count, no_count, na_count,
                  confirmed_by_user_id, version_id),
             )
         else:
             conn.execute(
                 """
                 UPDATE qc_versions
-                   SET excel_blob=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
+                   SET excel_blob=NULL, excel_path=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
                        status='draft'
                  WHERE id=?
                 """,
-                (xlsx_bytes, rows_json, yes_count, no_count, na_count, version_id),
+                (new_path, rows_json, yes_count, no_count, na_count, version_id),
             )
+
+    if old_path and old_path != new_path:
+        blob_store.delete_excel(old_path)
 
 
 def get_confirmed_quote_ids() -> set:
@@ -554,12 +610,47 @@ def get_latest_qc_version(quote_id: int, kind: str):
     return dict(row) if row else None
 
 
-def get_qc_version_excel(version_id: int) -> bytes | None:
+def get_quote_qc_excel(quote_id: int) -> bytes | None:
+    """Latest QC Excel for a quote — prefer the on-disk file (qc_excel_path),
+    fall back to the legacy in-DB qc_excel blob for older rows."""
     with get_db() as conn:
         row = conn.execute(
-            "SELECT excel_blob FROM qc_versions WHERE id = ?", (version_id,)
+            "SELECT qc_excel_path, qc_excel FROM quotes WHERE id = ?", (quote_id,)
         ).fetchone()
-    return bytes(row["excel_blob"]) if row and row["excel_blob"] else None
+    if not row:
+        return None
+    from_disk = blob_store.read_excel(row["qc_excel_path"])
+    if from_disk is not None:
+        return from_disk
+    return bytes(row["qc_excel"]) if row["qc_excel"] else None
+
+
+def quote_has_qc_excel(quote_id: int) -> bool:
+    """True if a quote has a QC Excel available either on disk or as a legacy
+    in-DB blob — used for the 'download available?' flag without loading bytes."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT qc_excel_path, (qc_excel IS NOT NULL) AS has_blob FROM quotes WHERE id = ?",
+            (quote_id,),
+        ).fetchone()
+    if not row:
+        return False
+    return bool(row["qc_excel_path"]) or bool(row["has_blob"])
+
+
+def get_qc_version_excel(version_id: int) -> bytes | None:
+    """Prefer the on-disk file (excel_path); fall back to the legacy in-DB
+    blob for older rows that predate the filesystem migration."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT excel_path, excel_blob FROM qc_versions WHERE id = ?", (version_id,)
+        ).fetchone()
+    if not row:
+        return None
+    from_disk = blob_store.read_excel(row["excel_path"])
+    if from_disk is not None:
+        return from_disk
+    return bytes(row["excel_blob"]) if row["excel_blob"] else None
 
 
 def get_qc_history_by_user(user_id: int) -> list:

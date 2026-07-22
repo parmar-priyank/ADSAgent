@@ -1564,10 +1564,12 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         "customer_label": "", "address_label": "", "job_label": "", "note_text": "",
         "kind": v.get("kind") or "pre",
     }
-    # For revisiting saved versions, write the blob back to a temp file so the
+    # For revisiting saved versions, write the Excel back to a temp file so the
     # dl_token stays small (same pattern as the live checklist flow).
+    # get_qc_version_excel is disk-first with a legacy-blob fallback.
     dl_token = ""
-    if v.get("excel_blob"):
+    _xlsx_bytes = db.get_qc_version_excel(version_id)
+    if _xlsx_bytes:
         import tempfile
         xlsx_dir = os.path.join(os.path.dirname(__file__), "..", "tmp_xlsx")
         os.makedirs(xlsx_dir, exist_ok=True)
@@ -1575,7 +1577,7 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
             suffix=".xlsx", dir=xlsx_dir, delete=False
         )
         try:
-            xlsx_tmp.write(bytes(v["excel_blob"]))
+            xlsx_tmp.write(_xlsx_bytes)
         finally:
             xlsx_tmp.close()
         dl_token = _signer.dumps({"xlsx_path": xlsx_tmp.name, "name": tpl["name"]})

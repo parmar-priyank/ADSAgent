@@ -471,12 +471,13 @@ def admin_set_login_ip_restriction(request: Request, enabled: str = Form(...),
 def admin_qc_download(quote_id: int, user=Depends(require_admin)):
     """Download the latest QC Excel for a quote (admin only)."""
     record = db.get_quote(quote_id)
-    if not record or not record.get("qc_excel"):
+    xlsx = db.get_quote_qc_excel(quote_id)
+    if not record or not xlsx:
         raise HTTPException(404, "No QC report found for this record.")
     raw_name = (record.get("customer_name") or f"quote_{quote_id}").replace(" ", "_")
     safe_name = raw_name.replace('"', "").replace("\n", "").replace("\r", "")[:80]
     return Response(
-        content=bytes(record["qc_excel"]),
+        content=xlsx,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": f'attachment; filename="{safe_name}_QC.xlsx"',
@@ -540,13 +541,15 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     }
     # Same tmp-file token trick user_qc_version_revisit uses, so admin's
     # Download Excel goes through the same /checklist-download mechanism.
+    # get_qc_version_excel is disk-first with a legacy-blob fallback.
     dl_token = ""
-    if v.get("excel_blob"):
+    _xlsx_bytes = db.get_qc_version_excel(v["id"])
+    if _xlsx_bytes:
         xlsx_dir = os.path.join(os.path.dirname(__file__), "..", "tmp_xlsx")
         os.makedirs(xlsx_dir, exist_ok=True)
         xlsx_tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", dir=xlsx_dir, delete=False)
         try:
-            xlsx_tmp.write(bytes(v["excel_blob"]))
+            xlsx_tmp.write(_xlsx_bytes)
         finally:
             xlsx_tmp.close()
         dl_token = _signer.dumps({"xlsx_path": xlsx_tmp.name, "name": tpl["name"]})

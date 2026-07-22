@@ -1,0 +1,14 @@
+[Unit]
+Description=Run ADS Agent database VACUUM monthly
+
+[Timer]
+# First Sunday-ish of each month at 03:30 server time — low-traffic window,
+# and 30 min after the weekly backup so they don't overlap.
+OnCalendar=*-*-01 03:30:00
+# If the server was off/asleep at the scheduled time, run as soon as it's back
+Persistent=true
+# Spread start slightly to avoid exact-second collisions with other jobs
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
