@@ -54,8 +54,8 @@
     <span class="dash-card-count" id="records-visible-count">{{ records|length }}</span>
   </div>
   {% if records %}
-  <div style="padding:14px 22px;border-bottom:1px solid var(--line2);">
-    <div style="position:relative;max-width:360px;">
+  <div style="padding:14px 22px;border-bottom:1px solid var(--line2);display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+    <div style="position:relative;max-width:360px;flex:1;min-width:220px;">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
            style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -64,6 +64,26 @@
              oninput="filterRecords()"
              style="width:100%;padding:9px 12px 9px 36px;border:1.5px solid var(--line2);border-radius:9px;font-size:13.5px;color:var(--ink);background:var(--surface3);outline:none;box-sizing:border-box;transition:border-color .15s;"
              onfocus="this.style.borderColor='var(--brand)'" onblur="this.style.borderColor='var(--line2)'">
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <label for="pre-qc-filter" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">Pre-QC</label>
+      <select id="pre-qc-filter" onchange="filterRecords()"
+              style="font-size:13px;padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);cursor:pointer;">
+        <option value="">Any</option>
+        <option value="none">Not started</option>
+        <option value="draft">Draft</option>
+        <option value="confirmed">Confirmed</option>
+      </select>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <label for="post-qc-filter" style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;">Post-QC</label>
+      <select id="post-qc-filter" onchange="filterRecords()"
+              style="font-size:13px;padding:7px 10px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);cursor:pointer;">
+        <option value="">Any</option>
+        <option value="none">Not started</option>
+        <option value="draft">Draft</option>
+        <option value="confirmed">Confirmed</option>
+      </select>
     </div>
   </div>
   <div style="overflow-x:auto;">
@@ -86,7 +106,8 @@
     <tbody>
       {% for r in records %}
       <tr class="clickable" data-href="/admin/record/{{ r['id'] }}"
-          data-search="{{ ((r['customer_name'] or '') ~ ' ' ~ (r['quote_number'] or '')) | lower }}">
+          data-search="{{ ((r['customer_name'] or '') ~ ' ' ~ (r['quote_number'] or '')) | lower }}"
+          data-pre-status="{{ r['pre_qc_status'] }}" data-post-status="{{ r['post_qc_status'] }}">
         {% if post_qc_users %}
         <td onclick="event.stopPropagation();">
           {% if r['pre_qc_count'] > 0 %}
@@ -101,21 +122,25 @@
         <td>{{ r['total_price'] }}</td>
         <td class="muted">{{ r['preferred_install_date'] or '—' }}</td>
         <td style="text-align:center;">
-          {% if r['pre_qc_count'] > 0 %}
+          {% if r['pre_qc_status'] == 'confirmed' %}
           <span style="display:inline-flex;align-items:center;gap:3px;color:#2d7a4a;font-size:12px;font-weight:700;white-space:nowrap;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
             Done
           </span>
+          {% elif r['pre_qc_status'] == 'draft' %}
+          <span style="color:#c48a1a;font-size:12px;font-weight:700;">Draft</span>
           {% else %}
           <span style="color:var(--text2);font-size:12px;">—</span>
           {% endif %}
         </td>
         <td style="text-align:center;white-space:nowrap;" onclick="event.stopPropagation();">
-          {% if r['post_qc_count'] > 0 %}
+          {% if r['post_qc_status'] == 'confirmed' %}
           <span style="display:inline-flex;align-items:center;gap:3px;color:#2d7a4a;font-size:12px;font-weight:700;white-space:nowrap;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
             Done
           </span>
+          {% elif r['post_qc_status'] == 'draft' %}
+          <span style="color:#c48a1a;font-size:12px;font-weight:700;">Draft</span>
           {% elif r['pre_qc_count'] > 0 %}
             {% if r['post_qc_assignee'] %}
             <span style="color:var(--brand);font-size:12px;font-weight:700;">{{ r['post_qc_assignee']['username'] }}</span>
@@ -187,9 +212,16 @@
 
   function paginateRecords() {
     var q = document.getElementById('records-search').value.trim().toLowerCase();
+    var preFilterEl = document.getElementById('pre-qc-filter');
+    var postFilterEl = document.getElementById('post-qc-filter');
+    var preFilter = preFilterEl ? preFilterEl.value : '';
+    var postFilter = postFilterEl ? postFilterEl.value : '';
     var allRows = Array.from(document.querySelectorAll('#records-table tbody tr[data-search]'));
     var matched = allRows.filter(function(row) {
-      return !q || row.dataset.search.indexOf(q) !== -1;
+      if (q && row.dataset.search.indexOf(q) === -1) return false;
+      if (preFilter && row.dataset.preStatus !== preFilter) return false;
+      if (postFilter && row.dataset.postStatus !== postFilter) return false;
+      return true;
     });
 
     var totalPages = Math.max(1, Math.ceil(matched.length / RECORDS_PER_PAGE));

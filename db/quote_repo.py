@@ -251,6 +251,32 @@ def get_recent(limit: int | None = 20):
                     post_count_map[r["quote_id"]] = r["cnt"]
                 else:
                     pre_count_map[r["quote_id"]] = r["cnt"]
+
+            # Latest version's status per (quote, kind) — 'draft' or
+            # 'confirmed' — so Customer Records can filter/show Draft
+            # distinctly from Confirmed instead of lumping both into "Done".
+            latest_status_rows = conn.execute(
+                f"""
+                SELECT qv.quote_id, COALESCE(qv.kind, 'pre') as kind,
+                       COALESCE(qv.status, 'confirmed') as status
+                FROM qc_versions qv
+                JOIN (
+                    SELECT quote_id, COALESCE(kind, 'pre') as kind, MAX(version) as max_version
+                    FROM qc_versions WHERE quote_id IN ({placeholders})
+                    GROUP BY quote_id, kind
+                ) latest
+                  ON latest.quote_id = qv.quote_id
+                 AND COALESCE(qv.kind, 'pre') = latest.kind
+                 AND qv.version = latest.max_version
+                """,
+                ids,
+            ).fetchall()
+            pre_status_map: dict = {}
+            post_status_map: dict = {}
+            for r in latest_status_rows:
+                target = post_status_map if r["kind"] == "post" else pre_status_map
+                target[r["quote_id"]] = r["status"]
+
             assignees = conn.execute(
                 f"SELECT pqa.quote_id, pqa.user_id, u.username "
                 f"FROM post_qc_assignments pqa JOIN users u ON u.id = pqa.user_id "
@@ -263,6 +289,10 @@ def get_recent(limit: int | None = 20):
                 q["pre_qc_count"] = pre_count_map.get(q["id"], 0)
                 q["post_qc_count"] = post_count_map.get(q["id"], 0)
                 q["post_qc_assignee"] = assignee_map.get(q["id"])
+                # 'none' | 'draft' | 'confirmed' — the latest version's real
+                # status per kind, distinct from the plain has-any-run count.
+                q["pre_qc_status"] = pre_status_map.get(q["id"], "none")
+                q["post_qc_status"] = post_status_map.get(q["id"], "none")
     for display_num, q in enumerate(quotes, start=1):
         q["display_num"] = display_num
     return quotes
