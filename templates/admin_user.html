@@ -18,185 +18,173 @@
 <div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:11px 18px;margin-bottom:18px;font-size:13px;font-weight:500;">&#9888; {{ error }}</div>
 {% endif %}
 
-<!-- ── Top banner card ── -->
-<div class="dash-card" style="margin-bottom:16px;overflow:hidden;">
-  <!-- colour band -->
-  <div style="height:6px;background:linear-gradient(90deg,var(--brand) 0%,#e88c10 100%);"></div>
-  <div class="dash-card-body" style="padding:24px 28px;">
-    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+<!-- ── Profile (left) + Account Settings (right) ── -->
+<div class="user-detail-grid" style="margin-bottom:16px;">
 
-      <!-- Avatar -->
-      <div style="width:72px;height:72px;border-radius:50%;flex-shrink:0;
+  <!-- Identity card -->
+  <div class="dash-card" style="margin:0;">
+    <div class="dash-card-body" style="padding:26px 22px;text-align:center;">
+      <div style="width:64px;height:64px;border-radius:50%;margin:0 auto;
                   background:linear-gradient(135deg,var(--brand) 0%,#e88c10 100%);
-                  color:#fff;font-size:28px;font-weight:800;
-                  display:flex;align-items:center;justify-content:center;
-                  box-shadow:0 4px 16px rgba(222,93,24,.28);">
+                  color:#fff;font-size:25px;font-weight:800;
+                  display:flex;align-items:center;justify-content:center;">
         {{ target.username[0]|upper }}
       </div>
+      <div style="font-size:17px;font-weight:800;color:var(--ink);margin-top:12px;line-height:1.2;">{{ target.full_name or target.username }}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px;">@{{ target.username }}</div>
 
-      <!-- Identity -->
-      <div style="flex:1;min-width:160px;">
-        <div style="font-size:19px;font-weight:800;color:var(--ink);line-height:1.15;">{{ target.full_name or target.username }}</div>
-        <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">@{{ target.username }}</div>
-        <div style="margin-top:8px;display:flex;gap:6px;">
-          <span class="badge badge-{{ target.role }}" style="font-size:10px;letter-spacing:.06em;">{{ target.role | upper }}</span>
-          {% if target.role == 'user' %}
-            {% if target.is_active %}
-            <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:20px;padding:2px 10px;">ACTIVE</span>
-            {% else %}
-            <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:20px;padding:2px 10px;">INACTIVE</span>
-            {% endif %}
-          {% endif %}
-        </div>
-      </div>
-
-      <!-- Stat chips -->
-      <div style="display:flex;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;flex-shrink:0;">
-        <div style="padding:12px 20px;text-align:center;border-right:1px solid var(--line);">
-          <div style="font-size:17px;font-weight:800;color:var(--ink);">#{{ target.id }}</div>
-          <div style="font-size:10.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">User ID</div>
-        </div>
-        <div style="padding:12px 20px;text-align:center;border-right:1px solid var(--line);">
-          <div style="font-size:17px;font-weight:800;color:var(--brand);">{{ qc_history|length }}</div>
-          <div style="font-size:10.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">QC Runs</div>
-        </div>
-        <div style="padding:12px 20px;text-align:center;">
-          <div style="font-size:14px;font-weight:800;color:var(--ink);">{{ target.created_at[:10] if target.created_at else '—' }}</div>
-          <div style="font-size:10.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Joined</div>
-        </div>
-      </div>
-
-      <!-- Activate/Deactivate + Delete: admin accounts (including your own) cannot be modified this way from the UI -->
-      {% if target.id != current_user.id and target.role != 'admin' %}
-      <div style="display:flex;gap:8px;">
-        <form action="/admin/users/{{ target.id }}/toggle-active" method="post">
+      <div style="display:flex;justify-content:center;gap:6px;margin-top:10px;flex-wrap:wrap;">
+        {% if target.role == 'admin' %}
+        <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:#a35a1a;background:#fdf0e4;border:1px solid #f0d3ae;border-radius:20px;padding:2px 10px;">TEAM LEADER</span>
+        {% else %}
           {% if target.is_active %}
-          <button type="submit" class="link-btn" style="padding:8px 16px;font-size:12.5px;">Deactivate</button>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:#2d7a4a;background:#eaf6ee;border:1px solid #b8e0c6;border-radius:20px;padding:2px 10px;">ACTIVE</span>
           {% else %}
-          <button type="submit" class="link-btn" style="padding:8px 16px;font-size:12.5px;color:#2d7a4a;">Activate</button>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:#b83232;background:#fdeeed;border:1px solid #f5c0bc;border-radius:20px;padding:2px 10px;">INACTIVE</span>
           {% endif %}
-        </form>
-        <form action="/admin/users/{{ target.id }}/delete" method="post"
-              onsubmit="return confirm('Permanently delete {{ target.username }}? This cannot be undone.');">
-          <button type="submit" class="link-btn danger" style="padding:8px 16px;font-size:12.5px;">Delete User</button>
-        </form>
+          {% if target.can_pre_qc %}
+          <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:#2f5f9e;background:#e9f1fb;border:1px solid #c6d9f2;border-radius:20px;padding:2px 10px;">PRE-QC</span>
+          {% endif %}
+          {% if target.can_post_qc %}
+          <span style="font-size:10px;font-weight:700;letter-spacing:.06em;color:#2f5f9e;background:#e9f1fb;border:1px solid #c6d9f2;border-radius:20px;padding:2px 10px;">POST-QC</span>
+          {% endif %}
+        {% endif %}
       </div>
-      {% endif %}
-
     </div>
 
-    <!-- Contact row -->
-    {% if target.email or target.phone %}
-    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);display:flex;gap:32px;flex-wrap:wrap;">
+    <!-- Meta list -->
+    <div style="border-top:1px solid var(--line2);padding:8px 22px;">
+      <div class="meta-row"><span class="meta-label">User ID</span><span class="meta-value">#{{ target.id }}</span></div>
+      <div class="meta-row"><span class="meta-label">Joined</span><span class="meta-value">{{ target.created_at[:10] if target.created_at else '—' }}</span></div>
+      <div class="meta-row"><span class="meta-label">QC Runs</span><span class="meta-value" style="color:var(--brand);font-weight:800;">{{ qc_history|length }}</span></div>
       {% if target.email %}
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;">Email</span>
-        <span style="font-size:13px;color:var(--ink);">{{ target.email }}</span>
-      </div>
+      <div class="meta-row"><span class="meta-label">Email</span><span class="meta-value" style="word-break:break-all;">{{ target.email }}</span></div>
       {% endif %}
       {% if target.phone %}
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;">Phone</span>
-        <span style="font-size:13px;color:var(--ink);">{{ target.phone }}</span>
-      </div>
+      <div class="meta-row"><span class="meta-label">Phone</span><span class="meta-value">{{ target.phone }}</span></div>
       {% endif %}
+    </div>
+
+    <!-- Account actions: admin accounts (including your own) cannot be modified this way from the UI -->
+    {% if target.id != current_user.id and target.role != 'admin' %}
+    <div style="border-top:1px solid var(--line2);padding:14px 22px;display:flex;gap:8px;">
+      <form action="/admin/users/{{ target.id }}/toggle-active" method="post" style="flex:1;margin:0;">
+        {% if target.is_active %}
+        <button type="submit" style="width:100%;font-size:12px;font-weight:600;color:#a35a1a;background:#fdf0e4;border:1.5px solid #f0d3ae;border-radius:8px;padding:7px 0;cursor:pointer;">Deactivate</button>
+        {% else %}
+        <button type="submit" style="width:100%;font-size:12px;font-weight:600;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:8px;padding:7px 0;cursor:pointer;">Activate</button>
+        {% endif %}
+      </form>
+      <form action="/admin/users/{{ target.id }}/delete" method="post" style="flex:1;margin:0;"
+            onsubmit="return confirm('Permanently delete {{ target.username }}? This cannot be undone.');">
+        <button type="submit" style="width:100%;font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:8px;padding:7px 0;cursor:pointer;">Delete User</button>
+      </form>
     </div>
     {% endif %}
   </div>
-</div>
 
-<!-- ── Action cards ── -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
-
-  <!-- Change Role: hidden on your own profile, since you can't change your own role -->
-  {% if target.id != current_user.id %}
-  <div class="dash-card" style="margin-bottom:0;">
-    <div class="dash-card-body" style="padding:20px 22px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-        <div style="width:30px;height:30px;border-radius:8px;background:rgba(222,93,24,.1);display:flex;align-items:center;justify-content:center;font-size:14px;">🔑</div>
-        <span style="font-size:13px;font-weight:700;color:var(--ink);">Change Role</span>
-      </div>
-      {% if locked_for_viewer %}
-      <p style="font-size:12.5px;color:var(--muted);margin:0;">🔒 Only a super admin can change another admin's role.</p>
-      {% else %}
-      <form action="/admin/users/{{ target.id }}/change-role" method="post"
-            style="display:flex;gap:8px;align-items:center;">
-        <select name="new_role" style="flex:1;padding:8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;">
-          <option value="user"  {% if target.role == 'user'  %}selected{% endif %}>User</option>
-          <option value="admin" {% if target.role == 'admin' %}selected{% endif %}>Admin</option>
-        </select>
-        <button type="submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Save</button>
-      </form>
-      <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5;">Promoting to <strong>Admin</strong> grants full dashboard access including user management and all records.</p>
-      {% endif %}
+  <!-- Account Settings: one card, one row per setting -->
+  <div class="dash-card" style="margin:0;align-self:start;">
+    <div class="dash-card-header">
+      <div class="dash-card-title">Account Settings</div>
     </div>
-  </div>
-  {% endif %}
 
-  <!-- Reset Password: spans full width when Change Role is hidden (own profile) -->
-  <div class="dash-card" style="margin-bottom:0;{% if target.id == current_user.id %}grid-column:1 / -1;{% endif %}">
-    <div class="dash-card-body" style="padding:20px 22px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-        <div style="width:30px;height:30px;border-radius:8px;background:rgba(222,93,24,.1);display:flex;align-items:center;justify-content:center;font-size:14px;">🔒</div>
-        <span style="font-size:13px;font-weight:700;color:var(--ink);">Reset Password</span>
-      </div>
-      {% if locked_for_viewer %}
-      <p style="font-size:12.5px;color:var(--muted);margin:0;">🔒 Only a super admin can reset another admin's password.</p>
-      {% else %}
-      <form action="/admin/users/{{ target.id }}/change-password" method="post"
-            id="reset-pwd-form" onsubmit="return validateResetPwd(event)">
-        <div style="display:flex;gap:8px;align-items:center;">
-          <div style="position:relative;flex:1;">
-            <input type="password" name="new_password" id="reset-pwd-new" required minlength="8"
-                   placeholder="New password (min. 8 characters)" oninput="checkResetPwdMatch()"
-                   style="width:100%;padding:8px 34px 8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
-            <button type="button" onclick="toggleResetPwdVisibility('reset-pwd-new', this)"
-                    style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
-          </div>
-          <div style="position:relative;flex:1;">
-            <input type="password" id="reset-pwd-confirm" required minlength="8"
-                   placeholder="Re-enter new password" oninput="checkResetPwdMatch()"
-                   style="width:100%;padding:8px 34px 8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
-            <button type="button" onclick="toggleResetPwdVisibility('reset-pwd-confirm', this)"
-                    style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
-          </div>
-          <button type="submit" id="reset-pwd-submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Set</button>
+    <!-- Role: hidden on your own profile, since you can't change your own role -->
+    {% if target.id != current_user.id %}
+    <div class="settings-row">
+      <div class="settings-label">
+        <div class="settings-name">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          Role
         </div>
-        <p id="reset-pwd-match-msg" style="display:none;font-size:12px;font-weight:600;margin:8px 0 0;"></p>
-      </form>
-      <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5;">User must use this password on their next login. Minimum 8 characters.</p>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- QC Access: which template stages this user is allowed to run -->
-  {% if target.role == 'user' %}
-  <div class="dash-card" style="margin-bottom:0;grid-column:1 / -1;">
-    <div class="dash-card-body" style="padding:20px 22px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-        <div style="width:30px;height:30px;border-radius:8px;background:rgba(222,93,24,.1);display:flex;align-items:center;justify-content:center;font-size:14px;">✅</div>
-        <span style="font-size:13px;font-weight:700;color:var(--ink);">QC Access</span>
+        <div class="settings-desc">Promoting to <strong>Admin</strong> grants full dashboard access including user management and all records.</div>
       </div>
-      <form action="/admin/users/{{ target.id }}/qc-access" method="post" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;">
-          <input type="checkbox" name="can_pre_qc" value="1" {% if target.can_pre_qc %}checked{% endif %} style="width:16px;height:16px;">
-          Pre-Install QC
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;">
-          <input type="checkbox" name="can_post_qc" value="1" {% if target.can_post_qc %}checked{% endif %} style="width:16px;height:16px;">
-          Post-Install QC
-        </label>
-        <button type="submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Save</button>
-      </form>
-      <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5;">Controls which checklist stages this user can select when running QC.</p>
+      <div class="settings-control">
+        {% if locked_for_viewer %}
+        <p style="font-size:12.5px;color:var(--muted);margin:0;">Only a super admin can change another admin's role.</p>
+        {% else %}
+        <form action="/admin/users/{{ target.id }}/change-role" method="post"
+              style="display:flex;gap:8px;align-items:center;margin:0;">
+          <select name="new_role" style="flex:1;max-width:220px;padding:8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;">
+            <option value="user"  {% if target.role == 'user'  %}selected{% endif %}>User</option>
+            <option value="admin" {% if target.role == 'admin' %}selected{% endif %}>Admin</option>
+          </select>
+          <button type="submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Save</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
-  </div>
-  {% endif %}
+    {% endif %}
 
+    <!-- Password -->
+    <div class="settings-row">
+      <div class="settings-label">
+        <div class="settings-name">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Password
+        </div>
+        <div class="settings-desc">User must use the new password on their next login. Minimum 8 characters.</div>
+      </div>
+      <div class="settings-control">
+        {% if locked_for_viewer %}
+        <p style="font-size:12.5px;color:var(--muted);margin:0;">Only a super admin can reset another admin's password.</p>
+        {% else %}
+        <form action="/admin/users/{{ target.id }}/change-password" method="post"
+              id="reset-pwd-form" onsubmit="return validateResetPwd(event)" style="margin:0;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <div style="position:relative;flex:1;min-width:170px;">
+              <input type="password" name="new_password" id="reset-pwd-new" required minlength="8"
+                     placeholder="New password" oninput="checkResetPwdMatch()"
+                     style="width:100%;padding:8px 34px 8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
+              <button type="button" onclick="toggleResetPwdVisibility('reset-pwd-new', this)"
+                      style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <div style="position:relative;flex:1;min-width:170px;">
+              <input type="password" id="reset-pwd-confirm" required minlength="8"
+                     placeholder="Re-enter new password" oninput="checkResetPwdMatch()"
+                     style="width:100%;padding:8px 34px 8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;box-sizing:border-box;">
+              <button type="button" onclick="toggleResetPwdVisibility('reset-pwd-confirm', this)"
+                      style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <button type="submit" id="reset-pwd-submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Set</button>
+          </div>
+          <p id="reset-pwd-match-msg" style="display:none;font-size:12px;font-weight:600;margin:8px 0 0;"></p>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- QC Access: which template stages this user is allowed to run -->
+    {% if target.role == 'user' %}
+    <div class="settings-row">
+      <div class="settings-label">
+        <div class="settings-name">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          QC Access
+        </div>
+        <div class="settings-desc">Controls which checklist stages this user can select when running QC.</div>
+      </div>
+      <div class="settings-control">
+        <form action="/admin/users/{{ target.id }}/qc-access" method="post" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin:0;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;">
+            <input type="checkbox" name="can_pre_qc" value="1" {% if target.can_pre_qc %}checked{% endif %} style="width:16px;height:16px;">
+            Pre-Install QC
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;">
+            <input type="checkbox" name="can_post_qc" value="1" {% if target.can_post_qc %}checked{% endif %} style="width:16px;height:16px;">
+            Post-Install QC
+          </label>
+          <button type="submit" style="padding:8px 20px;font-size:13px;white-space:nowrap;">Save</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
 </div>
 
 <!-- ── QC Activity ── -->
@@ -258,6 +246,22 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .user-detail-grid { display:grid; grid-template-columns:280px 1fr; gap:16px; align-items:start; }
+  @media (max-width: 940px) { .user-detail-grid { grid-template-columns:1fr; } }
+
+  .meta-row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:8px 0; }
+  .meta-row + .meta-row { border-top:1px dashed var(--line2); }
+  .meta-label { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; flex-shrink:0; }
+  .meta-value { font-size:13px; font-weight:600; color:var(--ink); text-align:right; }
+
+  .settings-row { display:flex; gap:20px; padding:18px 22px; flex-wrap:wrap; }
+  .settings-row + .settings-row { border-top:1px solid var(--line2); }
+  .settings-label { width:210px; flex-shrink:0; }
+  .settings-name { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:700; color:var(--ink); }
+  .settings-desc { font-size:11.5px; color:var(--muted); line-height:1.5; margin-top:5px; }
+  .settings-control { flex:1; min-width:240px; }
+</style>
 <script>
   document.querySelectorAll('tr.clickable[data-href]').forEach(function(row) {
     row.addEventListener('click', function() { window.location.href = row.dataset.href; });
