@@ -35,7 +35,13 @@ except ImportError:
     _fitz = None
 
 _PDF_DPI = 100        # 100 DPI is enough for Claude vision and cuts payload to 1/4
-_PDF_MAX_PAGES = 2    # send at most 2 pages per PDF to Claude — most checks need page 1 only
+# Send at most this many pages per PDF to Claude. Was 2, which silently hid
+# anything on page 3+ (e.g. a signature block on page 3 of a 4-page Signed
+# Agreement) from every checklist item checking that PDF — no prompt wording
+# could fix that, since the page was never sent. 8 pages comfortably covers
+# the Signed Agreement, STC Assignment Form, and Battery Audit Pack lengths
+# actually seen in production ZIPs.
+_PDF_MAX_PAGES = 8
 
 import db.quote_repo as db
 import db.checklist_repo as tdb
