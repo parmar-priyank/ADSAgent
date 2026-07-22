@@ -48,6 +48,17 @@ def init_db():
             conn.execute("ALTER TABLE quotes ADD COLUMN preferred_install_date TEXT")
         if "draft_email_results_json" not in cols:
             conn.execute("ALTER TABLE quotes ADD COLUMN draft_email_results_json TEXT")
+        # Running Claude-token total for THIS quote's not-yet-consumed Verify
+        # Email work, accumulated across however many /email-verify rounds
+        # happen before the user clicks "Continue to Upload ZIP" (each round
+        # re-renders the page fresh, so a single hidden field alone would
+        # lose earlier rounds' tokens). Reset to 0 once a checklist run
+        # actually consumes them, so a later Verify Email session for a
+        # future run doesn't double-count old spend.
+        if "draft_email_verify_input_tokens" not in cols:
+            conn.execute("ALTER TABLE quotes ADD COLUMN draft_email_verify_input_tokens INTEGER DEFAULT 0")
+        if "draft_email_verify_output_tokens" not in cols:
+            conn.execute("ALTER TABLE quotes ADD COLUMN draft_email_verify_output_tokens INTEGER DEFAULT 0")
         # On-disk path to the latest QC Excel for this quote — supersedes the
         # in-DB qc_excel blob. Old rows keep their blob and read fine via the
         # disk-first-then-blob fallback in get_quote consumers.
@@ -96,6 +107,13 @@ def init_db():
             # Old versions keep their blob; reads fall back to it when path
             # is NULL (lazy migration, no bulk rewrite).
             ("excel_path",           "TEXT"),
+            # Total Claude tokens actually spent producing this version:
+            # the checklist run (single-item + batched calls), any Verify
+            # Email attachment matching, and any per-row re-analysis while
+            # editing. NULL on versions saved before this tracking existed —
+            # shown as "not tracked" rather than a misleading 0.
+            ("input_tokens",         "INTEGER"),
+            ("output_tokens",        "INTEGER"),
         ]:
             if col not in qcv_cols:
                 conn.execute(f"ALTER TABLE qc_versions ADD COLUMN {col} {defn}")
@@ -258,6 +276,46 @@ def get_draft_email_results(quote_id: int) -> str:
             "SELECT draft_email_results_json FROM quotes WHERE id = ?", (quote_id,)
         ).fetchone()
     return (row["draft_email_results_json"] if row else "") or ""
+
+
+def add_draft_email_verify_tokens(quote_id: int, input_tokens: int, output_tokens: int) -> tuple[int, int]:
+    """Add this /email-verify round's token spend to the quote's running,
+    not-yet-consumed total (read-add-write, so multiple rounds before the
+    user clicks "Continue to Upload ZIP" all get counted). Returns the new
+    running total, which the caller passes forward via a hidden form field."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(draft_email_verify_input_tokens, 0) as i, "
+            "COALESCE(draft_email_verify_output_tokens, 0) as o "
+            "FROM quotes WHERE id = ?", (quote_id,),
+        ).fetchone()
+        new_in  = (row["i"] if row else 0) + (input_tokens or 0)
+        new_out = (row["o"] if row else 0) + (output_tokens or 0)
+        conn.execute(
+            "UPDATE quotes SET draft_email_verify_input_tokens = ?, "
+            "draft_email_verify_output_tokens = ? WHERE id = ?",
+            (new_in, new_out, quote_id),
+        )
+    return new_in, new_out
+
+
+def take_draft_email_verify_tokens(quote_id: int) -> tuple[int, int]:
+    """Read and reset the quote's running Verify Email token total to 0 —
+    called once a checklist run actually consumes it, so a later Verify
+    Email session for a future run starts from zero instead of double-
+    counting spend a previous run already accounted for."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(draft_email_verify_input_tokens, 0) as i, "
+            "COALESCE(draft_email_verify_output_tokens, 0) as o "
+            "FROM quotes WHERE id = ?", (quote_id,),
+        ).fetchone()
+        conn.execute(
+            "UPDATE quotes SET draft_email_verify_input_tokens = 0, "
+            "draft_email_verify_output_tokens = 0 WHERE id = ?",
+            (quote_id,),
+        )
+    return (row["i"], row["o"]) if row else (0, 0)
 
 
 def count_quotes() -> int:
@@ -465,6 +523,8 @@ def add_qc_version(
     status: str = "confirmed",
     saved_by_user_id: int = None,
     kind: str = "pre",
+    input_tokens: int = None,
+    output_tokens: int = None,
 ) -> tuple:
     if kind not in ("pre", "post"):
         kind = "pre"
@@ -481,12 +541,14 @@ def add_qc_version(
             INSERT INTO qc_versions
                 (quote_id, version, template_name, zip_filename,
                  yes_count, no_count, na_count, excel_blob, excel_path, rows_json,
-                 email_results_json, confirmed_by_user_id, status, saved_by_user_id, saved_at, kind)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                 email_results_json, confirmed_by_user_id, status, saved_by_user_id, saved_at, kind,
+                 input_tokens, output_tokens)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
             """,
             (quote_id, next_version, template_name, zip_filename,
              yes_count, no_count, na_count, excel_path, rows_json,
-             email_results_json or "", confirmed_by_user_id, status, saved_by_user_id, kind),
+             email_results_json or "", confirmed_by_user_id, status, saved_by_user_id, kind,
+             input_tokens, output_tokens),
         )
         version_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     return version_id, next_version
@@ -495,11 +557,19 @@ def add_qc_version(
 def update_qc_version(version_id: int, xlsx_bytes: bytes, rows_json: str,
                       yes_count: int, no_count: int, na_count: int,
                       confirm: bool = False, confirmed_by_user_id: int = None,
-                      email_results_json: str = None):
+                      email_results_json: str = None,
+                      input_tokens: int = None, output_tokens: int = None):
     """email_results_json is optional — pass None (default) to leave the
     version's stored email-verification results untouched, or a JSON string
     to overwrite them (used when the Email Verification table was edited
     alongside the checklist rows).
+
+    input_tokens/output_tokens are the TOTAL tokens spent on this version to
+    date (the browser accumulates the running total across the initial run
+    plus any per-row re-analysis edits, same as it already does for
+    yes_count/no_count) — pass None (default) to leave the stored total
+    untouched, or a number to overwrite it. Never added/subtracted here;
+    the caller always sends the full current total.
 
     The rebuilt Excel is written to disk (excel_path) and excel_blob is
     cleared; any previous on-disk file for this version is removed afterward,
@@ -514,54 +584,60 @@ def update_qc_version(version_id: int, xlsx_bytes: bytes, rows_json: str,
     old_path = prev["excel_path"] if prev else None
     new_path = blob_store.save_excel(xlsx_bytes, kind="version", ident=quote_id_for_name) if xlsx_bytes else None
 
+    set_tokens_sql = ""
+    token_params: tuple = ()
+    if input_tokens is not None or output_tokens is not None:
+        set_tokens_sql = ", input_tokens=?, output_tokens=?"
+        token_params = (input_tokens, output_tokens)
+
     with get_db() as conn:
         if email_results_json is not None:
             if confirm:
                 conn.execute(
-                    """
+                    f"""
                     UPDATE qc_versions
                        SET excel_blob=NULL, excel_path=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
                            email_results_json=?,
                            status='confirmed', confirmed_at=CURRENT_TIMESTAMP,
-                           confirmed_by_user_id=?
+                           confirmed_by_user_id=?{set_tokens_sql}
                      WHERE id=?
                     """,
                     (new_path, rows_json, yes_count, no_count, na_count,
-                     email_results_json, confirmed_by_user_id, version_id),
+                     email_results_json, confirmed_by_user_id, *token_params, version_id),
                 )
             else:
                 conn.execute(
-                    """
+                    f"""
                     UPDATE qc_versions
                        SET excel_blob=NULL, excel_path=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
                            email_results_json=?,
-                           status='draft'
+                           status='draft'{set_tokens_sql}
                      WHERE id=?
                     """,
                     (new_path, rows_json, yes_count, no_count, na_count,
-                     email_results_json, version_id),
+                     email_results_json, *token_params, version_id),
                 )
         elif confirm:
             conn.execute(
-                """
+                f"""
                 UPDATE qc_versions
                    SET excel_blob=NULL, excel_path=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
                        status='confirmed', confirmed_at=CURRENT_TIMESTAMP,
-                       confirmed_by_user_id=?
+                       confirmed_by_user_id=?{set_tokens_sql}
                  WHERE id=?
                 """,
                 (new_path, rows_json, yes_count, no_count, na_count,
-                 confirmed_by_user_id, version_id),
+                 confirmed_by_user_id, *token_params, version_id),
             )
         else:
             conn.execute(
-                """
+                f"""
                 UPDATE qc_versions
                    SET excel_blob=NULL, excel_path=?, rows_json=?, yes_count=?, no_count=?, na_count=?,
-                       status='draft'
+                       status='draft'{set_tokens_sql}
                  WHERE id=?
                 """,
-                (new_path, rows_json, yes_count, no_count, na_count, version_id),
+                (new_path, rows_json, yes_count, no_count, na_count, *token_params, version_id),
             )
 
     if old_path and old_path != new_path:
@@ -606,6 +682,7 @@ def get_qc_monthly_stats(year_month: str) -> dict:
             """
             SELECT qv.id, qv.quote_id, COALESCE(qv.kind, 'pre') as kind,
                    qv.confirmed_at, qv.confirmed_by_user_id,
+                   qv.input_tokens, qv.output_tokens,
                    u.username, u.full_name,
                    q.customer_name, q.quote_number
             FROM qc_versions qv
@@ -622,6 +699,8 @@ def get_qc_monthly_stats(year_month: str) -> dict:
 
     pre_count  = sum(1 for r in rows if r["kind"] == "pre")
     post_count = sum(1 for r in rows if r["kind"] == "post")
+    total_input_tokens  = sum(r.get("input_tokens")  or 0 for r in rows)
+    total_output_tokens = sum(r.get("output_tokens") or 0 for r in rows)
 
     # Full team roster: every active non-super-admin account appears in the
     # per-member breakdown even with zero runs this month, so the table reads
@@ -697,6 +776,8 @@ def get_qc_monthly_stats(year_month: str) -> dict:
         "per_user": per_user,
         "runs": rows,
         "daily": daily,
+        "total_input_tokens": total_input_tokens,
+        "total_output_tokens": total_output_tokens,
     }
 
 

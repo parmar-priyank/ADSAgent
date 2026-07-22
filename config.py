@@ -61,6 +61,25 @@ logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
 ANTHROPIC_API_KEY    = os.environ.get("ANTHROPIC_API_KEY")
 CLAUDE_MODEL         = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+# Per-million-token USD rates for whichever model CLAUDE_MODEL points at —
+# used only to show an estimated $ cost per QC run/version. Anthropic's
+# published rates change over time (e.g. Claude Sonnet 5's introductory
+# pricing through 2026-08-31 is $2/$10 per million input/output tokens,
+# rising to $3/$15 after), so these live in .env rather than being
+# hardcoded, and must be updated here whenever the model or its pricing
+# changes — the app never guesses a rate.
+CLAUDE_PRICE_PER_M_INPUT  = float(os.environ.get("CLAUDE_PRICE_PER_M_INPUT", "2.0"))
+CLAUDE_PRICE_PER_M_OUTPUT = float(os.environ.get("CLAUDE_PRICE_PER_M_OUTPUT", "10.0"))
+
+
+def claude_cost_usd(input_tokens: int, output_tokens: int) -> float:
+    """Estimated USD cost for a token count, at the rate configured above."""
+    return (
+        (input_tokens or 0) / 1_000_000 * CLAUDE_PRICE_PER_M_INPUT
+        + (output_tokens or 0) / 1_000_000 * CLAUDE_PRICE_PER_M_OUTPUT
+    )
+
+
 SECRET_KEY           = os.environ.get("SECRET_KEY")
 RECAPTCHA_SITE_KEY   = os.environ.get("RECAPTCHA_SITE_KEY", "")
 RECAPTCHA_SECRET_KEY = os.environ.get("RECAPTCHA_SECRET_KEY", "")

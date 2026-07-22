@@ -94,7 +94,7 @@
   {% endif %}
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch;margin-bottom:24px;">
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;align-items:stretch;margin-bottom:24px;">
   <div class="metric-card">
     <div class="metric-icon-wrap purple">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -128,6 +128,19 @@
     <div>
       <div class="metric-num">{{ stats.post_count }}</div>
       <div class="metric-label">Post-QC Confirmed</div>
+    </div>
+  </div>
+
+  {% set _total_cost = ((stats.total_input_tokens or 0) / 1000000 * claude_price_in) + ((stats.total_output_tokens or 0) / 1000000 * claude_price_out) %}
+  <div class="metric-card" title="{{ '{:,}'.format(stats.total_input_tokens or 0) }} input + {{ '{:,}'.format(stats.total_output_tokens or 0) }} output tokens">
+    <div class="metric-icon-wrap blue">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+      </svg>
+    </div>
+    <div>
+      <div class="metric-num">&#36;{{ '%.2f' | format(_total_cost) }}</div>
+      <div class="metric-label">Claude Cost — {{ '{:,}'.format((stats.total_input_tokens or 0) + (stats.total_output_tokens or 0)) }} tokens</div>
     </div>
   </div>
 </div>

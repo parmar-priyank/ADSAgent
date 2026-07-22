@@ -54,6 +54,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from config import (
     CLAUDE_MODEL,
+    CLAUDE_PRICE_PER_M_INPUT,
+    CLAUDE_PRICE_PER_M_OUTPUT,
     _NO_CACHE,
     _admin_ctx,
     _anthropic_client,
@@ -153,6 +155,8 @@ def admin_analysis_page(request: Request, month: str = "", user=Depends(require_
         available_months=available_months,
         selected_month=selected_month,
         stats=stats,
+        claude_price_in=CLAUDE_PRICE_PER_M_INPUT,
+        claude_price_out=CLAUDE_PRICE_PER_M_OUTPUT,
     )
     response = templates.TemplateResponse(request, "admin_analysis.html", ctx)
     response.headers.update(_NO_CACHE)
@@ -739,6 +743,8 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
         "other_na_count": other_na_count,
         "post_qc_assignee": post_qc_assignee,
         "other_email_results": other_email_results,
+        "claude_price_in": CLAUDE_PRICE_PER_M_INPUT,
+        "claude_price_out": CLAUDE_PRICE_PER_M_OUTPUT,
     })
     resp.headers.update(_NO_CACHE)
     return resp

@@ -92,6 +92,8 @@
       <input type="hidden" name="quote_id" value="{{ quote_id }}">
       <input type="hidden" name="kind" value="{{ kind or 'pre' }}">
       <input type="hidden" name="email_results_json" value="{{ email_results_json | default('') | e }}">
+      <input type="hidden" name="email_verify_input_tokens" value="{{ email_verify_input_tokens | default(0) }}">
+      <input type="hidden" name="email_verify_output_tokens" value="{{ email_verify_output_tokens | default(0) }}">
 
       {% if saved_templates %}
       <div style="margin-bottom:20px;">

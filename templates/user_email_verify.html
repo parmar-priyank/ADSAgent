@@ -374,6 +374,8 @@
         <input type="hidden" name="quote_id" value="{{ quote_id }}">
         <input type="hidden" name="email_results_json" id="eml-proceed-json"
                value='{{ results | tojson }}'>
+        <input type="hidden" name="email_verify_input_tokens" value="{{ email_verify_input_tokens | default(0) }}">
+        <input type="hidden" name="email_verify_output_tokens" value="{{ email_verify_output_tokens | default(0) }}">
         <button type="submit"
                 style="display:inline-flex;align-items:center;gap:8px;
                        background:var(--brand);color:#fff;border:none;font-weight:700;

@@ -67,6 +67,14 @@
           {% if not is_admin and not can_edit %}
           <span style="font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surface3);border:1px solid var(--line2);border-radius:20px;padding:2px 9px;white-space:nowrap;flex-shrink:0;">View only</span>
           {% endif %}
+          {% if is_admin and revisit_version and revisit_version.input_tokens is not none %}
+          {% set _qc_total_tokens = (revisit_version.input_tokens or 0) + (revisit_version.output_tokens or 0) %}
+          {% set _qc_cost = ((revisit_version.input_tokens or 0) / 1000000 * claude_price_in) + ((revisit_version.output_tokens or 0) / 1000000 * claude_price_out) %}
+          <span title="{{ '{:,}'.format(revisit_version.input_tokens or 0) }} input + {{ '{:,}'.format(revisit_version.output_tokens or 0) }} output tokens"
+                style="font-size:10.5px;font-weight:700;color:#6b5b95;background:rgba(107,91,149,.1);border:1px solid rgba(107,91,149,.3);border-radius:20px;padding:2px 9px;white-space:nowrap;flex-shrink:0;">
+            &#36;{{ '%.4f' | format(_qc_cost) }} &middot; {{ '{:,}'.format(_qc_total_tokens) }} tokens
+          </span>
+          {% endif %}
         </div>
         <div style="font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           {{ (record.quote_number if record else '') or '—' }}
@@ -381,6 +389,8 @@
         <input type="hidden" name="email_results_json" id="draft-email-json" value='{{ email_results | default([]) | tojson }}'>
         <input type="hidden" name="preferred_install_date" id="draft-preferred-install-date" value="{{ preferred_install_date or '' }}">
         <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
+        <input type="hidden" name="input_tokens"       id="draft-input-tokens"  value="{{ input_tokens | default(0) }}">
+        <input type="hidden" name="output_tokens"      id="draft-output-tokens" value="{{ output_tokens | default(0) }}">
         <button type="submit"
                 style="display:flex;align-items:center;gap:7px;padding:9px 20px;
                        background:var(--surface3);border:1px solid var(--line2);
@@ -407,6 +417,8 @@
         <input type="hidden" name="email_results_json" id="confirm-email-json" value='{{ email_results | default([]) | tojson }}'>
         <input type="hidden" name="preferred_install_date" id="confirm-preferred-install-date" value="{{ preferred_install_date or '' }}">
         <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
+        <input type="hidden" name="input_tokens"       id="confirm-input-tokens"  value="{{ input_tokens | default(0) }}">
+        <input type="hidden" name="output_tokens"      id="confirm-output-tokens" value="{{ output_tokens | default(0) }}">
         <button type="submit"
                 style="display:flex;align-items:center;gap:7px;padding:9px 22px;
                        background:var(--brand);color:#fff;border:none;
@@ -1276,6 +1288,12 @@
   var _isRevisit = {{ 'true' if is_revisit else 'false' }};
   var _isAdmin   = {{ 'true' if is_admin else 'false' }};
 
+  // Running token total for per-row re-analysis (analyseRowFile) done while
+  // revisiting an already-saved version — that path POSTs a JSON body
+  // (/user/qc-version/{id}/save), not the hidden-form-field flow the fresh-
+  // run path below uses, so it needs its own accumulator sent in the payload.
+  var _revisitTokenDelta = { input: 0, output: 0 };
+
   function _applyRowsToDom(rows) {
     document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
       var newStatus = tr.querySelector('.status-edit').value;
@@ -1294,6 +1312,27 @@
   // Per-row single-file upload — analyses just this item's evidence without
   // re-uploading the whole ZIP. Independent of the manual Yes/No dropdown:
   // using one does not require or affect the other.
+  // Records real Claude spend from a per-row re-analysis on top of whatever
+  // the original checklist run already cost — accumulates, never overwrites.
+  // Fresh in-progress run: added straight to the Save Draft/Confirm forms'
+  // hidden token fields (whichever the user ends up clicking carries the
+  // running total). Revisit: added to _revisitTokenDelta instead, since that
+  // path sends a JSON body (see saveEdits) rather than a form submission.
+  function _addTokens(inputDelta, outputDelta) {
+    if (!inputDelta && !outputDelta) return;
+    if (_isRevisit) {
+      _revisitTokenDelta.input  += (inputDelta || 0);
+      _revisitTokenDelta.output += (outputDelta || 0);
+      return;
+    }
+    [['draft-input-tokens', 'draft-output-tokens'], ['confirm-input-tokens', 'confirm-output-tokens']].forEach(function(pair) {
+      var inEl = document.getElementById(pair[0]);
+      var outEl = document.getElementById(pair[1]);
+      if (inEl) inEl.value = (parseInt(inEl.value, 10) || 0) + (inputDelta || 0);
+      if (outEl) outEl.value = (parseInt(outEl.value, 10) || 0) + (outputDelta || 0);
+    });
+  }
+
   function analyseRowFile(input) {
     var file = input.files[0];
     if (!file) return;
@@ -1326,6 +1365,8 @@
         tr.dataset.remark = remark;
         if (remarkBtn) remarkBtn.querySelector('.remark-btn-preview').textContent = remark;
 
+        _addTokens(data._input_tokens, data._output_tokens);
+
         _refreshChangedHighlight(tr);
         btn.classList.remove('is-busy');
         input.value = '';
@@ -1352,6 +1393,10 @@
       var dateInput = document.getElementById('result-preferred-install-date');
       var payload = { rows: rows, preferred_install_date: dateInput ? dateInput.value : '' };
       if (action) payload.action = action;
+      if (_revisitTokenDelta.input || _revisitTokenDelta.output) {
+        payload.input_tokens_delta  = _revisitTokenDelta.input;
+        payload.output_tokens_delta = _revisitTokenDelta.output;
+      }
       fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1366,6 +1411,9 @@
           throw new Error(result.data && result.data.detail ? result.data.detail : 'Failed to save changes.');
         }
         var data = result.data;
+        // Reset only after a successful save — the tokens are now recorded
+        // server-side, so a later save shouldn't re-add the same delta.
+        _revisitTokenDelta = { input: 0, output: 0 };
         _applyRowsToDom(rows);
         document.getElementById('filter-yes').textContent = '✓ ' + data.yes_count + ' Yes';
         document.getElementById('filter-no').textContent  = '✗ ' + data.no_count  + ' No';

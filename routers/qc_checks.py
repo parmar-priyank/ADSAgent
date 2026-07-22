@@ -162,7 +162,7 @@ _QC_BATCH_SYSTEM = (
 )
 
 
-def _claude_check_batch(client, user_content, item_indices: list[int]) -> dict[int, dict]:
+def _claude_check_batch(client, user_content, item_indices: list[int]) -> tuple[dict[int, dict], int, int]:
     """Same request/response contract as _claude_check, but for N checklist
     items that all share one reference file: one Claude call instead of N,
     since the expensive part of the request (the file's page images) would
@@ -172,8 +172,12 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> dict[i
     used in that text, in order, so a response can be validated against
     exactly the set of items that were actually asked about.
 
-    Returns {item_index: {"status":..., "remark":...}} for every index in
-    item_indices. On any failure (bad JSON twice, missing/extra indices,
+    Returns ({item_index: {"status":..., "remark":...}}, input_tokens,
+    output_tokens) — the two token counts are the TOTAL for this one shared
+    call (summed across the retry too, if it fires), not split per item;
+    the caller adds them once to its running total rather than distributing
+    them across items and re-summing, which would be the same number with
+    more code. On any failure (bad JSON twice, missing/extra indices,
     exception), every item_index maps to the same N/A fallback — callers
     must never assume a partial batch result, only all-or-nothing.
     """
@@ -202,11 +206,14 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> dict[i
             return None
         return by_idx
 
+    usage_in = usage_out = 0
     try:
         resp = client.messages.create(
             model=CLAUDE_MODEL, max_tokens=max(500, 150 * len(item_indices)),
             system=_QC_BATCH_SYSTEM, messages=messages,
         )
+        usage_in  += getattr(resp.usage, "input_tokens", 0) or 0
+        usage_out += getattr(resp.usage, "output_tokens", 0) or 0
         raw = resp.content[0].text if resp.content else ""
         result = _try_parse(raw)
         if result is None:
@@ -222,6 +229,8 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> dict[i
                 model=CLAUDE_MODEL, max_tokens=max(500, 150 * len(item_indices)),
                 system=_QC_BATCH_SYSTEM, messages=messages,
             )
+            usage_in  += getattr(resp2.usage, "input_tokens", 0) or 0
+            usage_out += getattr(resp2.usage, "output_tokens", 0) or 0
             raw2 = resp2.content[0].text if resp2.content else ""
             result = _try_parse(raw2)
             if result is None:
@@ -229,10 +238,10 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> dict[i
                     "Claude batch check returned unparseable/mismatched JSON twice "
                     "for item_indices=%s; raw replies: %r / %r", item_indices, raw, raw2,
                 )
-                return _fallback("AI returned an unreadable response for this batched check.")
-        return result
+                return _fallback("AI returned an unreadable response for this batched check."), usage_in, usage_out
+        return result, usage_in, usage_out
     except Exception as e:
-        return _fallback(f"Error analysing batched file: {e}")
+        return _fallback(f"Error analysing batched file: {e}"), usage_in, usage_out
 
 
 def _claude_check(client, user_content) -> dict:
@@ -240,6 +249,12 @@ def _claude_check(client, user_content) -> dict:
     resp = client.messages.create(
         model=CLAUDE_MODEL, max_tokens=500, system=QC_SYSTEM, messages=messages,
     )
+    # Token accounting is additive to the return dict (private-prefixed keys),
+    # so every existing caller that only reads "status"/"remark" is unaffected;
+    # accumulated across both calls if the corrective retry below fires, since
+    # both calls are real spend on this one checklist item.
+    usage_in  = getattr(resp.usage, "input_tokens", 0) or 0
+    usage_out = getattr(resp.usage, "output_tokens", 0) or 0
     raw = resp.content[0].text if resp.content else ""
     r = _parse_claude_json(raw)
     if r is None:
@@ -255,12 +270,16 @@ def _claude_check(client, user_content) -> dict:
         resp2 = client.messages.create(
             model=CLAUDE_MODEL, max_tokens=500, system=QC_SYSTEM, messages=messages,
         )
+        usage_in  += getattr(resp2.usage, "input_tokens", 0) or 0
+        usage_out += getattr(resp2.usage, "output_tokens", 0) or 0
         raw2 = resp2.content[0].text if resp2.content else ""
         r = _parse_claude_json(raw2)
         if r is None:
             logger.warning("Claude returned unparseable JSON twice; raw replies: %r / %r", raw, raw2)
-            return {"status": "N/A", "remark": "AI returned an unreadable response."}
-    return {"status": r.get("status", "N/A"), "remark": r.get("remark", "")}
+            return {"status": "N/A", "remark": "AI returned an unreadable response.",
+                    "_input_tokens": usage_in, "_output_tokens": usage_out}
+    return {"status": r.get("status", "N/A"), "remark": r.get("remark", ""),
+            "_input_tokens": usage_in, "_output_tokens": usage_out}
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +387,8 @@ def _match_attachment_with_claude(client, attachment: dict, reference_text: str)
             max_tokens=300,
             messages=[{"role": "user", "content": user_content}],
         )
+        usage_in  = getattr(resp.usage, "input_tokens", 0) or 0
+        usage_out = getattr(resp.usage, "output_tokens", 0) or 0
         raw_resp = resp.content[0].text.strip()
         if raw_resp.startswith("```"):
             raw_resp = raw_resp.split("```", 2)[1]
@@ -376,10 +397,12 @@ def _match_attachment_with_claude(client, attachment: dict, reference_text: str)
             raw_resp = raw_resp.rsplit("```", 1)[0].strip()
         r = json.loads(raw_resp)
         return {"name": name, "size_kb": size_kb, "mime": mime,
-                "status": r.get("status", "N/A"), "remark": r.get("remark", "")}
+                "status": r.get("status", "N/A"), "remark": r.get("remark", ""),
+                "_input_tokens": usage_in, "_output_tokens": usage_out}
     except Exception as e:
         return {"name": name, "size_kb": size_kb, "mime": mime,
-                "status": "N/A", "remark": f"Error analysing attachment: {e}"}
+                "status": "N/A", "remark": f"Error analysing attachment: {e}",
+                "_input_tokens": 0, "_output_tokens": 0}
 
 
 def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf_text: str,
@@ -645,6 +668,25 @@ async def email_verify_post(
         *[asyncio.to_thread(_match_attachment_with_claude, client, att, reference_text)
           for _, att in all_attachments]
     )
+    # Tokens actually spent by THIS upload round, added to the quote's
+    # running (not-yet-consumed) Verify Email total — a user may verify
+    # emails across several separate /email-verify submissions before ever
+    # clicking "Continue to Upload ZIP", and each submission re-renders this
+    # page fresh, so accumulating in the DB (rather than only in this
+    # request's hidden field) is what keeps earlier rounds from being lost.
+    # Travels forward via a hidden form field (same mechanism as
+    # email_results_json); reset to 0 once a checklist run consumes it.
+    email_verify_input_tokens = email_verify_output_tokens = 0
+    if quote_id:
+        try:
+            qid_int = int(quote_id)
+        except (ValueError, TypeError):
+            qid_int = None
+        if qid_int is not None:
+            round_in  = sum(r.get("_input_tokens", 0) or 0 for r in analysed)
+            round_out = sum(r.get("_output_tokens", 0) or 0 for r in analysed)
+            email_verify_input_tokens, email_verify_output_tokens = \
+                db.add_draft_email_verify_tokens(qid_int, round_in, round_out)
 
     results = []
     for (idx, _att), r in zip(all_attachments, analysed):
@@ -708,6 +750,8 @@ async def email_verify_post(
         "email_subject": email_subject,
         "email_from": email_from,
         "emails": emails_meta,
+        "email_verify_input_tokens": email_verify_input_tokens,
+        "email_verify_output_tokens": email_verify_output_tokens,
     })
     resp.headers.update(_NO_CACHE)
     return resp
@@ -771,6 +815,8 @@ def qc_check_page_with_email(
     request: Request,
     quote_id: str = Form(""),
     email_results_json: str = Form(""),
+    email_verify_input_tokens: int = Form(0),
+    email_verify_output_tokens: int = Form(0),
     user=Depends(require_qc_access),
 ):
     """Arrive from Step 2 (email verify) carrying the edited email results.
@@ -786,6 +832,8 @@ def qc_check_page_with_email(
         "kind": "pre",
         "saved_templates": saved,
         "email_results_json": email_results_json,
+        "email_verify_input_tokens": email_verify_input_tokens,
+        "email_verify_output_tokens": email_verify_output_tokens,
         "error": None,
     })
     resp.headers.update(_NO_CACHE)
@@ -805,6 +853,8 @@ async def upload_zip(
     template_id: int = Form(...),
     kind: str = Form("pre"),
     email_results_json: str = Form(""),
+    email_verify_input_tokens: int = Form(0),
+    email_verify_output_tokens: int = Form(0),
     user=Depends(require_qc_access),
 ):
     kind = kind if kind in ("pre", "post") else "pre"
@@ -1036,16 +1086,24 @@ async def upload_zip(
             _match_attachment_with_claude(_claude_client, att, reference_pdf_text)
             for att in all_atts
         ]
+        # Every attachment match is its own Claude call — sum all of them so
+        # the checklist item's own token count reflects the full cost of
+        # verifying every attachment, not just whichever one wins the verdict.
+        eml_in  = sum(r.get("_input_tokens", 0) or 0 for r in att_results)
+        eml_out = sum(r.get("_output_tokens", 0) or 0 for r in att_results)
 
         no_hits  = [r for r in att_results if r.get("status") == "No"]
         yes_hits = [r for r in att_results if r.get("status") == "Yes"]
         if no_hits:
             names = ", ".join(r["name"] for r in no_hits)
-            return {"status": "No", "remark": f"Mismatch in attachment(s): {names}. " + no_hits[0].get("remark", "")}
+            return {"status": "No", "remark": f"Mismatch in attachment(s): {names}. " + no_hits[0].get("remark", ""),
+                    "_input_tokens": eml_in, "_output_tokens": eml_out}
         if yes_hits:
             names = ", ".join(r["name"] for r in yes_hits)
-            return {"status": "Yes", "remark": f"Attachment(s) match agreement: {names}."}
-        return {"status": "N/A", "remark": att_results[0].get("remark", "Could not verify email attachments.")}
+            return {"status": "Yes", "remark": f"Attachment(s) match agreement: {names}.",
+                    "_input_tokens": eml_in, "_output_tokens": eml_out}
+        return {"status": "N/A", "remark": att_results[0].get("remark", "Could not verify email attachments."),
+                "_input_tokens": eml_in, "_output_tokens": eml_out}
 
     def _analyse_item(i: int, item: dict) -> dict:
         ref         = (item.get("reference") or "").strip()
@@ -1196,14 +1254,16 @@ async def upload_zip(
             user_content.append({"type": "image", "source": {"type": "base64", "media_type": mimetypes.guess_type(zname)[0] or "image/png", "data": b64}})
         return user_content
 
-    def _run_batch(zname: str, idxs: list[int]) -> dict[int, dict]:
+    def _run_batch(zname: str, idxs: list[int]) -> tuple[dict[int, dict], int, int]:
         try:
             user_content = _build_batch_user_content(zname, idxs)
             return _claude_check_batch(_claude_client, user_content, idxs)
         except Exception as e:
-            return {i: {"status": "N/A", "remark": f"Error analysing batched file: {e}"} for i in idxs}
+            fallback = {i: {"status": "N/A", "remark": f"Error analysing batched file: {e}"} for i in idxs}
+            return fallback, 0, 0
 
     _active_jobs.add(uid)
+    run_input_tokens = run_output_tokens = 0
     try:
         batch_results_by_index: dict[int, dict] = {}
         if batched_item_indices:
@@ -1213,18 +1273,38 @@ async def upload_zip(
             batch_outcomes = await asyncio.gather(
                 *[asyncio.to_thread(_run_batch, zname, idxs) for zname, idxs in batch_jobs]
             )
-            for outcome in batch_outcomes:
+            for outcome, batch_in, batch_out in batch_outcomes:
                 batch_results_by_index.update(outcome)
+                run_input_tokens  += batch_in
+                run_output_tokens += batch_out
 
         remaining = [(i, item) for i, item in non_section if i not in batched_item_indices]
         remaining_results = await asyncio.gather(
             *[asyncio.to_thread(_analyse_item, i, item) for i, item in remaining]
         )
+        for r in remaining_results:
+            run_input_tokens  += r.get("_input_tokens", 0) or 0
+            run_output_tokens += r.get("_output_tokens", 0) or 0
         results_by_index: dict[int, dict] = dict(zip((i for i, _ in remaining), remaining_results))
         results_by_index.update(batch_results_by_index)
         results = [results_by_index[i] for i, _ in non_section]
     finally:
         _active_jobs.discard(uid)
+
+    # Fold in this quote's Verify Email token spend (if any) and consume it —
+    # read from the DB's running total, not the submitted form fields, so a
+    # stale/resubmitted page can't double-count or under-count against
+    # whatever the DB actually accumulated across however many /email-verify
+    # rounds happened. Reset to 0 so a future run for this quote starts fresh.
+    if quote_id:
+        try:
+            qid_for_tokens = int(quote_id)
+        except (ValueError, TypeError):
+            qid_for_tokens = None
+        if qid_for_tokens is not None:
+            eml_in, eml_out = db.take_draft_email_verify_tokens(qid_for_tokens)
+            run_input_tokens  += eml_in
+            run_output_tokens += eml_out
 
     checklist_rows = []
     filled: dict[int, dict] = {}
@@ -1307,6 +1387,8 @@ async def upload_zip(
         "no_count": no_count,
         "na_count": na_count,
         "email_results": email_results,
+        "input_tokens": run_input_tokens,
+        "output_tokens": run_output_tokens,
     }, user_id=uid)
     return RedirectResponse(url=f"/checklist-result?token={result_token}", status_code=303)
 
@@ -1349,6 +1431,8 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
         "today": datetime.now().strftime("%Y-%m-%d"),
         "theme": _resolve_theme(user),
         "record": record,
+        "input_tokens": payload.get("input_tokens", 0),
+        "output_tokens": payload.get("output_tokens", 0),
     })
     resp.headers.update(_NO_CACHE)
     return resp
@@ -1510,6 +1594,8 @@ def checklist_confirm(
     email_results_json: str = Form(""),
     preferred_install_date: str = Form(""),
     version_id: str = Form(""),
+    input_tokens: int = Form(0),
+    output_tokens: int = Form(0),
     user=Depends(require_qc_access),
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
@@ -1560,6 +1646,8 @@ def checklist_confirm(
                     confirm=True,
                     confirmed_by_user_id=user["id"],
                     email_results_json=email_results_json,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                 )
             else:
                 db.add_qc_version(
@@ -1576,6 +1664,8 @@ def checklist_confirm(
                     saved_by_user_id=user["id"],
                     status="confirmed",
                     kind=kind,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                 )
         except Exception:
             pass
@@ -1616,6 +1706,8 @@ def checklist_save_draft(
     email_results_json: str = Form(""),
     preferred_install_date: str = Form(""),
     version_id: str = Form(""),
+    input_tokens: int = Form(0),
+    output_tokens: int = Form(0),
     user=Depends(require_qc_access),
 ):
     tpl_name     = tpl_name[:200].replace("\n", "").replace("\r", "")
@@ -1662,6 +1754,8 @@ def checklist_save_draft(
                     na_count=na_count,
                     confirm=False,
                     email_results_json=email_results_json,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                 )
             else:
                 db.add_qc_version(
@@ -1677,6 +1771,8 @@ def checklist_save_draft(
                     saved_by_user_id=user["id"],
                     status="draft",
                     kind=kind,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                 )
         except Exception:
             pass
@@ -1865,6 +1961,15 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
     body = await request.json()
     rows = body.get("rows", [])
     preferred_install_date = (body.get("preferred_install_date") or "").strip()
+    # Per-row re-analysis (analyseRowFile) while editing costs real Claude
+    # tokens on top of whatever this version already recorded — the browser
+    # sends the delta from just this edit session, added onto the version's
+    # existing stored total (never trust a client-sent absolute total, only
+    # an incremental delta on top of what the server already has on file).
+    input_tokens_delta  = int(body.get("input_tokens_delta", 0) or 0)
+    output_tokens_delta = int(body.get("output_tokens_delta", 0) or 0)
+    new_input_tokens  = (v.get("input_tokens")  or 0) + input_tokens_delta
+    new_output_tokens = (v.get("output_tokens") or 0) + output_tokens_delta
     # action is optional — omitted means "keep whatever status this version
     # already had" (the original revisit-save behavior); "draft" or "confirm"
     # explicitly sets the status, same choice the admin panel already offers.
@@ -1914,6 +2019,8 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
             confirm=confirm,
             confirmed_by_user_id=user["id"] if confirm else None,
             email_results_json=json.dumps(email_results) if has_email_edit else None,
+            input_tokens=new_input_tokens if (input_tokens_delta or output_tokens_delta) else None,
+            output_tokens=new_output_tokens if (input_tokens_delta or output_tokens_delta) else None,
         )
 
         quote_id = v["quote_id"]
