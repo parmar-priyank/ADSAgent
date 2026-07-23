@@ -61,6 +61,15 @@
   .pt-toggle input:checked       ~ .pt-opt-main { background:#c45010; color:#fff; }
   tr.is-main { background:rgba(196,80,16,.06); }
   tr.is-main td:first-child { box-shadow:inset 3px 0 0 #c45010; }
+
+  /* Battery-only flag — a real checkbox, styled as a small on/off pill.
+     Checked = this item still runs on a detected battery-only job;
+     unchecked (default) = auto-N/A'd on battery-only jobs, no Claude
+     call spent on it. Has no effect at all on panel jobs. */
+  .bat-toggle { display:inline-flex; border:1px solid var(--line2); border-radius:14px; overflow:hidden; cursor:pointer; user-select:none; }
+  .bat-toggle input { display:none; }
+  .bat-opt { font-size:10px; font-weight:700; letter-spacing:.03em; padding:4px 8px; color:var(--muted); background:var(--surface3); white-space:nowrap; }
+  .bat-toggle input:checked ~ .bat-opt { background:#2a7de1; color:#fff; }
 </style>
 <div style="overflow-x:auto;">
   <table id="checklist-table">
@@ -68,6 +77,7 @@
       <tr>
         <th style="width:46px;  text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Sno.</th>
         <th style="width:92px;  text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Type</th>
+        <th style="width:70px;  text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);" title="Whether this point still runs on a detected battery-only job (no panels)">Battery</th>
         <th style="width:200px; text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Checklist Point</th>
         <th style="width:150px; text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Reference</th>
         <th style="            text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:0 6px 10px;border-bottom:1px solid var(--line2);">Prompt</th>
@@ -92,6 +102,17 @@
               <span class="pt-opt pt-opt-sub">Sub</span>
               <span class="pt-opt pt-opt-main">Main</span>
             </label>
+          </td>
+          <td style="padding:5px 6px;">
+            {% if not it['is_section'] %}
+            <label class="bat-toggle" title="On = this point still runs when the job is detected as battery-only (no panels). Off = auto-N/A on battery-only jobs, no AI cost spent on it. Has no effect on panel jobs — those always run every point.">
+              <input type="checkbox" name="battery_only" value="1" {% if it['battery_only'] %}checked{% endif %}
+                     form="frag-row-form-{{ it['id'] }}">
+              <span class="bat-opt">Battery</span>
+            </label>
+            {% else %}
+            <span style="color:var(--muted);font-size:12px;">—</span>
+            {% endif %}
           </td>
           <td style="padding:5px 6px;">
             <input type="text" name="text" value="{{ it['text'] }}"

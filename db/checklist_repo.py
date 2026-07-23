@@ -62,6 +62,13 @@ def init_templates_db():
             conn.execute("ALTER TABLE checklist_items ADD COLUMN reference TEXT DEFAULT ''")
         if "prompt" not in cols:
             conn.execute("ALTER TABLE checklist_items ADD COLUMN prompt TEXT DEFAULT ''")
+        if "battery_only" not in cols:
+            # Marks an item as relevant to battery-only jobs (no solar panels).
+            # On a battery-only run, every item NOT flagged here is forced to
+            # N/A without spending a Claude call; panel jobs are unaffected
+            # and every item still runs as before. Default 0 (unflagged) so
+            # every pre-existing item keeps running exactly as it does today.
+            conn.execute("ALTER TABLE checklist_items ADD COLUMN battery_only INTEGER DEFAULT 0")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS pending_results (
@@ -118,8 +125,8 @@ def _insert_items(conn, template_id: int, items: list):
             """
             INSERT INTO checklist_items
                 (template_id, position, sno, is_section,
-                 text, reference, prompt, active)
-            VALUES (?,?,?,?,?,?,?,?)
+                 text, reference, prompt, active, battery_only)
+            VALUES (?,?,?,?,?,?,?,?,?)
             """,
             (
                 template_id,
@@ -130,6 +137,7 @@ def _insert_items(conn, template_id: int, items: list):
                 it.get("reference", ""),
                 it.get("prompt", ""),
                 1 if it.get("active", 1) else 0,
+                1 if it.get("battery_only") else 0,
             ),
         )
 
@@ -204,7 +212,8 @@ def add_item(template_id: int, text: str, sno: str = "",
 
 def update_item(item_id: int, text: str = None, sno: str = None,
                 active: int = None, is_section: int = None,
-                reference: str = None, prompt: str = None):
+                reference: str = None, prompt: str = None,
+                battery_only: int = None):
     sets, vals = [], []
     if text is not None:
         sets.append("text = ?"); vals.append(text)
@@ -218,6 +227,8 @@ def update_item(item_id: int, text: str = None, sno: str = None,
         sets.append("active = ?"); vals.append(1 if active else 0)
     if is_section is not None:
         sets.append("is_section = ?"); vals.append(1 if is_section else 0)
+    if battery_only is not None:
+        sets.append("battery_only = ?"); vals.append(1 if battery_only else 0)
     if not sets:
         return
     vals.append(item_id)

@@ -957,6 +957,7 @@ async def upload_zip(
 
     # Build reference context from the linked quote record
     reference_pdf_text = ""
+    job_line_items: list = []
     if quote_id:
         try:
             ref_record = db.get_quote(int(quote_id))
@@ -983,12 +984,26 @@ async def upload_zip(
                 ("Notes",           ref_record.get("notes", "")),
             ]
             reference_pdf_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
-            line_items = ref_record.get("line_items") or []
-            if line_items:
+            job_line_items = ref_record.get("line_items") or []
+            if job_line_items:
                 reference_pdf_text += "\n\nSystem Components:\n" + "\n".join(
                     f"- {li.get('item','')}: {li.get('specification','')}"
-                    for li in line_items if li.get("item")
+                    for li in job_line_items if li.get("item")
                 )
+
+    # Battery-only job detection — free, deterministic, no extra Claude call.
+    # The original PDF extraction already captures every System/pricing table
+    # row into line_items (see EXTRACTION_SCHEMA in services/ai_service.py),
+    # including a "Panel"/"Panels" row whenever the job has solar panels.
+    # Real production data confirms a battery-only job's line_items simply
+    # has no Panel/Panels row at all (never an empty-quantity row), so its
+    # absence is a reliable signal here — nothing inferred from wording/AI.
+    # No line_items at all (e.g. quote_id missing) means "can't tell" —
+    # treated as a panel job (kind == "pre" default: run everything, as today).
+    is_battery_only_job = bool(job_line_items) and not any(
+        (li.get("item") or "").strip().lower() in ("panel", "panels")
+        for li in job_line_items
+    )
 
     _claude_client = _get_claude()
 
@@ -1126,6 +1141,8 @@ async def upload_zip(
         ref         = (item.get("reference") or "").strip()
         prompt_text = (item.get("prompt") or "").strip()
 
+        if is_battery_only_job and not item.get("battery_only"):
+            return {"status": "N/A", "remark": "Not applicable — battery-only job (no solar panels detected)."}
         if not ref:
             return {"status": "N/A", "remark": "No reference file specified."}
         if not prompt_text:
@@ -1215,6 +1232,11 @@ async def upload_zip(
     # benefit from batching, so it stays on the plain per-item path too.
     batch_groups: dict[str, list[int]] = {}
     for i, item in non_section:
+        if is_battery_only_job and not item.get("battery_only"):
+            # Same gate as _analyse_item's early return — keep this item off
+            # the paid batch path entirely on a battery-only job, since its
+            # result would just be discarded in favor of a fixed N/A anyway.
+            continue
         resolved_entries = item_resolved.get(i, [])
         if len(resolved_entries) != 1:
             continue
