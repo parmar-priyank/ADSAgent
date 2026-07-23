@@ -34,6 +34,14 @@ try:
 except ImportError:
     _fitz = None
 
+try:
+    import pillow_heif   # HEIC/HEIF support for Pillow — iPhone photos are often .heic
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
+
+_CLAUDE_IMAGE_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
 _PDF_DPI = 100        # 100 DPI is enough for Claude vision and cuts payload to 1/4
 # Send at most this many pages per PDF to Claude. Was 2, which silently hid
 # anything on page 3+ (e.g. a signature block on page 3 of a 4-page Signed
@@ -133,6 +141,30 @@ def _mime_of(fname: str, fbytes: bytes) -> str:
     if fbytes[:2] == b"BM":
         return "image/bmp"
     return "application/octet-stream"
+
+
+def _claude_safe_image(fdata: bytes, mime: str) -> tuple[bytes, str] | None:
+    """
+    Claude's vision API only accepts image/jpeg, image/png, image/gif,
+    image/webp — phone photos are frequently .heic/.heif (Apple's default
+    format), which mimetypes.guess_type reports correctly but Claude rejects
+    outright with a 400. Convert those (and anything else unrecognized) to
+    PNG via Pillow so every image ever reaches Claude in an accepted format.
+    Returns (converted_bytes, "image/png") on success, or None if the image
+    can't be decoded/converted at all (caller falls back to a clear error
+    instead of sending bytes Claude will just reject again).
+    """
+    if mime in _CLAUDE_IMAGE_MIMES:
+        return fdata, mime
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(fdata))
+        img = img.convert("RGB")
+        out = io.BytesIO()
+        img.save(out, format="PNG")
+        return out.getvalue(), "image/png"
+    except Exception:
+        return None
 
 
 def _parse_claude_json(raw: str) -> dict | None:
@@ -383,8 +415,13 @@ def _match_attachment_with_claude(client, attachment: dict, reference_text: str)
             b64 = base64.standard_b64encode(png).decode()
             user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
     elif mime.startswith("image/"):
-        b64 = base64.standard_b64encode(data).decode()
-        user_content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
+        safe = _claude_safe_image(data, mime)
+        if safe is None:
+            return {"name": name, "size_kb": size_kb, "mime": mime,
+                    "status": "N/A", "remark": "Could not read this image format — try re-saving as JPG or PNG."}
+        safe_data, safe_mime = safe
+        b64 = base64.standard_b64encode(safe_data).decode()
+        user_content.append({"type": "image", "source": {"type": "base64", "media_type": safe_mime, "data": b64}})
     else:
         # Plain text / docx / xlsx — send raw text if decodable
         try:
@@ -467,8 +504,12 @@ def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf
             if len(user_content) == 1:
                 return {"status": "N/A", "remark": "No readable content found in the uploaded file."}
         elif mime.startswith("image/"):
-            b64 = base64.standard_b64encode(fdata).decode()
-            user_content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
+            safe = _claude_safe_image(fdata, mime)
+            if safe is None:
+                return {"status": "N/A", "remark": f"Could not read this image format ({fname}) — try re-saving as JPG or PNG."}
+            safe_data, safe_mime = safe
+            b64 = base64.standard_b64encode(safe_data).decode()
+            user_content.append({"type": "image", "source": {"type": "base64", "media_type": safe_mime, "data": b64}})
         else:
             return {"status": "N/A", "remark": f"Unsupported file type: {fname}"}
 
@@ -1205,11 +1246,19 @@ async def upload_zip(
             for page_png in pdf_page_images:
                 b64 = base64.standard_b64encode(page_png).decode()
                 user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
+            unreadable_images = []
             for fname, fdata, mime in image_parts:
-                b64 = base64.standard_b64encode(fdata).decode()
-                user_content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
+                safe = _claude_safe_image(fdata, mime)
+                if safe is None:
+                    unreadable_images.append(fname)
+                    continue
+                safe_data, safe_mime = safe
+                b64 = base64.standard_b64encode(safe_data).decode()
+                user_content.append({"type": "image", "source": {"type": "base64", "media_type": safe_mime, "data": b64}})
 
             if len(user_content) == 1:
+                if unreadable_images:
+                    return {"status": "N/A", "remark": f"Could not read image format: {', '.join(unreadable_images)} — try re-saving as JPG or PNG."}
                 if combined_pdf_text.strip():
                     return _claude_check(_claude_client, f"{context}\n\nDocument content:{combined_pdf_text[:8000]}")
                 return {"status": "N/A", "remark": "No readable content found in reference file(s)."}
@@ -1289,8 +1338,13 @@ async def upload_zip(
                 b64 = base64.standard_b64encode(page_png).decode()
                 user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
         else:
-            b64 = base64.standard_b64encode(fdata).decode()
-            user_content.append({"type": "image", "source": {"type": "base64", "media_type": mimetypes.guess_type(zname)[0] or "image/png", "data": b64}})
+            guessed_mime = mimetypes.guess_type(zname)[0] or "image/png"
+            safe = _claude_safe_image(fdata, guessed_mime)
+            if safe is None:
+                raise ValueError(f"Could not read image format: {zname} — try re-saving as JPG or PNG.")
+            safe_data, safe_mime = safe
+            b64 = base64.standard_b64encode(safe_data).decode()
+            user_content.append({"type": "image", "source": {"type": "base64", "media_type": safe_mime, "data": b64}})
         return user_content
 
     def _run_batch(zname: str, idxs: list[int]) -> tuple[dict[int, dict], int, int]:
