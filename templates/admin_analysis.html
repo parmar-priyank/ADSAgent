@@ -135,6 +135,11 @@
 {% set _total_cost = ((stats.total_input_tokens or 0) / 1000000 * claude_price_in) + ((stats.total_output_tokens or 0) / 1000000 * claude_price_out) %}
 {% set _pre_cost    = ((stats.pre_input_tokens or 0)  / 1000000 * claude_price_in) + ((stats.pre_output_tokens or 0)  / 1000000 * claude_price_out) %}
 {% set _post_cost   = ((stats.post_input_tokens or 0) / 1000000 * claude_price_in) + ((stats.post_output_tokens or 0) / 1000000 * claude_price_out) %}
+{% macro tracked_note(tracked, total) %}
+{% if total > 0 and tracked < total %}
+<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">only {{ tracked }} of {{ total }} confirmed run{{ 's' if total != 1 }} tracked — the rest predate cost tracking</div>
+{% endif %}
+{% endmacro %}
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch;margin-bottom:24px;">
   <div class="metric-card" title="{{ '{:,}'.format(stats.total_input_tokens or 0) }} input + {{ '{:,}'.format(stats.total_output_tokens or 0) }} output tokens">
     <div class="metric-icon-wrap blue">
@@ -145,6 +150,7 @@
     <div>
       <div class="metric-num">&#36;{{ '%.2f' | format(_total_cost) }}</div>
       <div class="metric-label">Total Claude Cost — {{ '{:,}'.format((stats.total_input_tokens or 0) + (stats.total_output_tokens or 0)) }} tokens</div>
+      {{ tracked_note(stats.tracked_count, stats.total) }}
     </div>
   </div>
 
@@ -157,6 +163,7 @@
     <div>
       <div class="metric-num">&#36;{{ '%.2f' | format(_pre_cost) }}</div>
       <div class="metric-label">Pre-QC Cost — {{ '{:,}'.format((stats.pre_input_tokens or 0) + (stats.pre_output_tokens or 0)) }} tokens</div>
+      {{ tracked_note(stats.pre_tracked_count, stats.pre_count) }}
     </div>
   </div>
 
@@ -169,6 +176,7 @@
     <div>
       <div class="metric-num">&#36;{{ '%.2f' | format(_post_cost) }}</div>
       <div class="metric-label">Post-QC Cost — {{ '{:,}'.format((stats.post_input_tokens or 0) + (stats.post_output_tokens or 0)) }} tokens</div>
+      {{ tracked_note(stats.post_tracked_count, stats.post_count) }}
     </div>
   </div>
 </div>

@@ -701,6 +701,14 @@ def get_qc_monthly_stats(year_month: str) -> dict:
     post_count = sum(1 for r in rows if r["kind"] == "post")
     total_input_tokens  = sum(r.get("input_tokens")  or 0 for r in rows)
     total_output_tokens = sum(r.get("output_tokens") or 0 for r in rows)
+    # Token tracking was added after some already-confirmed versions existed,
+    # so their input_tokens/output_tokens are NULL (untracked), not 0 — these
+    # counts let the Analysis page say "N of M runs tracked" instead of
+    # implying a summed $0.00 is the true cost when it's really "no data yet"
+    # for most of the month.
+    tracked_count      = sum(1 for r in rows if r.get("input_tokens") is not None)
+    pre_tracked_count  = sum(1 for r in rows if r["kind"] == "pre"  and r.get("input_tokens") is not None)
+    post_tracked_count = sum(1 for r in rows if r["kind"] == "post" and r.get("input_tokens") is not None)
     pre_input_tokens   = sum(r.get("input_tokens")  or 0 for r in rows if r["kind"] == "pre")
     pre_output_tokens  = sum(r.get("output_tokens") or 0 for r in rows if r["kind"] == "pre")
     post_input_tokens  = sum(r.get("input_tokens")  or 0 for r in rows if r["kind"] == "post")
@@ -786,6 +794,9 @@ def get_qc_monthly_stats(year_month: str) -> dict:
         "pre_output_tokens": pre_output_tokens,
         "post_input_tokens": post_input_tokens,
         "post_output_tokens": post_output_tokens,
+        "tracked_count": tracked_count,
+        "pre_tracked_count": pre_tracked_count,
+        "post_tracked_count": post_tracked_count,
     }
 
 
