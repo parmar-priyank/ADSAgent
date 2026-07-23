@@ -214,6 +214,11 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> tuple[
         )
         usage_in  += getattr(resp.usage, "input_tokens", 0) or 0
         usage_out += getattr(resp.usage, "output_tokens", 0) or 0
+        if usage_in == 0 and usage_out == 0:
+            # See matching note in _claude_check — a real, successful Claude
+            # response should never report 0/0 usage; log the raw usage
+            # object so a recurrence is diagnosable instead of guessed at.
+            logger.warning("Claude batch call returned real content but zero usage tokens; raw usage=%r", resp.usage)
         raw = resp.content[0].text if resp.content else ""
         result = _try_parse(raw)
         if result is None:
@@ -255,6 +260,13 @@ def _claude_check(client, user_content) -> dict:
     # both calls are real spend on this one checklist item.
     usage_in  = getattr(resp.usage, "input_tokens", 0) or 0
     usage_out = getattr(resp.usage, "output_tokens", 0) or 0
+    if usage_in == 0 and usage_out == 0:
+        # A real, successful Claude response should never report 0/0 usage —
+        # log the raw usage object so a recurrence is diagnosable from the
+        # server logs instead of guessed at (root cause not yet confirmed;
+        # a fresh Pre-QC run on 2026-07-23 produced real Yes/No verdicts but
+        # 0 total tokens with no exception raised anywhere in this chain).
+        logger.warning("Claude call returned real content but zero usage tokens; raw usage=%r", resp.usage)
     raw = resp.content[0].text if resp.content else ""
     r = _parse_claude_json(raw)
     if r is None:
@@ -389,6 +401,11 @@ def _match_attachment_with_claude(client, attachment: dict, reference_text: str)
         )
         usage_in  = getattr(resp.usage, "input_tokens", 0) or 0
         usage_out = getattr(resp.usage, "output_tokens", 0) or 0
+        if usage_in == 0 and usage_out == 0:
+            # See matching note in _claude_check — a real, successful Claude
+            # response should never report 0/0 usage; log the raw usage
+            # object so a recurrence is diagnosable instead of guessed at.
+            logger.warning("Attachment-match Claude call returned real content but zero usage tokens; raw usage=%r", resp.usage)
         raw_resp = resp.content[0].text.strip()
         if raw_resp.startswith("```"):
             raw_resp = raw_resp.split("```", 2)[1]
