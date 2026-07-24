@@ -8,7 +8,11 @@
   <!-- Header -->
   <div style="margin-bottom:24px;">
     <div style="font-size:20px;font-weight:800;color:var(--ink);letter-spacing:-.02em;margin-bottom:4px;">Post-Install QC</div>
+    {% if is_admin_view %}
+    <div style="font-size:13px;color:var(--muted);">Every customer still pending Post-Install QC.</div>
+    {% else %}
     <div style="font-size:13px;color:var(--muted);">Customers assigned to you for Post-Install QC.</div>
+    {% endif %}
   </div>
 
   {% if assigned %}
@@ -44,7 +48,11 @@
   </div>
   {% else %}
   <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:14px;text-align:center;padding:60px 20px;color:var(--muted);font-size:14px;">
+    {% if is_admin_view %}
+    No customers are currently pending Post-Install QC.
+    {% else %}
     No customers have been assigned to you for Post-Install QC yet.
+    {% endif %}
   </div>
   {% endif %}
 

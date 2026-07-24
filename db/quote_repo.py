@@ -961,6 +961,41 @@ def get_assigned_quotes_for_user(user_id: int) -> list:
     return quotes
 
 
+def get_quotes_pending_post_qc() -> list:
+    """Every customer with a confirmed Pre-QC but no confirmed Post-QC yet,
+    most recently confirmed first — the admin/super-admin view of "what
+    Post-QC work is left", independent of per-user assignment (unlike
+    get_assigned_quotes_for_user, which only shows a technician their own
+    assigned customers)."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT q.*, MAX(qv.confirmed_at) AS pre_confirmed_at
+            FROM qc_versions qv
+            JOIN quotes q ON q.id = qv.quote_id
+            WHERE COALESCE(qv.kind, 'pre') = 'pre'
+              AND COALESCE(qv.status, 'confirmed') = 'confirmed'
+              AND COALESCE(q.is_deleted, 0) = 0
+              AND q.id NOT IN (
+                  SELECT quote_id FROM qc_versions
+                  WHERE COALESCE(kind, 'pre') = 'post'
+                    AND COALESCE(status, 'confirmed') = 'confirmed'
+              )
+            GROUP BY q.id
+            ORDER BY pre_confirmed_at DESC
+            """
+        ).fetchall()
+        if not rows:
+            return []
+        quotes = _attach_line_items(conn, [dict(r) for r in rows])
+        # Always 0 by construction (the query already excludes anyone with a
+        # confirmed post version) — set explicitly so the shared template's
+        # r['post_qc_count'] > 0 check has a real value, not a missing key.
+        for q in quotes:
+            q["post_qc_count"] = 0
+        return quotes
+
+
 # ---------------------------------------------------------------------------
 # Pending-PDF helpers (duplicate-confirmation flow)
 # ---------------------------------------------------------------------------

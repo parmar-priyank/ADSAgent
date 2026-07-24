@@ -2235,17 +2235,23 @@ async def user_qc_version_add_email(
 
 @router.get("/post-qc", response_class=HTMLResponse)
 def post_qc_customers(request: Request, user=Depends(require_qc_access)):
-    """List the customers this user has been assigned for Post-Install QC —
-    the Post-QC equivalent of Step 1 (Upload PDF): no new PDF is uploaded
-    here, since the reference/quote data already exists from that
-    customer's Pre-QC run."""
+    """List Post-Install QC work to do — the Post-QC equivalent of Step 1
+    (Upload PDF): no new PDF is uploaded here, since the reference/quote
+    data already exists from that customer's Pre-QC run.
+
+    Admin/super-admin see EVERY customer still pending Post-QC (they have
+    blanket access, not per-customer assignments, so the assignment list
+    would always be empty for them). Regular Post-QC technicians keep
+    seeing only the customers explicitly assigned to them."""
     if user.get("role") != "admin" and not user.get("can_post_qc"):
         raise HTTPException(403, "You do not have Post-QC access.")
-    assigned = db.get_assigned_quotes_for_user(user["id"])
+    is_admin = user.get("role") == "admin"
+    assigned = db.get_quotes_pending_post_qc() if is_admin else db.get_assigned_quotes_for_user(user["id"])
     resp = templates.TemplateResponse(request, "user_post_qc.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
         "assigned": assigned,
+        "is_admin_view": is_admin,
     })
     resp.headers.update(_NO_CACHE)
     return resp
