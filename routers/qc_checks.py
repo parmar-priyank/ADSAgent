@@ -24,6 +24,7 @@ import logging
 import json
 import mimetypes
 import os
+import re
 import zipfile as zipmod
 from datetime import datetime
 
@@ -1135,7 +1136,14 @@ async def upload_zip(
         if item.get("is_section"):
             continue
         ref = (item.get("reference") or "").strip()
-        ref_names = [r.strip() for r in ref.split("+") if r.strip()]
+        # "+" and "/" are both accepted as "all of these files together" —
+        # some templates (typed directly, not via the Reference modal, which
+        # always writes "+") use "/" instead, e.g. "job pack/installer
+        # presence". Without this, the whole string was looked up as one
+        # literal filename, which never matches anything in the ZIP and
+        # silently reports "File not found in ZIP: job pack/installer
+        # presence" even when both files are genuinely present.
+        ref_names = [r.strip() for r in re.split(r"[+/]", ref) if r.strip()]
         resolved = []
         for rname in ref_names:
             zname, zdata = _resolve_file(rname)

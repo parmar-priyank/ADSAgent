@@ -428,7 +428,12 @@
     var list    = document.getElementById('ref-modal-list');
     list.innerHTML = '';
     var raw   = hiddenInp.value || '';
-    var parts = raw ? raw.split('+').map(function(s){ return stripExt(s); }).filter(Boolean) : [];
+    // Accept "/" as well as "+" — some references were typed directly using
+    // "/" (e.g. "job pack/installer presence") rather than built through
+    // this modal (which always saves with "+"); splitting on both here lets
+    // the modal open an existing "/"-based reference into separate rows
+    // instead of showing it as one unmatched filename.
+    var parts = raw ? raw.split(/[+/]/).map(function(s){ return stripExt(s); }).filter(Boolean) : [];
     if (!parts.length) parts = [''];
     parts.forEach(function(p) { refModalAddRow(p); });
     overlay.style.display = 'flex';
