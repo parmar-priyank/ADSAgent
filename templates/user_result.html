@@ -36,6 +36,11 @@
   {% set is_admin = is_admin | default(false) %}
   {% set revisit_version = revisit_version | default(none) %}
   {% set is_revisit = revisit_version is not none %}
+  {# Admin/super-admin can edit a borrowed kind's email results directly
+     from this page (e.g. fixing Pre-QC's email data while viewing the
+     Post-QC page that borrows it read-only) — regular users still only
+     ever see it read-only here, same as before. #}
+  {% set can_edit_borrowed_email = is_admin and email_is_borrowed and other_version %}
   {# is_readonly is display-only (drives the Confirmed/Draft badge text) —
      it no longer gates editing. Both admin and user can Modify/Save a
      Confirmed version; is_revisit (not is_readonly) decides which save
@@ -264,7 +269,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ eml_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ eml_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:var(--brand);">{{ 'View & modify ›' if (can_edit and not email_is_borrowed) else 'View ›' }}</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:var(--brand);">{{ 'View & modify ›' if ((can_edit and not email_is_borrowed) or can_edit_borrowed_email) else 'View ›' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">No email verification was run for this version.</div>
       {% if can_edit %}
@@ -538,11 +543,11 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
         Email Verification
         {% if email_is_borrowed %}
-        <span style="font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surface3);border:1px solid var(--line2);border-radius:20px;padding:2px 9px;">{{ 'Pre-QC' if other_kind == 'pre' else 'Post-QC' }} &middot; View only</span>
+        <span style="font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surface3);border:1px solid var(--line2);border-radius:20px;padding:2px 9px;">{{ 'Pre-QC' if other_kind == 'pre' else 'Post-QC' }}{{ ' · View only' if not can_edit_borrowed_email }}</span>
         {% endif %}
       </span>
       <div style="display:flex;gap:8px;align-items:center;">
-        {% if revisit_version and can_edit and not email_is_borrowed %}
+        {% if revisit_version and ((can_edit and not email_is_borrowed) or can_edit_borrowed_email) %}
         <input type="file" id="eml-upload-input" accept=".eml" style="display:none;" onchange="emlUploadFile(this)">
         <button type="button" id="eml-modify-btn" onclick="emlEnterEditMode()"
                 style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:600;cursor:pointer;">
@@ -1550,10 +1555,21 @@
     saveBtn.textContent = 'Saving…';
 
     if (_isRevisit) {
-      fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/save', {
+      // Editing borrowed email results (this page's OTHER kind's data,
+      // shown read-only unless admin) saves onto that OTHER version — never
+      // send this page's own checklist rows in that case, since they
+      // belong to a different version entirely and would corrupt it.
+      var _emlEditingBorrowed = {{ 'true' if can_edit_borrowed_email else 'false' }};
+      var _emlSaveUrl = _emlEditingBorrowed
+        ? '/user/qc-version/{{ other_version.id if other_version else "" }}/save-email-only'
+        : '/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/save';
+      var _emlSaveBody = _emlEditingBorrowed
+        ? { email_results: emailRows }
+        : { rows: _collectRows(), email_results: emailRows };
+      fetch(_emlSaveUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: _collectRows(), email_results: emailRows }),
+        body: JSON.stringify(_emlSaveBody),
       })
       .then(function(r) {
         if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);

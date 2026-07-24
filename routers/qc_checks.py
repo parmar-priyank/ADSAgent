@@ -2170,6 +2170,71 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
     return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}
 
 
+@router.post("/user/qc-version/{version_id}/save-email-only")
+async def user_qc_version_save_email_only(request: Request, version_id: int, user=Depends(require_qc_access)):
+    """Edit the email_results on a QC version WITHOUT touching its checklist
+    rows — used from the sibling-kind page (e.g. editing Pre-QC's email
+    results while viewing the Post-QC page that borrows them read-only,
+    since Post-QC never collects its own). Unlike /save (which rebuilds the
+    Excel from whatever "rows" the browser currently has displayed — the
+    OTHER kind's checklist on that page, which would silently corrupt this
+    version's real checklist data), this always reloads the target
+    version's OWN stored rows_json from the DB and rebuilds its Excel with
+    those unchanged, only swapping in the new email_results."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM qc_versions WHERE id = ?", (version_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "QC version not found.")
+    v = dict(row)
+    if (user.get("role") != "admin"
+            and v.get("saved_by_user_id") != user["id"]
+            and v.get("confirmed_by_user_id") != user["id"]):
+        raise HTTPException(403, "Access denied.")
+    # Post-QC versions never legitimately hold their own email results (same
+    # rule /save enforces) — this endpoint only ever makes sense for editing
+    # a Pre-QC version's real data, so refuse outright rather than silently
+    # writing into a Post-QC row that should always stay empty.
+    if (v.get("kind") or "pre") == "post":
+        raise HTTPException(400, "Post-QC versions do not hold their own email verification data.")
+
+    body = await request.json()
+    email_results = body.get("email_results", [])
+
+    try:
+        own_rows = json.loads(v.get("rows_json") or "[]")
+        if not isinstance(own_rows, list):
+            own_rows = []
+        filled = {}
+        for r in own_rows:
+            if not r.get("is_section") and r.get("position") is not None:
+                filled[r["position"]] = {
+                    "status": r.get("status", "N/A"),
+                    "remark": r.get("remark", ""),
+                    "ai_status": r.get("ai_status", ""),
+                }
+        xlsx_blob = build_xlsx(own_rows, filled=filled, email_results=email_results)
+        yes_count = sum(1 for r in own_rows if not r.get("is_section") and r.get("status") == "Yes")
+        no_count  = sum(1 for r in own_rows if not r.get("is_section") and r.get("status") == "No")
+        na_count  = sum(1 for r in own_rows if not r.get("is_section") and r.get("status") == "N/A")
+        db.update_qc_version(
+            version_id=version_id,
+            xlsx_bytes=xlsx_blob,
+            rows_json=json.dumps(own_rows),
+            yes_count=yes_count,
+            no_count=no_count,
+            na_count=na_count,
+            confirm=(v.get("status") == "confirmed"),
+            confirmed_by_user_id=v.get("confirmed_by_user_id"),
+            email_results_json=json.dumps(email_results),
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Failed to save: {e}")
+
+    return {"ok": True}
+
+
 @router.post("/user/qc-version/{version_id}/add-email")
 @limiter.limit("15/minute")
 async def user_qc_version_add_email(
