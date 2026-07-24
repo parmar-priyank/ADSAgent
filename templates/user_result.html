@@ -41,6 +41,11 @@
      Post-QC page that borrows it read-only) — regular users still only
      ever see it read-only here, same as before. #}
   {% set can_edit_borrowed_email = is_admin and email_is_borrowed and other_version %}
+  {# Same idea for the borrowed (sibling-kind) checklist tile/modal — admin
+     can edit the OTHER kind's checklist (e.g. Pre-QC's) directly from this
+     page, saving onto that version's own id; regular users still only see
+     it read-only. #}
+  {% set can_edit_other_checklist = is_admin and other_version %}
   {# is_readonly is display-only (drives the Confirmed/Draft badge text) —
      it no longer gates editing. Both admin and user can Modify/Save a
      Confirmed version; is_revisit (not is_readonly) decides which save
@@ -316,7 +321,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ pre_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ pre_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">View ›</div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View & modify ›' if can_edit_other_checklist else 'View ›' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">No Pre-QC run yet.</div>
       {% endif %}
@@ -788,7 +793,6 @@
 
 <!-- ═══════════════════════════ Modal 3b: Other-kind Checklist (borrowed from the sibling QC run — editable for admin/super-admin, read-only otherwise) ═══════════════════════════ -->
 {% if other_checklist_rows %}
-{% set can_edit_other_checklist = is_admin and other_version %}
 <div id="other-checklist-modal-overlay"
      onclick="if(event.target===this)closeOtherChecklistModal()"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 20px;">
