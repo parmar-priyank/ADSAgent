@@ -71,4 +71,70 @@
   {% endif %}
 </div>
 
+<div style="background:#fdf0e4;border:1px solid #f0d3ae;border-radius:10px;padding:12px 18px;margin:20px 0 18px;">
+  <span style="font-size:13px;color:#a35a1a;">
+    Individual Pre-QC/Post-QC runs a Team Leader deleted (without deleting the whole customer) are kept here.
+    <strong>Restore</strong> brings that run back into the customer's record;
+    <strong>Delete Permanently</strong> removes it and its Excel file for good — this cannot be undone.
+  </span>
+</div>
+
+<div class="dash-card">
+  <div class="dash-card-header">
+    <div class="dash-card-title">Deleted QC Versions</div>
+    <span class="dash-card-count">{{ deleted_qc_versions | length }}</span>
+  </div>
+
+  {% if deleted_qc_versions %}
+  <div style="overflow-x:auto;">
+  <table class="dash-table">
+    <thead>
+      <tr>
+        <th>Quote</th>
+        <th>Customer</th>
+        <th>Kind</th>
+        <th>Version</th>
+        <th>Template</th>
+        <th>Deleted By</th>
+        <th>Deleted At</th>
+        <th style="text-align:right;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in deleted_qc_versions %}
+      <tr>
+        <td>{{ v['quote_number'] or '—' }}</td>
+        <td><strong>{{ v['customer_name'] or '—' }}</strong></td>
+        <td class="muted" style="text-transform:capitalize;">{{ v['kind'] }}-QC</td>
+        <td class="muted">#{{ v['version'] }}</td>
+        <td class="muted">{{ v['template_name'] or '—' }}</td>
+        <td class="muted">{{ v['deleted_by_full_name'] or v['deleted_by_username'] or '—' }}</td>
+        <td class="muted" style="white-space:nowrap;">{{ v['deleted_at'] or '—' }}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <form action="/admin/deleted-qc-versions/{{ v['id'] }}/restore" method="post" style="display:inline;">
+            <button type="submit"
+                    style="font-size:12px;font-weight:600;color:#2d7a4a;background:#eaf6ee;border:1.5px solid #b8e0c6;border-radius:8px;padding:5px 13px;cursor:pointer;">
+              Restore
+            </button>
+          </form>
+          <form action="/admin/deleted-qc-versions/{{ v['id'] }}/delete-permanent" method="post" style="display:inline;margin-left:6px;"
+                onsubmit="return confirm('Permanently delete this {{ v['kind'] }}-QC run (v{{ v['version'] }}) for {{ (v['customer_name'] or 'this customer') | e }}? This cannot be undone.');">
+            <button type="submit"
+                    style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:8px;padding:5px 13px;cursor:pointer;">
+              Delete Permanently
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="dash-card-body" style="text-align:center;padding:60px 20px;color:var(--muted);font-size:14px;">
+    No deleted QC versions. When a Team Leader deletes an individual Pre-QC or Post-QC run, it will appear here.
+  </div>
+  {% endif %}
+</div>
+
 {% endblock %}

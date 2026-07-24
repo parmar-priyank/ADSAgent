@@ -473,11 +473,40 @@ def admin_delete_record(record_id: int, request: Request, user=Depends(require_a
     return RedirectResponse(url="/admin/records", status_code=303)
 
 
+@router.post("/admin/qc-version/{version_id}/delete")
+def admin_delete_qc_version(version_id: int, request: Request, user=Depends(require_admin)):
+    """Delete ONE Pre-QC or Post-QC run (e.g. a duplicate or mistaken
+    upload) without touching the rest of that customer's record — a Team
+    Leader's Delete here is also a SOFT delete, recoverable from the
+    super-admin Deleted Records trash, same as the whole-record delete."""
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT qv.quote_id, qv.version, qv.template_name, COALESCE(qv.kind, 'pre') as kind,
+                      q.quote_number, q.customer_name
+               FROM qc_versions qv JOIN quotes q ON q.id = qv.quote_id
+               WHERE qv.id = ?""",
+            (version_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "QC version not found.")
+    v = dict(row)
+    db.soft_delete_qc_version(version_id, deleted_by_user_id=user["id"])
+    audit.log_event(request, "qc_version_deleted", username=user["username"], user_id=user["id"],
+                    detail=f"{v['kind']}-QC v{v['version']} ({v.get('template_name') or ''}) for quote "
+                           f"{v.get('quote_number') or v['quote_id']} ({v.get('customer_name') or ''})")
+    return RedirectResponse(url=f"/admin/record/{v['quote_id']}", status_code=303)
+
+
 @router.get("/admin/deleted-records", response_class=HTMLResponse)
 def admin_deleted_records_page(request: Request, user=Depends(require_superadmin)):
-    """Super-admin-only trash: every soft-deleted customer record, with the
-    option to restore it or delete it permanently."""
-    ctx = _admin_ctx(user, deleted_records=db.get_deleted_quotes())
+    """Super-admin-only trash: every soft-deleted customer record AND every
+    individually-deleted QC version, with the option to restore or delete
+    each permanently."""
+    ctx = _admin_ctx(
+        user,
+        deleted_records=db.get_deleted_quotes(),
+        deleted_qc_versions=db.get_deleted_qc_versions(),
+    )
     response = templates.TemplateResponse(request, "admin_deleted_records.html", ctx)
     response.headers.update(_NO_CACHE)
     return response
@@ -502,6 +531,33 @@ def admin_delete_record_permanent(record_id: int, request: Request, user=Depends
     db.delete_quote(record_id)
     audit.log_event(request, "record_purged", username=user["username"], user_id=user["id"],
                     detail=f"permanently deleted quote {(_rec or {}).get('quote_number') or record_id} ({(_rec or {}).get('customer_name') or ''})")
+    return RedirectResponse(url="/admin/deleted-records", status_code=303)
+
+
+@router.post("/admin/deleted-qc-versions/{version_id}/restore")
+def admin_restore_qc_version(version_id: int, request: Request, user=Depends(require_superadmin)):
+    """Restore an individually-deleted QC version. Super-admin only."""
+    db.restore_qc_version(version_id)
+    audit.log_event(request, "qc_version_restored", username=user["username"], user_id=user["id"],
+                    detail=f"QC version {version_id}")
+    return RedirectResponse(url="/admin/deleted-records", status_code=303)
+
+
+@router.post("/admin/deleted-qc-versions/{version_id}/delete-permanent")
+def admin_delete_qc_version_permanent(version_id: int, request: Request, user=Depends(require_superadmin)):
+    """Permanently remove one QC version and its on-disk Excel file.
+    Super-admin only, and only reachable from the trash — irreversible."""
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT qv.version, COALESCE(qv.kind, 'pre') as kind, q.quote_number, q.customer_name
+               FROM qc_versions qv JOIN quotes q ON q.id = qv.quote_id WHERE qv.id = ?""",
+            (version_id,),
+        ).fetchone()
+    v = dict(row) if row else {}
+    db.delete_qc_version_permanent(version_id)
+    audit.log_event(request, "qc_version_purged", username=user["username"], user_id=user["id"],
+                    detail=f"permanently deleted {v.get('kind','')}-QC v{v.get('version','')} for quote "
+                           f"{v.get('quote_number') or version_id} ({v.get('customer_name') or ''})")
     return RedirectResponse(url="/admin/deleted-records", status_code=303)
 
 
@@ -681,6 +737,11 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     # QC data for a soft-deleted customer is off-limits to regular Team Leaders,
     # same as the record detail page — only the trash exposes deleted records.
     if v.get("quote_is_deleted") and not user.get("is_super_admin"):
+        raise HTTPException(404, "QC version not found.")
+    # Same rule for an individually deleted version (the customer record
+    # itself may still be active) — only super-admin can reach it, via
+    # the trash, once it's been deleted.
+    if v.get("is_deleted") and not user.get("is_super_admin"):
         raise HTTPException(404, "QC version not found.")
     try:
         rows = json.loads(v["rows_json"]) if v.get("rows_json") else []

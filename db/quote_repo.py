@@ -114,6 +114,14 @@ def init_db():
             # shown as "not tracked" rather than a misleading 0.
             ("input_tokens",         "INTEGER"),
             ("output_tokens",        "INTEGER"),
+            # Soft delete for an individual QC version (e.g. a duplicate or
+            # mistaken Post-QC run) — same is_deleted/deleted_at/deleted_by
+            # pattern as quotes.is_deleted, but scoped to one version instead
+            # of the whole customer record. Every active-view query filters
+            # is_deleted = 0; the super-admin trash surfaces deleted versions.
+            ("is_deleted",           "INTEGER DEFAULT 0"),
+            ("deleted_at",           "TIMESTAMP"),
+            ("deleted_by_user_id",   "INTEGER"),
         ]:
             if col not in qcv_cols:
                 conn.execute(f"ALTER TABLE qc_versions ADD COLUMN {col} {defn}")
@@ -351,7 +359,8 @@ def get_recent(limit: int | None = 20):
             count_map = {r["quote_id"]: r["cnt"] for r in counts}
             kind_counts = conn.execute(
                 f"SELECT quote_id, COALESCE(kind, 'pre') as kind, COUNT(*) as cnt "
-                f"FROM qc_versions WHERE quote_id IN ({placeholders}) GROUP BY quote_id, kind",
+                f"FROM qc_versions WHERE quote_id IN ({placeholders}) AND COALESCE(is_deleted, 0) = 0 "
+                f"GROUP BY quote_id, kind",
                 ids,
             ).fetchall()
             pre_count_map: dict = {}
@@ -486,6 +495,72 @@ def delete_quote(quote_id: int):
         conn.execute("DELETE FROM quotes WHERE id = ?", (quote_id,))
     for p in paths:
         blob_store.delete_excel(p)
+
+
+# ---------------------------------------------------------------------------
+# Individual QC version soft delete (Pre-QC or Post-QC run)
+# ---------------------------------------------------------------------------
+
+def soft_delete_qc_version(version_id: int, deleted_by_user_id: int = None) -> bool:
+    """Flag one QC version (a single Pre-QC or Post-QC run) as deleted,
+    without touching the rest of that customer's record — same is_deleted
+    pattern as soft_delete_quote, just scoped to one version. Returns False
+    if the version doesn't exist or is already deleted."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE qc_versions SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, "
+            "deleted_by_user_id = ? WHERE id = ? AND COALESCE(is_deleted, 0) = 0",
+            (deleted_by_user_id, version_id),
+        )
+        return cur.rowcount > 0
+
+
+def restore_qc_version(version_id: int) -> bool:
+    """Undo a soft delete on one QC version. Returns False if it isn't
+    currently deleted."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE qc_versions SET is_deleted = 0, deleted_at = NULL, "
+            "deleted_by_user_id = NULL WHERE id = ? AND COALESCE(is_deleted, 0) = 1",
+            (version_id,),
+        )
+        return cur.rowcount > 0
+
+
+def get_deleted_qc_versions() -> list:
+    """All soft-deleted QC versions, newest-deleted first, with enough
+    quote/customer context to identify them in the trash view."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT qv.id, qv.quote_id, qv.version, qv.template_name,
+                   qv.zip_filename, qv.yes_count, qv.no_count, qv.na_count,
+                   qv.confirmed_at, qv.saved_at, COALESCE(qv.status, 'confirmed') as status,
+                   COALESCE(qv.kind, 'pre') as kind, qv.deleted_at,
+                   q.customer_name, q.quote_number,
+                   u.username AS deleted_by_username, u.full_name AS deleted_by_full_name
+            FROM qc_versions qv
+            JOIN quotes q ON q.id = qv.quote_id
+            LEFT JOIN users u ON u.id = qv.deleted_by_user_id
+            WHERE COALESCE(qv.is_deleted, 0) = 1
+            ORDER BY qv.deleted_at DESC, qv.id DESC
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_qc_version_permanent(version_id: int):
+    """PERMANENT delete of one QC version and its on-disk Excel file.
+    Super-admin only, reachable only from the trash page — a Team Leader's
+    Delete goes through soft_delete_qc_version instead."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT excel_path FROM qc_versions WHERE id = ?", (version_id,)
+        ).fetchone()
+        path = row["excel_path"] if row else None
+        conn.execute("DELETE FROM qc_versions WHERE id = ?", (version_id,))
+    if path:
+        blob_store.delete_excel(path)
 
 
 # ---------------------------------------------------------------------------
@@ -653,6 +728,7 @@ def get_confirmed_quote_ids() -> set:
             "SELECT DISTINCT qv.quote_id FROM qc_versions qv "
             "JOIN quotes q ON q.id = qv.quote_id "
             "WHERE COALESCE(qv.status, 'confirmed') = 'confirmed' "
+            "AND COALESCE(qv.is_deleted, 0) = 0 "
             "AND COALESCE(q.is_deleted, 0) = 0"
         ).fetchall()
     return {r["quote_id"] for r in rows}
@@ -808,7 +884,8 @@ def get_qc_versions(quote_id: int) -> list:
                    yes_count, no_count, na_count, confirmed_at, saved_at,
                    COALESCE(status, 'confirmed') as status,
                    COALESCE(kind, 'pre') as kind
-            FROM qc_versions WHERE quote_id = ?
+            FROM qc_versions
+            WHERE quote_id = ? AND COALESCE(is_deleted, 0) = 0
             ORDER BY version DESC
             """,
             (quote_id,),
@@ -825,6 +902,7 @@ def get_latest_qc_version(quote_id: int, kind: str):
     with get_db() as conn:
         row = conn.execute(
             "SELECT * FROM qc_versions WHERE quote_id = ? AND COALESCE(kind, 'pre') = ? "
+            "AND COALESCE(is_deleted, 0) = 0 "
             "ORDER BY version DESC LIMIT 1",
             (quote_id, kind),
         ).fetchone()
@@ -949,7 +1027,8 @@ def get_assigned_quotes_for_user(user_id: int) -> list:
             placeholders = ",".join("?" * len(ids))
             kind_counts = conn.execute(
                 f"SELECT quote_id, COALESCE(kind, 'pre') as kind, COUNT(*) as cnt "
-                f"FROM qc_versions WHERE quote_id IN ({placeholders}) GROUP BY quote_id, kind",
+                f"FROM qc_versions WHERE quote_id IN ({placeholders}) AND COALESCE(is_deleted, 0) = 0 "
+                f"GROUP BY quote_id, kind",
                 ids,
             ).fetchall()
             post_count_map: dict = {}
@@ -975,11 +1054,13 @@ def get_quotes_pending_post_qc() -> list:
             JOIN quotes q ON q.id = qv.quote_id
             WHERE COALESCE(qv.kind, 'pre') = 'pre'
               AND COALESCE(qv.status, 'confirmed') = 'confirmed'
+              AND COALESCE(qv.is_deleted, 0) = 0
               AND COALESCE(q.is_deleted, 0) = 0
               AND q.id NOT IN (
                   SELECT quote_id FROM qc_versions
                   WHERE COALESCE(kind, 'pre') = 'post'
                     AND COALESCE(status, 'confirmed') = 'confirmed'
+                    AND COALESCE(is_deleted, 0) = 0
               )
             GROUP BY q.id
             ORDER BY pre_confirmed_at DESC
