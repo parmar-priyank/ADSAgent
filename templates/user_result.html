@@ -672,6 +672,13 @@
           &#9998; Modify
         </button>
         {% endif %}
+        {% if is_admin and tpl.kind == 'post' and revisit_version %}
+        <a href="/qc-check?quote_id={{ quote_id }}&kind=post&version_id={{ revisit_version.id }}"
+           class="link-btn" style="font-weight:600;"
+           title="Re-run this Post-QC checklist against a fresh ZIP — replaces this version's results in place.">
+          &#8593; Upload ZIP
+        </a>
+        {% endif %}
         <button onclick="closeChecklistModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
       </div>
     </div>

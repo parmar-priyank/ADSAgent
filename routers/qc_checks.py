@@ -63,6 +63,8 @@ from itsdangerous import BadSignature
 
 from config import (
     CLAUDE_MODEL,
+    CLAUDE_PRICE_PER_M_INPUT,
+    CLAUDE_PRICE_PER_M_OUTPUT,
     MAX_UPLOAD_BYTES,
     _NO_CACHE,
     _get_claude,
@@ -880,7 +882,8 @@ def email_verify_save_draft(
 # ---------------------------------------------------------------------------
 
 @router.get("/qc-check", response_class=HTMLResponse)
-def qc_check_page(request: Request, quote_id: str = "", kind: str = "pre", user=Depends(require_qc_access)):
+def qc_check_page(request: Request, quote_id: str = "", kind: str = "pre",
+                   version_id: str = "", user=Depends(require_qc_access)):
     kind = kind if kind in ("pre", "post") else "pre"
     if user.get("role") != "admin":
         if kind == "post" and not user.get("can_post_qc"):
@@ -888,6 +891,28 @@ def qc_check_page(request: Request, quote_id: str = "", kind: str = "pre", user=
         if kind == "pre" and not user.get("can_pre_qc"):
             raise HTTPException(403, "You do not have Pre-QC access.")
     saved = tdb.list_templates(kind=kind)
+    # version_id only ever comes from the admin "Upload ZIP" re-run action on
+    # an existing Post-QC version — re-validated the same way upload_zip
+    # does before being trusted, so a forged query string can't be used to
+    # overwrite an unrelated version via this pre-fill. Template isn't
+    # pre-selected: qc_versions only stores the template's NAME, not a
+    # stable id, so admin just picks it again on this screen (same template
+    # they're already replacing results for).
+    prefill_version_id = ""
+    if version_id.strip() and kind == "post" and user.get("role") == "admin":
+        try:
+            vid_int = int(version_id)
+        except (ValueError, TypeError):
+            vid_int = None
+        if vid_int is not None:
+            with get_db() as conn:
+                row = conn.execute(
+                    "SELECT id, quote_id, kind FROM qc_versions WHERE id = ?", (vid_int,)
+                ).fetchone()
+            existing = dict(row) if row else None
+            if (existing and str(existing.get("quote_id")) == str(quote_id)
+                    and (existing.get("kind") or "pre") == "post"):
+                prefill_version_id = str(vid_int)
     resp = templates.TemplateResponse(request, "user_qc.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
@@ -896,6 +921,7 @@ def qc_check_page(request: Request, quote_id: str = "", kind: str = "pre", user=
         "saved_templates": saved,
         "email_results_json": "",
         "error": None,
+        "prefill_version_id": prefill_version_id,
     })
     resp.headers.update(_NO_CACHE)
     return resp
@@ -946,9 +972,36 @@ async def upload_zip(
     email_results_json: str = Form(""),
     email_verify_input_tokens: int = Form(0),
     email_verify_output_tokens: int = Form(0),
+    version_id: str = Form(""),
     user=Depends(require_qc_access),
 ):
     kind = kind if kind in ("pre", "post") else "pre"
+    # Admin-only "Upload ZIP" re-run from an existing Post-QC version's
+    # checklist modal — re-analyzes everything against a fresh ZIP but
+    # OVERWRITES that same version in place instead of creating a new one.
+    # Only ever valid for kind == "post": re-running Pre-QC this way isn't
+    # offered anywhere in the UI, and validating here (not trusting the
+    # form value alone) stops a stray/forged version_id from letting this
+    # silently overwrite an unrelated customer's QC version.
+    target_version_id = None
+    if version_id.strip() and kind == "post" and user.get("role") == "admin":
+        try:
+            target_version_id = int(version_id)
+        except (ValueError, TypeError):
+            target_version_id = None
+        if target_version_id is not None:
+            existing = None
+            with get_db() as conn:
+                row = conn.execute(
+                    "SELECT id, quote_id, kind FROM qc_versions WHERE id = ?",
+                    (target_version_id,),
+                ).fetchone()
+                existing = dict(row) if row else None
+            same_quote = existing and str(existing.get("quote_id")) == str(quote_id)
+            is_post_version = existing and (existing.get("kind") or "pre") == "post"
+            if not existing or not same_quote or not is_post_version:
+                target_version_id = None
+
     if user.get("role") != "admin":
         if kind == "post" and not user.get("can_post_qc"):
             raise HTTPException(403, "You do not have Post-QC access.")
@@ -1492,6 +1545,29 @@ async def upload_zip(
     xlsx_blob = build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled,
                            email_results=email_results)
 
+    if target_version_id is not None:
+        # Admin "Upload ZIP" re-run against an existing Post-QC version —
+        # overwrite it immediately (no draft/confirm review step; the whole
+        # point of this action is "replace what's there"), then go straight
+        # to the normal admin view of that same version.
+        yes_count = sum(1 for r in checklist_rows if r.get("status") == "Yes")
+        no_count  = sum(1 for r in checklist_rows if r.get("status") == "No")
+        na_count  = sum(1 for r in checklist_rows if r.get("status") == "N/A")
+        db.update_qc_version(
+            version_id=target_version_id,
+            xlsx_bytes=xlsx_blob,
+            rows_json=json.dumps(checklist_rows),
+            yes_count=yes_count,
+            no_count=no_count,
+            na_count=na_count,
+            confirm=True,
+            confirmed_by_user_id=uid,
+            email_results_json="[]",
+            input_tokens=run_input_tokens,
+            output_tokens=run_output_tokens,
+        )
+        return RedirectResponse(url=f"/admin/qc-version/{target_version_id}", status_code=303)
+
     # Save Excel to a temp file on disk instead of embedding it in the DB row.
     # The signed token carries only the file path — a few bytes instead of megabytes.
     import tempfile
@@ -1566,6 +1642,8 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
         "record": record,
         "input_tokens": payload.get("input_tokens", 0),
         "output_tokens": payload.get("output_tokens", 0),
+        "claude_price_in": CLAUDE_PRICE_PER_M_INPUT,
+        "claude_price_out": CLAUDE_PRICE_PER_M_OUTPUT,
     })
     resp.headers.update(_NO_CACHE)
     return resp
