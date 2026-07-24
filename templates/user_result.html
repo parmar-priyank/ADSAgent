@@ -90,7 +90,7 @@
       {% if is_admin %}
       <form action="/admin/records/{{ revisit_version.quote_id }}/reschedule" method="post"
             style="display:flex;align-items:center;gap:6px;" title="Change this job's install date, e.g. after a rain delay — updates the calendar immediately, no need to resave the checklist.">
-        <input type="date" name="preferred_install_date"
+        <input type="date" name="preferred_install_date" id="admin-reschedule-date-input"
                value="{{ record.preferred_install_date if record else '' }}"
                style="padding:6px 8px;border:1.5px solid var(--line2);border-radius:7px;font-size:12.5px;color:var(--ink);background:var(--surface2);outline:none;">
         <button type="submit" class="link-btn" style="font-weight:600;">
@@ -779,8 +779,9 @@
 </div>
 {% endif %}
 
-<!-- ═══════════════════════════ Modal 3b: Other-kind Checklist (read-only, borrowed from the sibling QC run) ═══════════════════════════ -->
+<!-- ═══════════════════════════ Modal 3b: Other-kind Checklist (borrowed from the sibling QC run — editable for admin/super-admin, read-only otherwise) ═══════════════════════════ -->
 {% if other_checklist_rows %}
+{% set can_edit_other_checklist = is_admin and other_version %}
 <div id="other-checklist-modal-overlay"
      onclick="if(event.target===this)closeOtherChecklistModal()"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 20px;">
@@ -788,12 +789,36 @@
     <div class="dl-bar">
       <span style="font-size:15px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:10px;">
         {{ 'Pre-QC Checklist' if other_kind == 'pre' else 'Post-QC Checklist' }}
+        {% if not can_edit_other_checklist %}
         <span style="font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surface3);border:1px solid var(--line2);border-radius:20px;padding:2px 9px;">View only</span>
+        {% endif %}
       </span>
       <div style="display:flex;gap:8px;align-items:center;">
+        {% if can_edit_other_checklist %}
+        <button type="button" class="link-btn" id="other-modify-btn" onclick="otherEnterEditMode()" style="font-weight:600;">
+          &#9998; Modify
+        </button>
+        {% endif %}
         <button onclick="closeOtherChecklistModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
       </div>
     </div>
+
+    {% if can_edit_other_checklist %}
+    <!-- Edit mode save bar (hidden by default, shown in edit mode) -->
+    <div id="other-edit-bar" style="background:var(--brand-glow);border:1px solid var(--brand-glow);color:var(--brand);border-radius:8px;padding:8px 16px;margin-bottom:12px;align-items:center;gap:16px;">
+      <span style="font-size:13px;font-weight:600;flex:1;">&#9998; Edit mode — change Yes/No and remarks, then save.</span>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button type="button" onclick="otherCancelEditMode()"
+                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;cursor:pointer;">
+          Cancel
+        </button>
+        <button type="button" onclick="otherSaveEdits()" id="other-save-btn"
+                style="background:var(--brand);color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:700;cursor:pointer;">
+          Save Changes
+        </button>
+      </div>
+    </div>
+    {% endif %}
 
     <div style="overflow-x:auto;max-height:78vh;overflow-y:auto;">
       <table class="checklist-table">
@@ -807,30 +832,57 @@
             <th class="remark-cell">Remark</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="other-checklist-tbody">
           {% for row in other_checklist_rows %}
           {% if row.is_section %}
           <tr class="section-row" data-section="1">
             <td colspan="6">{{ row.text }}</td>
           </tr>
           {% else %}
-          <tr>
+          <tr data-status="{{ row.status }}"
+              data-ai-status="{{ row.ai_status or '' }}"
+              data-position="{{ row.position }}"
+              data-sno="{{ row.sno }}"
+              data-text="{{ row.text | e }}"
+              data-reference="{{ row.reference or '' }}"
+              data-prompt="{{ row.prompt or '' }}"
+              data-remark="{{ row.remark or '' | e }}">
             <td class="checklist-sno-cell">{{ row.sno }}</td>
             <td class="checklist-item-cell">{{ row.text }}</td>
             <td class="checklist-ref-cell">{{ row.reference or '—' }}</td>
             <td class="checklist-prompt-cell">{{ row.prompt or '—' }}</td>
             <td class="checklist-status-cell status-cell">
-              {% if row.status == 'Yes' %}
-                <span class="badge-yes">Yes</span>
-              {% elif row.status == 'No' %}
-                <span class="badge-no">No</span>
-              {% else %}
-                <span class="badge-na">N/A</span>
+              <span class="status-view">
+                {% if row.status == 'Yes' %}
+                  <span class="badge-yes">Yes</span>
+                {% elif row.status == 'No' %}
+                  <span class="badge-no">No</span>
+                {% else %}
+                  <span class="badge-na">N/A</span>
+                {% endif %}
+              </span>
+              {% if can_edit_other_checklist %}
+              <div class="status-edit-row">
+                <select class="status-edit" style="font-size:13px;padding:3px 6px;border-radius:5px;border:1.5px solid var(--brand);background:var(--bg);color:var(--text);cursor:pointer;">
+                  <option value="Yes" {% if row.status == 'Yes' %}selected{% endif %}>Yes</option>
+                  <option value="No"  {% if row.status == 'No'  %}selected{% endif %}>No</option>
+                  <option value="N/A" {% if row.status == 'N/A' %}selected{% endif %}>N/A</option>
+                </select>
+              </div>
               {% endif %}
             </td>
             <td class="remark-cell">
               <span class="remark-view" title="{{ row.remark or '' }}"
                     {% if row.remark %}onclick="openRemarkView(this)" style="cursor:pointer;"{% endif %}>{{ row.remark or '' }}</span>
+              {% if can_edit_other_checklist %}
+              <input class="remark-edit" type="hidden" value="{{ row.remark or '' | e }}">
+              <button type="button" class="remark-edit-btn"
+                      style="border:1px solid #ccc;background:#f5f5f5;color:#444;"
+                      onclick="openRemarkModal(this)">
+                <span class="remark-btn-preview" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">{{ row.remark or '' }}</span>
+                <svg style="flex-shrink:0;opacity:.4;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+              </button>
+              {% endif %}
             </td>
           </tr>
           {% endif %}
@@ -1413,7 +1465,12 @@
     saveBtn.textContent = 'Saving…';
 
     if (_isRevisit) {
-      var dateInput = document.getElementById('result-preferred-install-date');
+      // #result-preferred-install-date only renders for a regular user
+      // (not is_admin) — admin's equivalent is the Reschedule field. Fall
+      // back to it so an admin's Save doesn't silently send "" and wipe out
+      // a real saved install date every time they edit the checklist.
+      var dateInput = document.getElementById('result-preferred-install-date')
+                    || document.getElementById('admin-reschedule-date-input');
       var payload = { rows: rows, preferred_install_date: dateInput ? dateInput.value : '' };
       if (action) payload.action = action;
       if (_revisitTokenDelta.input || _revisitTokenDelta.output) {
@@ -1489,6 +1546,132 @@
       saveBtn.disabled    = false;
       saveBtn.textContent = 'Save Changes';
       alert((err && err.message) || 'Failed to save edits. Please try again.');
+    });
+  }
+
+  // ── Other-kind (borrowed) Checklist edit mode — admin/super-admin only ──
+  // Fully independent of the main checklist modal's edit mode: separate
+  // table (#other-checklist-tbody), separate card, and — critically —
+  // saves onto the OTHER version's id (other_version.id), never the
+  // currently-viewed version, since these rows belong to that sibling run.
+  var _otherCard      = document.querySelector('#other-checklist-modal-overlay .result-card');
+  var _otherEditMode  = false;
+
+  function _collectOtherRows() {
+    var rows = [];
+    document.querySelectorAll('#other-checklist-tbody tr').forEach(function(tr) {
+      if (tr.dataset.section) {
+        rows.push({ is_section: true, text: tr.querySelector('td').textContent.trim() });
+        return;
+      }
+      if (tr.dataset.position === undefined) return;
+      var statusEl = tr.querySelector('.status-edit');
+      var remarkEl = tr.querySelector('.remark-edit');
+      rows.push({
+        position:   parseInt(tr.dataset.position),
+        sno:        tr.dataset.sno        || '',
+        text:       tr.dataset.text       || '',
+        reference:  tr.dataset.reference  || '',
+        prompt:     tr.dataset.prompt     || '',
+        status:     statusEl ? statusEl.value : (tr.dataset.status || 'N/A'),
+        remark:     remarkEl ? remarkEl.value : (tr.dataset.remark || ''),
+        ai_status:  tr.dataset.aiStatus   || '',
+        is_section: false,
+      });
+    });
+    return rows;
+  }
+
+  function otherEnterEditMode() {
+    _otherEditMode = true;
+    document.getElementById('other-edit-bar').style.display = 'flex';
+    document.getElementById('other-modify-btn').style.display = 'none';
+    _otherCard.classList.add('is-edit-mode');
+    document.querySelectorAll('#other-checklist-tbody tr[data-position]').forEach(function(tr) {
+      tr.dataset.savedStatus = tr.dataset.status;
+      var sel = tr.querySelector('.status-edit');
+      if (sel) {
+        sel.addEventListener('change', function() {
+          tr.dataset.status = sel.value;
+          _refreshChangedHighlight(tr);
+        });
+      }
+    });
+  }
+
+  function otherCancelEditMode() {
+    _otherEditMode = false;
+    document.getElementById('other-edit-bar').style.display = 'none';
+    document.getElementById('other-modify-btn').style.display = '';
+    _otherCard.classList.remove('is-edit-mode');
+    document.querySelectorAll('#other-checklist-tbody tr[data-position]').forEach(function(tr) {
+      tr.dataset.status = tr.dataset.savedStatus || tr.dataset.status;
+      var sel = tr.querySelector('.status-edit');
+      if (sel) sel.value = tr.dataset.status;
+      var inp = tr.querySelector('.remark-edit');
+      var btn = tr.querySelector('.remark-edit-btn');
+      if (inp) inp.value = tr.dataset.remark || '';
+      if (btn) btn.querySelector('.remark-btn-preview').textContent = tr.dataset.remark || '';
+      _refreshChangedHighlight(tr);
+    });
+  }
+
+  function _applyOtherRowsToDom(rows) {
+    document.querySelectorAll('#other-checklist-tbody tr[data-position]').forEach(function(tr) {
+      var sel = tr.querySelector('.status-edit');
+      var inp = tr.querySelector('.remark-edit');
+      var newStatus = sel ? sel.value : tr.dataset.status;
+      var newRemark = inp ? inp.value : tr.dataset.remark;
+      tr.dataset.status = newStatus;
+      tr.dataset.remark = newRemark;
+      var cls = newStatus === 'Yes' ? 'badge-yes' : (newStatus === 'No' ? 'badge-no' : 'badge-na');
+      tr.querySelector('.status-view').innerHTML = '<span class="' + cls + '">' + newStatus + '</span>';
+      tr.querySelector('.remark-view').textContent = newRemark;
+      var remarkBtn = tr.querySelector('.remark-edit-btn');
+      if (remarkBtn) remarkBtn.querySelector('.remark-btn-preview').textContent = newRemark;
+      _refreshChangedHighlight(tr);
+    });
+  }
+
+  function otherSaveEdits() {
+    var rows = _collectOtherRows();
+    var saveBtn = document.getElementById('other-save-btn');
+    saveBtn.disabled    = true;
+    saveBtn.textContent = 'Saving…';
+
+    // Explicitly resend the install date exactly as currently shown on this
+    // page, so omitting it doesn't get read as "" and wipe out a real saved
+    // date — /save always writes whatever preferred_install_date it's given.
+    // The regular-user date field (#result-preferred-install-date) and the
+    // admin Reschedule field (#admin-reschedule-date-input) are mutually
+    // exclusive (is_admin decides which one — if any — is on the page).
+    var otherDateInput = document.getElementById('result-preferred-install-date')
+                       || document.getElementById('admin-reschedule-date-input');
+    fetch('/user/qc-version/{{ other_version.id if other_version else "" }}/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: rows, preferred_install_date: otherDateInput ? otherDateInput.value : '' }),
+    })
+    .then(function(r) {
+      if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
+      return r.json().then(function(data) { return { ok: r.ok, data: data }; });
+    })
+    .then(function(result) {
+      if (!result.ok) {
+        throw new Error(result.data && result.data.detail ? result.data.detail : 'Failed to save changes.');
+      }
+      _applyOtherRowsToDom(rows);
+      _otherEditMode = false;
+      document.getElementById('other-edit-bar').style.display = 'none';
+      document.getElementById('other-modify-btn').style.display = '';
+      _otherCard.classList.remove('is-edit-mode');
+      saveBtn.disabled    = false;
+      saveBtn.textContent = 'Save Changes';
+    })
+    .catch(function(err) {
+      saveBtn.disabled    = false;
+      saveBtn.textContent = 'Save Changes';
+      alert(err.message || 'Failed to save changes. Please try again.');
     });
   }
 
