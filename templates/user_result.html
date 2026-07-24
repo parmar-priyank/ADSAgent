@@ -144,7 +144,7 @@
     </div>
     {% if current_user.role == 'admin' or current_user.can_post_qc %}
     <div class="step-connector"></div>
-    <a href="/post-qc" class="step-item" style="text-decoration:none;">
+    <a href="{% if quote_id %}/qc-check?quote_id={{ quote_id }}&kind=post{% else %}/post-qc{% endif %}" class="step-item" style="text-decoration:none;">
       <div class="step-circle">5</div>
       <div class="step-label">Post-QC</div>
     </a>
