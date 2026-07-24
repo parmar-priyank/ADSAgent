@@ -38,6 +38,13 @@
       <div class="step-circle">4</div>
       <div class="step-label">Confirm</div>
     </div>
+    {% if current_user.role == 'admin' or current_user.can_post_qc %}
+    <div class="step-connector"></div>
+    <a href="/post-qc" class="step-item" style="text-decoration:none;">
+      <div class="step-circle">5</div>
+      <div class="step-label">Post-QC</div>
+    </a>
+    {% endif %}
   </div>
 
   <!-- Skip button -->
