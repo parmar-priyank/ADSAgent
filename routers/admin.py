@@ -420,6 +420,31 @@ def admin_record_detail(record_id: int, request: Request, user=Depends(require_a
     return response
 
 
+@router.post("/admin/records/{record_id}/reschedule")
+def admin_reschedule_install_date(record_id: int, request: Request,
+                                   preferred_install_date: str = Form(""),
+                                   user=Depends(require_admin)):
+    """Let admin/super-admin push a job's install date out (e.g. a rain
+    delay) directly, without needing to reopen and resave a QC version —
+    a standalone action separate from the checklist Save/Confirm flow.
+    Writes the same preferred_install_date column the technician-facing
+    Confirm screen already edits, so the calendar picks the new date up
+    immediately (it already prefers preferred_install_date over the
+    original AI-extracted install_date)."""
+    record = db.get_quote(record_id)
+    if not record:
+        raise HTTPException(404, "Record not found.")
+    new_date = preferred_install_date.strip()
+    old_date = record.get("preferred_install_date") or ""
+    if new_date != old_date:
+        db.update_preferred_install_date(record_id, new_date)
+        audit.log_event(request, "install_date_rescheduled", username=user["username"], user_id=user["id"],
+                        detail=f"quote {record.get('quote_number') or record_id} ({record.get('customer_name') or ''}): "
+                               f"'{old_date or '(none)'}' -> '{new_date or '(none)'}'")
+    ref = request.headers.get("referer", "")
+    return RedirectResponse(url=ref or "/admin/records", status_code=303)
+
+
 @router.post("/admin/records/{record_id}/delete")
 def admin_delete_record(record_id: int, request: Request, user=Depends(require_admin)):
     """A Team Leader's Delete is a SOFT delete — the record leaves every active

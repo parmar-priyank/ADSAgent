@@ -101,6 +101,13 @@ async def upload(
         raise HTTPException(403, "You do not have Pre-QC access.")
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Please upload a PDF file.")
+    if not preferred_install_date.strip():
+        resp = templates.TemplateResponse(
+            request, "user_home.html",
+            _index_context(user=user, error="Please select an installation date."),
+        )
+        resp.headers.update(_NO_CACHE)
+        return resp
 
     file_bytes = await file.read()
 
@@ -176,6 +183,13 @@ async def upload_confirm(
     if action == "keep":
         db.pop_pending_pdf(pending_token)
         return RedirectResponse(url=f"/user_upload?id={existing_id}", status_code=303)
+    if not preferred_install_date.strip():
+        resp = templates.TemplateResponse(
+            request, "user_home.html",
+            _index_context(user=user, error="Please select an installation date."),
+        )
+        resp.headers.update(_NO_CACHE)
+        return resp
 
     pending = db.pop_pending_pdf(pending_token)
     if not pending:
