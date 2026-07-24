@@ -16,9 +16,26 @@
   </div>
 
   {% if assigned %}
-  <div style="display:flex;flex-direction:column;gap:10px;">
+  <!-- Search -->
+  <div style="position:relative;max-width:360px;margin-bottom:16px;">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+         style="position:absolute;left:13px;top:50%;transform:translateY(-50%);pointer-events:none;">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    <input type="text" id="post-qc-search" placeholder="Search name or SO…"
+           oninput="filterPostQcList()"
+           style="width:100%;padding:10px 12px 10px 38px;border:1.5px solid var(--line2);border-radius:10px;font-size:13.5px;color:var(--ink);background:var(--surface2);outline:none;box-sizing:border-box;transition:border-color .15s;"
+           onfocus="this.style.borderColor='var(--brand)'" onblur="this.style.borderColor='var(--line2)'">
+  </div>
+
+  <div id="post-qc-empty-filtered" style="display:none;background:var(--surface3);border:1px solid var(--line2);border-radius:14px;text-align:center;padding:40px 20px;color:var(--muted);font-size:14px;">
+    No customers match "<span id="post-qc-search-echo"></span>".
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px;" id="post-qc-list">
     {% for r in assigned %}
     <a href="/post-qc/customer/{{ r['id'] }}"
+       data-search="{{ ((r['customer_name'] or '') ~ ' ' ~ (r['quote_number'] or '')) | lower }}"
        style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;text-decoration:none;
               background:var(--surface3);border:1px solid var(--line2);border-radius:14px;
               padding:16px 20px;transition:border-color .15s;"
@@ -46,6 +63,22 @@
     </a>
     {% endfor %}
   </div>
+
+  <script>
+    function filterPostQcList() {
+      var q = document.getElementById('post-qc-search').value.trim().toLowerCase();
+      var rows = document.querySelectorAll('#post-qc-list a[data-search]');
+      var visibleCount = 0;
+      rows.forEach(function(row) {
+        var match = !q || row.dataset.search.indexOf(q) !== -1;
+        row.style.display = match ? '' : 'none';
+        if (match) visibleCount++;
+      });
+      var emptyMsg = document.getElementById('post-qc-empty-filtered');
+      document.getElementById('post-qc-search-echo').textContent = q;
+      emptyMsg.style.display = (q && visibleCount === 0) ? 'block' : 'none';
+    }
+  </script>
   {% else %}
   <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:14px;text-align:center;padding:60px 20px;color:var(--muted);font-size:14px;">
     {% if is_admin_view %}
