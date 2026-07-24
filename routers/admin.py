@@ -102,7 +102,7 @@ def _redirect_back_to_admin(request: Request, fallback: str = "/admin") -> str:
 # ---------------------------------------------------------------------------
 
 @router.get("/admin", response_class=HTMLResponse)
-def admin_dashboard(request: Request, user=Depends(require_admin), cal: str = ""):
+def admin_dashboard(request: Request, user=Depends(require_admin), cal: str = "", success: str = None):
     all_records = db.get_recent(limit=None)
     ctx = _admin_ctx(user,
         users_count=len(adb.list_users()),
@@ -110,6 +110,7 @@ def admin_dashboard(request: Request, user=Depends(require_admin), cal: str = ""
         templates_count=len(tdb.list_templates()),
         install_map_json=_build_install_map(all_records),
         cal_jump=cal,  # e.g. "2026-08" — tells the calendar JS which month to open
+        success=success,
     )
     response = templates.TemplateResponse(request, "admin_dashboard.html", ctx)
     response.headers.update(_NO_CACHE)
@@ -436,13 +437,28 @@ def admin_reschedule_install_date(record_id: int, request: Request,
         raise HTTPException(404, "Record not found.")
     new_date = preferred_install_date.strip()
     old_date = record.get("preferred_install_date") or ""
-    if new_date != old_date:
+    changed = new_date != old_date
+    if changed:
         db.update_preferred_install_date(record_id, new_date)
         audit.log_event(request, "install_date_rescheduled", username=user["username"], user_id=user["id"],
                         detail=f"quote {record.get('quote_number') or record_id} ({record.get('customer_name') or ''}): "
                                f"'{old_date or '(none)'}' -> '{new_date or '(none)'}'")
-    ref = request.headers.get("referer", "")
-    return RedirectResponse(url=ref or "/admin/records", status_code=303)
+    # Land back on the Dashboard (where the calendar lives) rather than the
+    # QC-version page the request came from — that page was itself reached
+    # through a chain of earlier redirects, so bouncing back there just made
+    # the browser's Back button retrace that whole chain instead of reaching
+    # the Dashboard in one step. Jump the calendar to the new date's month so
+    # the moved job is immediately visible, confirming the change worked.
+    cal_param = ""
+    if new_date:
+        try:
+            cal_param = f"&cal={new_date[:7]}"  # "YYYY-MM-DD" -> "YYYY-MM"
+        except Exception:
+            cal_param = ""
+    msg = urllib.parse.quote(f"Installation date updated to {new_date}." if new_date and changed
+                              else "Installation date cleared." if changed
+                              else "No change — installation date was already set to that value.")
+    return RedirectResponse(url=f"/admin?success={msg}{cal_param}", status_code=303)
 
 
 @router.post("/admin/records/{record_id}/delete")
