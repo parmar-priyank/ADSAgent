@@ -460,14 +460,20 @@ def _match_attachment_with_claude(client, attachment: dict, reference_text: str)
 
 
 def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf_text: str,
-                         fname: str, fdata: bytes) -> dict:
+                         files: list[tuple[str, bytes]]) -> dict:
     """
-    Analyse one uploaded file against a single checklist item's prompt —
-    the per-row "Upload File" path in the result-page edit mode, so a user
-    can fix one item's evidence without re-uploading the whole ZIP.
+    Analyse one or more uploaded files against a single checklist item's
+    prompt — the per-row "Upload File" path in the result-page edit mode, so
+    a user can fix one item's evidence without re-uploading the whole ZIP.
     Mirrors the relevant half of _analyse_item()'s body (run-checklist),
-    minus the ZIP-lookup and multi-file/eml-rollup logic, since here there
-    is always exactly one file already in hand.
+    minus the ZIP-lookup logic, since here the files are already in hand.
+
+    Multiple non-.eml files are combined into ONE Claude call (same
+    all-files-together approach _analyse_item already uses when an item's
+    reference resolves to 2+ files), so e.g. a multi-page scan split across
+    several PDFs/photos gets one combined verdict instead of one per file.
+    .eml files are still handled through their own dedicated
+    attachment-matching path, same as the existing single-file behavior.
     """
     ref_section = (
         f"\n\n--- MAIN REFERENCE PDF (Signed Agreement) ---\n{reference_pdf_text}"
@@ -476,11 +482,21 @@ def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf
     context = f"Checklist item: {item_text}\nRequirement: {prompt_text}{ref_section}"
 
     try:
-        if fname.lower().endswith(".eml"):
-            atts = _parse_eml(fdata)
-            if not atts:
-                return {"status": "N/A", "remark": "No attachments found in the uploaded .eml file."}
-            att_results = [_match_attachment_with_claude(client, att, reference_pdf_text) for att in atts]
+        eml_files    = [(fn, fd) for fn, fd in files if fn.lower().endswith(".eml")]
+        other_files  = [(fn, fd) for fn, fd in files if not fn.lower().endswith(".eml")]
+
+        if eml_files and other_files:
+            return {"status": "N/A", "remark": "Please upload either .eml file(s) or document/image file(s), not a mix, for this item."}
+
+        if eml_files:
+            all_atts = []
+            for fname, fdata in eml_files:
+                atts = _parse_eml(fdata)
+                if atts:
+                    all_atts.extend(atts)
+            if not all_atts:
+                return {"status": "N/A", "remark": "No attachments found in the uploaded .eml file(s)."}
+            att_results = [_match_attachment_with_claude(client, att, reference_pdf_text) for att in all_atts]
             no_hits  = [r for r in att_results if r.get("status") == "No"]
             yes_hits = [r for r in att_results if r.get("status") == "Yes"]
             if no_hits:
@@ -491,27 +507,43 @@ def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf
                 return {"status": "Yes", "remark": f"Attachment(s) match agreement: {names}."}
             return {"status": "N/A", "remark": att_results[0].get("remark", "Could not verify email attachments.")}
 
-        mime = _mime_of(fname, fdata)
         user_content = [{"type": "text", "text": context}]
+        unsupported: list[str] = []
+        unreadable_images: list[str] = []
 
-        if mime == "application/pdf":
-            text, pages = _render_pdf(fname, fdata)
-            if text.strip():
-                user_content.append({"type": "text", "text": f"Document text (for reference):{text[:8000]}"})
-            for page_png in pages[:_PDF_MAX_PAGES]:
-                b64 = base64.standard_b64encode(page_png).decode()
-                user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
-            if len(user_content) == 1:
-                return {"status": "N/A", "remark": "No readable content found in the uploaded file."}
-        elif mime.startswith("image/"):
-            safe = _claude_safe_image(fdata, mime)
-            if safe is None:
-                return {"status": "N/A", "remark": f"Could not read this image format ({fname}) — try re-saving as JPG or PNG."}
-            safe_data, safe_mime = safe
-            b64 = base64.standard_b64encode(safe_data).decode()
-            user_content.append({"type": "image", "source": {"type": "base64", "media_type": safe_mime, "data": b64}})
-        else:
-            return {"status": "N/A", "remark": f"Unsupported file type: {fname}"}
+        for fname, fdata in other_files:
+            mime = _mime_of(fname, fdata)
+            if mime == "application/pdf":
+                text, pages = _render_pdf(fname, fdata)
+                if text.strip():
+                    user_content.append({"type": "text", "text": f"Document text ({fname}):{text[:8000]}"})
+                for page_png in pages[:_PDF_MAX_PAGES]:
+                    b64 = base64.standard_b64encode(page_png).decode()
+                    user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
+            elif mime.startswith("image/"):
+                safe = _claude_safe_image(fdata, mime)
+                if safe is None:
+                    unreadable_images.append(fname)
+                    continue
+                safe_data, safe_mime = safe
+                b64 = base64.standard_b64encode(safe_data).decode()
+                user_content.append({"type": "image", "source": {"type": "base64", "media_type": safe_mime, "data": b64}})
+            else:
+                unsupported.append(fname)
+
+        if len(user_content) == 1:
+            if unsupported:
+                return {"status": "N/A", "remark": f"Unsupported file type: {', '.join(unsupported)}"}
+            if unreadable_images:
+                return {"status": "N/A", "remark": f"Could not read image format: {', '.join(unreadable_images)} — try re-saving as JPG or PNG."}
+            return {"status": "N/A", "remark": "No readable content found in the uploaded file(s)."}
+
+        if unsupported or unreadable_images:
+            note = "; ".join(filter(None, [
+                f"unsupported: {', '.join(unsupported)}" if unsupported else "",
+                f"unreadable image(s): {', '.join(unreadable_images)}" if unreadable_images else "",
+            ]))
+            user_content.append({"type": "text", "text": f"(Note: some uploaded files could not be used — {note}.)"})
 
         return _claude_check(client, user_content)
 
@@ -1535,21 +1567,27 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
 @limiter.limit("30/minute")
 async def checklist_analyse_file(
     request: Request,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     item_text: str = Form(""),
     prompt: str = Form(""),
     quote_id: str = Form(""),
     user=Depends(require_qc_access),
 ):
     """
-    Analyse a single uploaded file against one checklist item's prompt —
-    lets the user fix one row's evidence in edit mode without re-uploading
-    the whole ZIP (which would re-run AI analysis, and cost, on every item).
-    Independent of the manual Yes/No/N/A dropdown — neither depends on the other.
+    Analyse one or more uploaded files together against one checklist item's
+    prompt — lets the user fix one row's evidence in edit mode without
+    re-uploading the whole ZIP (which would re-run AI analysis, and cost, on
+    every item). Independent of the manual Yes/No/N/A dropdown — neither
+    depends on the other.
     """
-    fdata = await file.read()
-    if len(fdata) > MAX_UPLOAD_BYTES:
-        return {"status": "N/A", "remark": "File is too large."}
+    file_pairs: list[tuple[str, bytes]] = []
+    total_bytes = 0
+    for f in files:
+        fdata = await f.read()
+        total_bytes += len(fdata)
+        if total_bytes > MAX_UPLOAD_BYTES:
+            return {"status": "N/A", "remark": "Files are too large."}
+        file_pairs.append((f.filename or "upload", fdata))
 
     reference_pdf_text = ""
     if quote_id:
@@ -1586,9 +1624,7 @@ async def checklist_analyse_file(
                 )
 
     client = _get_claude()
-    result = _analyse_single_file(
-        client, item_text, prompt, reference_pdf_text, file.filename or "upload", fdata
-    )
+    result = _analyse_single_file(client, item_text, prompt, reference_pdf_text, file_pairs)
     return result
 
 
