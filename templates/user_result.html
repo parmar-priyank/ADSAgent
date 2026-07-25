@@ -815,7 +815,9 @@
     </div>
 
     {% if can_edit_other_checklist %}
-    <!-- Edit mode save bar (hidden by default, shown in edit mode) -->
+    <!-- Edit mode save bar (hidden by default, shown in edit mode) — same
+         Save as Draft / Confirm two-button layout as the main checklist
+         modal, since the target (other_version) is always a saved version. -->
     <div id="other-edit-bar" style="background:var(--brand-glow);border:1px solid var(--brand-glow);color:var(--brand);border-radius:8px;padding:8px 16px;margin-bottom:12px;align-items:center;gap:16px;">
       <span style="font-size:13px;font-weight:600;flex:1;">&#9998; Edit mode — change Yes/No and remarks, then save.</span>
       <div style="display:flex;gap:8px;flex-shrink:0;">
@@ -823,9 +825,13 @@
                 style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;cursor:pointer;">
           Cancel
         </button>
-        <button type="button" onclick="otherSaveEdits()" id="other-save-btn"
+        <button type="button" onclick="otherSaveEdits('draft')" id="other-save-draft-btn"
+                style="background:transparent;border:1.5px solid var(--brand);color:var(--brand);border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:700;cursor:pointer;">
+          Save as Draft
+        </button>
+        <button type="button" onclick="otherSaveEdits('confirm')" id="other-save-confirm-btn"
                 style="background:var(--brand);color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12.5px;font-weight:700;cursor:pointer;">
-          Save Changes
+          &#10003; Confirm
         </button>
       </div>
     </div>
@@ -1644,9 +1650,11 @@
     });
   }
 
-  function otherSaveEdits() {
+  function otherSaveEdits(action) {
     var rows = _collectOtherRows();
-    var saveBtn = document.getElementById('other-save-btn');
+    var saveBtn = action === 'draft' ? document.getElementById('other-save-draft-btn')
+                : document.getElementById('other-save-confirm-btn');
+    var origLabel = saveBtn.textContent;
     saveBtn.disabled    = true;
     saveBtn.textContent = 'Saving…';
 
@@ -1658,10 +1666,12 @@
     // exclusive (is_admin decides which one — if any — is on the page).
     var otherDateInput = document.getElementById('result-preferred-install-date')
                        || document.getElementById('admin-reschedule-date-input');
+    var payload = { rows: rows, preferred_install_date: otherDateInput ? otherDateInput.value : '' };
+    if (action) payload.action = action;
     fetch('/user/qc-version/{{ other_version.id if other_version else "" }}/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows: rows, preferred_install_date: otherDateInput ? otherDateInput.value : '' }),
+      body: JSON.stringify(payload),
     })
     .then(function(r) {
       if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
@@ -1677,11 +1687,11 @@
       document.getElementById('other-modify-btn').style.display = '';
       _otherCard.classList.remove('is-edit-mode');
       saveBtn.disabled    = false;
-      saveBtn.textContent = 'Save Changes';
+      saveBtn.textContent = origLabel;
     })
     .catch(function(err) {
       saveBtn.disabled    = false;
-      saveBtn.textContent = 'Save Changes';
+      saveBtn.textContent = origLabel;
       alert(err.message || 'Failed to save changes. Please try again.');
     });
   }

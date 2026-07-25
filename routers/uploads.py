@@ -62,6 +62,12 @@ def user_heartbeat(request: Request, user=Depends(require_qc_access)):
 
 @router.get("/user_home", response_class=HTMLResponse)
 def home(request: Request, user=Depends(require_login)):
+    # This page is the Pre-QC upload wizard — useless (and confusing, as it
+    # led to a "Please upload a PDF file" error when someone tried using it
+    # for a ZIP) for an account that only has Post-QC access. Send them
+    # straight to their actual landing page instead.
+    if not user.get("can_pre_qc") and user.get("can_post_qc"):
+        return RedirectResponse(url="/post-qc", status_code=302)
     ctx = _index_context(user=user)
     response = templates.TemplateResponse(request, "user_home.html", ctx)
     response.headers.update(_NO_CACHE)
