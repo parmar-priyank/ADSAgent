@@ -48,10 +48,13 @@
     <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:14px;
                 padding:16px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
 
-      <!-- Row number -->
-      <div style="flex-shrink:0;text-align:center;min-width:40px;">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">#</div>
-        <span class="id-pill">{{ loop.index }}</span>
+      <!-- Kind badge -->
+      <div style="flex-shrink:0;text-align:center;min-width:56px;">
+        {% if qc.kind == 'post' %}
+        <span style="display:inline-block;background:rgba(45,122,74,.12);color:#2d7a4a;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;letter-spacing:.2px;">Post-QC</span>
+        {% else %}
+        <span style="display:inline-block;background:rgba(196,80,16,.12);color:#c45010;border-radius:20px;padding:3px 10px;font-size:10.5px;font-weight:700;letter-spacing:.2px;">Pre-QC</span>
+        {% endif %}
       </div>
 
       <!-- Customer info -->
