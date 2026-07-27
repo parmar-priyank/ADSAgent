@@ -163,11 +163,28 @@
           <span style="color:var(--text2);font-size:12px;">—</span>
           {% endif %}
         </td>
-        <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
-          <form action="/admin/records/{{ r['id'] }}/delete" method="post" style="display:inline;"
-                onsubmit="return confirm('Delete this customer record? This cannot be undone.');">
-            <button type="submit" class="link-btn danger">Delete</button>
-          </form>
+        <td style="text-align:right;white-space:nowrap;position:relative;" onclick="event.stopPropagation();">
+          <button type="button" class="link-btn" onclick="toggleRecordActionsMenu(event, {{ r['id'] }})">
+            Actions &#9662;
+          </button>
+          <div id="record-actions-menu-{{ r['id'] }}" class="record-actions-menu" style="display:none;position:absolute;right:0;top:100%;z-index:20;background:var(--surface);border:1px solid var(--line2);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);min-width:180px;text-align:left;overflow:hidden;">
+            {% if r['pre_qc_latest_version_id'] %}
+            <form action="/admin/qc-version/{{ r['pre_qc_latest_version_id'] }}/delete" method="post"
+                  onsubmit="return confirm('Delete this customer\'s Pre-QC checklist? Post-QC and the customer record are unaffected. This cannot be undone.');">
+              <button type="submit" style="display:block;width:100%;text-align:left;padding:9px 14px;background:none;border:none;font-size:13px;color:var(--ink);cursor:pointer;">Delete Pre-QC</button>
+            </form>
+            {% endif %}
+            {% if r['post_qc_latest_version_id'] %}
+            <form action="/admin/qc-version/{{ r['post_qc_latest_version_id'] }}/delete" method="post"
+                  onsubmit="return confirm('Delete this customer\'s Post-QC checklist? Pre-QC and the customer record are unaffected. This cannot be undone.');">
+              <button type="submit" style="display:block;width:100%;text-align:left;padding:9px 14px;background:none;border:none;font-size:13px;color:var(--ink);cursor:pointer;">Delete Post-QC</button>
+            </form>
+            {% endif %}
+            <form action="/admin/records/{{ r['id'] }}/delete" method="post"
+                  onsubmit="return confirm('Delete this ENTIRE customer record — Pre-QC, Post-QC, everything? This cannot be undone.');">
+              <button type="submit" style="display:block;width:100%;text-align:left;padding:9px 14px;background:none;border:none;border-top:1px solid var(--line2);font-size:13px;color:#dc2626;font-weight:600;cursor:pointer;">Delete Entire Record</button>
+            </form>
+          </div>
         </td>
       </tr>
       {% endfor %}
@@ -226,6 +243,18 @@
     row.addEventListener('click', function() {
       window.location.href = row.dataset.href;
     });
+  });
+
+  // Actions menu — only one open at a time; closes on an outside click.
+  function toggleRecordActionsMenu(event, recordId) {
+    event.stopPropagation();
+    var menu = document.getElementById('record-actions-menu-' + recordId);
+    var wasOpen = menu.style.display !== 'none';
+    document.querySelectorAll('.record-actions-menu').forEach(function(m) { m.style.display = 'none'; });
+    menu.style.display = wasOpen ? 'none' : 'block';
+  }
+  document.addEventListener('click', function() {
+    document.querySelectorAll('.record-actions-menu').forEach(function(m) { m.style.display = 'none'; });
   });
 
   var RECORDS_PER_PAGE = 10;

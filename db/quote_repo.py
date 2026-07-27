@@ -375,9 +375,12 @@ def get_recent(limit: int | None = 20):
             # Latest version's status per (quote, kind) — 'draft' or
             # 'confirmed' — so Customer Records can filter/show Draft
             # distinctly from Confirmed instead of lumping both into "Done".
+            # Also carries qv.id so the page can offer "delete just this
+            # kind" (admin_delete_qc_version) instead of only the
+            # whole-customer delete.
             latest_status_rows = conn.execute(
                 f"""
-                SELECT qv.quote_id, COALESCE(qv.kind, 'pre') as kind,
+                SELECT qv.id, qv.quote_id, COALESCE(qv.kind, 'pre') as kind,
                        COALESCE(qv.status, 'confirmed') as status
                 FROM qc_versions qv
                 JOIN (
@@ -393,9 +396,15 @@ def get_recent(limit: int | None = 20):
             ).fetchall()
             pre_status_map: dict = {}
             post_status_map: dict = {}
+            pre_version_id_map: dict = {}
+            post_version_id_map: dict = {}
             for r in latest_status_rows:
-                target = post_status_map if r["kind"] == "post" else pre_status_map
-                target[r["quote_id"]] = r["status"]
+                if r["kind"] == "post":
+                    post_status_map[r["quote_id"]] = r["status"]
+                    post_version_id_map[r["quote_id"]] = r["id"]
+                else:
+                    pre_status_map[r["quote_id"]] = r["status"]
+                    pre_version_id_map[r["quote_id"]] = r["id"]
 
             assignees = conn.execute(
                 f"SELECT pqa.quote_id, pqa.user_id, u.username "
@@ -413,6 +422,8 @@ def get_recent(limit: int | None = 20):
                 # status per kind, distinct from the plain has-any-run count.
                 q["pre_qc_status"] = pre_status_map.get(q["id"], "none")
                 q["post_qc_status"] = post_status_map.get(q["id"], "none")
+                q["pre_qc_latest_version_id"] = pre_version_id_map.get(q["id"])
+                q["post_qc_latest_version_id"] = post_version_id_map.get(q["id"])
     for display_num, q in enumerate(quotes, start=1):
         q["display_num"] = display_num
     return quotes
