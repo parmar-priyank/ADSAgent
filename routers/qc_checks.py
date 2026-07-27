@@ -1126,8 +1126,15 @@ async def upload_zip(
     # has no Panel/Panels row at all (never an empty-quantity row), so its
     # absence is a reliable signal here — nothing inferred from wording/AI.
     # No line_items at all (e.g. quote_id missing) means "can't tell" —
-    # treated as a panel job (kind == "pre" default: run everything, as today).
-    is_battery_only_job = bool(job_line_items) and not any(
+    # treated as a panel job (run everything, as today).
+    #
+    # Pre-QC only: this gating exists to save Claude cost on Pre-QC runs,
+    # which check the signed agreement itself (where "no Panel line item"
+    # reliably means a battery-only job). Post-QC checks physical installer
+    # evidence (photos/paperwork of the completed install) — an unrelated
+    # document set where this signal doesn't apply — so it must always run
+    # every item regardless of what the Pre-QC line_items looked like.
+    is_battery_only_job = kind == "pre" and bool(job_line_items) and not any(
         (li.get("item") or "").strip().lower() in ("panel", "panels")
         for li in job_line_items
     )

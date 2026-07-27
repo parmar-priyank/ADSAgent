@@ -22,6 +22,7 @@ from reports.xlsx_builder import build_template_xlsx, parse_xlsx
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
+from starlette.requests import ClientDisconnect
 
 from config import (
     _NO_CACHE,
@@ -110,7 +111,12 @@ def item_update(template_id: int, item_id: int,
 
 @router.post("/templates/{template_id}/save-all")
 async def items_save_all(template_id: int, request: Request, user=Depends(require_admin)):
-    form = await request.form()
+    try:
+        form = await request.form()
+    except ClientDisconnect:
+        # The browser closed the connection mid-upload (tab closed, navigated
+        # away, etc.) — nothing was saved, nothing to do.
+        return Response(status_code=499)
     item_ids      = form.getlist("item_id")
     snos          = form.getlist("sno")
     texts         = form.getlist("text")
