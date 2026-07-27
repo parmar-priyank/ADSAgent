@@ -1630,6 +1630,16 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
         if record:
             preferred_install_date = record.get("preferred_install_date") or ""
 
+    # Pull in the OTHER kind's latest saved version — same lookup
+    # user_qc_version_revisit and admin_qc_version_view do for an
+    # already-saved version. Without this, a fresh (not yet saved) run's
+    # Confirm page showed "No Pre-QC run yet" even when a real Pre-QC
+    # version already existed for this quote, just because this route
+    # never looked it up.
+    tpl_kind = (payload["tpl"] or {}).get("kind") or "pre"
+    saved_email_results = payload.get("email_results", [])
+    other_ctx = db.get_other_kind_context(quote_id, tpl_kind, saved_email_results)
+
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
         "is_admin": False,
@@ -1642,7 +1652,7 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
         "yes_count": payload.get("yes_count", 0),
         "no_count": payload.get("no_count", 0),
         "na_count": payload.get("na_count", 0),
-        "email_results": payload.get("email_results", []),
+        "email_results": saved_email_results,
         "preferred_install_date": preferred_install_date,
         "today": datetime.now().strftime("%Y-%m-%d"),
         "theme": _resolve_theme(user),
@@ -1651,6 +1661,7 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
         "output_tokens": payload.get("output_tokens", 0),
         "claude_price_in": CLAUDE_PRICE_PER_M_INPUT,
         "claude_price_out": CLAUDE_PRICE_PER_M_OUTPUT,
+        **other_ctx,
     })
     resp.headers.update(_NO_CACHE)
     return resp
@@ -2104,35 +2115,7 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
     # a Post-QC user can see that customer's Pre-QC results (read-only, via
     # its own view-only page) even though someone else ran it, instead of
     # the tile just sitting empty.
-    other_kind = "post" if tpl["kind"] == "pre" else "pre"
-    other_v = db.get_latest_qc_version(v["quote_id"], other_kind)
-    other_checklist_rows = None
-    other_yes_count = other_no_count = other_na_count = 0
-    if other_v:
-        try:
-            other_checklist_rows = json.loads(other_v["rows_json"]) if other_v.get("rows_json") else []
-            if not isinstance(other_checklist_rows, list):
-                other_checklist_rows = []
-        except Exception:
-            other_checklist_rows = []
-        other_yes_count = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "Yes")
-        other_no_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "No")
-        other_na_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "N/A")
-
-    # Same borrowing rule as the checklist tiles: this version's own email
-    # results win when present; only fall back to the other kind's saved
-    # results when this version has none (e.g. every Post-QC run, which
-    # never collects its own email data by design).
-    other_email_results = None
-    if not saved_email_results and other_v:
-        raw_other_email_json = other_v.get("email_results_json") or ""
-        if raw_other_email_json.strip():
-            try:
-                parsed_other_email = json.loads(raw_other_email_json)
-                if isinstance(parsed_other_email, list):
-                    other_email_results = parsed_other_email
-            except Exception:
-                pass
+    other_ctx = db.get_other_kind_context(v["quote_id"], tpl["kind"], saved_email_results)
 
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
@@ -2151,13 +2134,7 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         "today": datetime.now().strftime("%Y-%m-%d"),
         "record": record,
         "can_edit": can_edit,
-        "other_kind": other_kind,
-        "other_version": other_v,
-        "other_checklist_rows": other_checklist_rows,
-        "other_yes_count": other_yes_count,
-        "other_no_count": other_no_count,
-        "other_na_count": other_na_count,
-        "other_email_results": other_email_results,
+        **other_ctx,
     })
     resp.headers.update(_NO_CACHE)
     return resp

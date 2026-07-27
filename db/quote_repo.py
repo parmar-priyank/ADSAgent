@@ -2,6 +2,7 @@
 db/quote_repo.py — SQLite data layer for quotes, line items, QC versions,
 and the pending-PDF duplicate-confirmation flow.
 """
+import json
 import secrets as _secrets
 
 from db.connection import get_db
@@ -907,6 +908,58 @@ def get_latest_qc_version(quote_id: int, kind: str):
             (quote_id, kind),
         ).fetchone()
     return dict(row) if row else None
+
+
+def get_other_kind_context(quote_id: int, tpl_kind: str, own_email_results: list) -> dict:
+    """Everything the 3 result-page routes (fresh-run checklist_result,
+    user_qc_version_revisit, admin_qc_version_view) need to show the sibling
+    kind's checklist/email data on the same page. Was hand-copied into all
+    three; kept drifting whenever one route got this lookup and another
+    didn't (e.g. a fresh Post-QC run's Confirm page once showed "No Pre-QC
+    run yet" even when a real confirmed Pre-QC version existed, simply
+    because that one route never called this logic at all). One function,
+    one place to fix or extend next time.
+
+    own_email_results: the CALLING version's own already-loaded email
+    results (its own email_results_json, or the payload for a fresh run) —
+    only used to decide whether to borrow the other kind's email data
+    (borrow only when this version has none of its own).
+    """
+    other_kind = "post" if tpl_kind == "pre" else "pre"
+    other_v = get_latest_qc_version(quote_id, other_kind) if quote_id else None
+    other_checklist_rows = None
+    other_yes_count = other_no_count = other_na_count = 0
+    if other_v:
+        try:
+            other_checklist_rows = json.loads(other_v["rows_json"]) if other_v.get("rows_json") else []
+            if not isinstance(other_checklist_rows, list):
+                other_checklist_rows = []
+        except Exception:
+            other_checklist_rows = []
+        other_yes_count = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "Yes")
+        other_no_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "No")
+        other_na_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "N/A")
+
+    other_email_results = None
+    if not own_email_results and other_v:
+        raw_other_email_json = other_v.get("email_results_json") or ""
+        if raw_other_email_json.strip():
+            try:
+                parsed_other_email = json.loads(raw_other_email_json)
+                if isinstance(parsed_other_email, list):
+                    other_email_results = parsed_other_email
+            except Exception:
+                pass
+
+    return {
+        "other_kind": other_kind,
+        "other_version": other_v,
+        "other_checklist_rows": other_checklist_rows,
+        "other_yes_count": other_yes_count,
+        "other_no_count": other_no_count,
+        "other_na_count": other_na_count,
+        "other_email_results": other_email_results,
+    }
 
 
 def get_quote_qc_excel(quote_id: int) -> bytes | None:

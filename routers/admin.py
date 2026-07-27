@@ -782,20 +782,7 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     # either Pre-QC or Post-QC sees both on one page — a 4th tile appears
     # only when that other kind actually has a run; otherwise the page
     # looks exactly like it always has (3 tiles).
-    other_kind = "post" if tpl["kind"] == "pre" else "pre"
-    other_v = db.get_latest_qc_version(v["quote_id"], other_kind)
-    other_checklist_rows = None
-    other_yes_count = other_no_count = other_na_count = 0
-    if other_v:
-        try:
-            other_checklist_rows = json.loads(other_v["rows_json"]) if other_v.get("rows_json") else []
-            if not isinstance(other_checklist_rows, list):
-                other_checklist_rows = []
-        except Exception:
-            other_checklist_rows = []
-        other_yes_count = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "Yes")
-        other_no_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "No")
-        other_na_count  = sum(1 for r in other_checklist_rows if not r.get("is_section") and r.get("status") == "N/A")
+    other_ctx = db.get_other_kind_context(v["quote_id"], tpl["kind"], email_results)
 
     # Full PDF-extracted quote record — the Signed Agreement summary block is
     # view-only here (editing it belongs on the Customer Record page), but
@@ -803,22 +790,10 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     record = db.get_quote(v["quote_id"])
     # Only needed for the Post-QC tile's empty state (who it's assigned to,
     # if no Post-QC run has happened yet).
-    post_qc_assignee = db.get_post_qc_assignee(v["quote_id"]) if other_kind == "post" and not other_v else None
-
-    # Same borrowing rule as the checklist tiles: this version's own email
-    # results win when present; only fall back to the other kind's saved
-    # results when this version has none (e.g. every Post-QC run, which
-    # never collects its own email data by design).
-    other_email_results = None
-    if not email_results and other_v:
-        raw_other_email_json = other_v.get("email_results_json") or ""
-        if raw_other_email_json.strip():
-            try:
-                parsed_other_email = json.loads(raw_other_email_json)
-                if isinstance(parsed_other_email, list):
-                    other_email_results = parsed_other_email
-            except Exception:
-                pass
+    post_qc_assignee = (
+        db.get_post_qc_assignee(v["quote_id"])
+        if other_ctx["other_kind"] == "post" and not other_ctx["other_version"] else None
+    )
 
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
@@ -837,16 +812,10 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
         "preferred_install_date": v.get("preferred_install_date") or "",
         "today": datetime.now().strftime("%Y-%m-%d"),
         "record": record,
-        "other_kind": other_kind,
-        "other_version": other_v,
-        "other_checklist_rows": other_checklist_rows,
-        "other_yes_count": other_yes_count,
-        "other_no_count": other_no_count,
-        "other_na_count": other_na_count,
         "post_qc_assignee": post_qc_assignee,
-        "other_email_results": other_email_results,
         "claude_price_in": CLAUDE_PRICE_PER_M_INPUT,
         "claude_price_out": CLAUDE_PRICE_PER_M_OUTPUT,
+        **other_ctx,
     })
     resp.headers.update(_NO_CACHE)
     return resp
