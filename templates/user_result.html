@@ -212,12 +212,12 @@
 
   <!-- Top action row — only for a user's fresh in-progress run.
        Admin (always is_revisit) and a revisited draft already got their
-       Download Excel button merged into the header row above. -->
+       Download Excel button merged into the header row above.
+       "Upload Another ZIP" lives on the Post-QC Checklist tile itself
+       (beside its Modify link) instead of up here — one less top-of-page
+       button, and the re-run action sits next to the checklist it re-runs. -->
   {% if not is_admin and not is_revisit %}
   <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
-    <button type="button" class="link-btn" onclick="toggleRerun()" id="rerun-toggle-btn" style="font-weight:600;">
-      &#8635; Upload Another ZIP
-    </button>
     <a href="/checklist-download?token={{ dl_token }}" class="link-btn" id="dl-link" style="font-weight:600;">
       &#8595; Download Excel
     </a>
@@ -345,7 +345,12 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
       </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View & modify ›' if can_edit else 'View ›' }}</div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:14px;">
+        <span style="font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View & modify ›' if can_edit else 'View ›' }}</span>
+        {% if not is_admin and not is_revisit %}
+        <span style="font-size:11.5px;font-weight:700;color:#2d7a4a;text-decoration:underline;" onclick="event.stopPropagation();toggleRerun();">&#8635; Upload ZIP</span>
+        {% endif %}
+      </div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">
         {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
@@ -1256,10 +1261,8 @@
   {% if not is_admin and not is_revisit %}
   function toggleRerun() {
     var box  = document.getElementById('rerun-box');
-    var btn  = document.getElementById('rerun-toggle-btn');
     var open = box.style.display === 'none';
     box.style.display = open ? '' : 'none';
-    btn.textContent   = open ? '✕ Cancel' : '↺ Upload Another ZIP';
     if (open) {
       var dz    = document.getElementById('rerun-dropzone');
       var input = document.getElementById('rerun-input');
