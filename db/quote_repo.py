@@ -385,12 +385,13 @@ def get_recent(limit: int | None = 20):
                 FROM qc_versions qv
                 JOIN (
                     SELECT quote_id, COALESCE(kind, 'pre') as kind, MAX(version) as max_version
-                    FROM qc_versions WHERE quote_id IN ({placeholders})
+                    FROM qc_versions WHERE quote_id IN ({placeholders}) AND COALESCE(is_deleted, 0) = 0
                     GROUP BY quote_id, kind
                 ) latest
                   ON latest.quote_id = qv.quote_id
                  AND COALESCE(qv.kind, 'pre') = latest.kind
                  AND qv.version = latest.max_version
+                 AND COALESCE(qv.is_deleted, 0) = 0
                 """,
                 ids,
             ).fetchall()
@@ -755,6 +756,7 @@ def get_qc_analysis_months() -> list:
             "SELECT DISTINCT strftime('%Y-%m', qv.confirmed_at) as ym FROM qc_versions qv "
             "JOIN quotes q ON q.id = qv.quote_id "
             "WHERE COALESCE(qv.status, 'confirmed') = 'confirmed' AND qv.confirmed_at IS NOT NULL "
+            "AND COALESCE(qv.is_deleted, 0) = 0 "
             "AND COALESCE(q.is_deleted, 0) = 0 "
             "ORDER BY ym DESC"
         ).fetchall()
@@ -777,6 +779,7 @@ def get_qc_monthly_stats(year_month: str) -> dict:
             LEFT JOIN users u ON u.id = qv.confirmed_by_user_id
             JOIN quotes q ON q.id = qv.quote_id
             WHERE COALESCE(qv.status, 'confirmed') = 'confirmed'
+              AND COALESCE(qv.is_deleted, 0) = 0
               AND COALESCE(q.is_deleted, 0) = 0
               AND strftime('%Y-%m', qv.confirmed_at) = ?
             ORDER BY qv.confirmed_at DESC
@@ -1030,6 +1033,7 @@ def get_qc_history_by_user(user_id: int) -> list:
             JOIN quotes q ON q.id = qv.quote_id
             WHERE (qv.saved_by_user_id = ? OR qv.confirmed_by_user_id = ?)
               AND COALESCE(q.is_deleted, 0) = 0
+              AND COALESCE(qv.is_deleted, 0) = 0
             ORDER BY COALESCE(qv.confirmed_at, qv.saved_at) DESC
             """,
             (user_id, user_id),
