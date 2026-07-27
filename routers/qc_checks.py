@@ -51,6 +51,7 @@ _PDF_DPI = 100        # 100 DPI is enough for Claude vision and cuts payload to 
 # install/handover packs) run up to ~30 pages, so the cap covers that.
 _PDF_MAX_PAGES = 30
 
+import db.audit_repo as audit
 import db.quote_repo as db
 import db.checklist_repo as tdb
 from db.checklist_repo import store_pending_result, fetch_pending_result
@@ -2267,6 +2268,37 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
         raise HTTPException(500, f"Failed to save: {e}")
 
     return {"ok": True, "yes_count": yes_count, "no_count": no_count, "na_count": na_count}
+
+
+@router.post("/user/qc-version/{version_id}/delete")
+def user_qc_version_delete(request: Request, version_id: int, user=Depends(require_qc_access)):
+    """Let the user who saved/confirmed a QC version delete it themselves —
+    same soft-delete admin_delete_qc_version already offers, same ownership
+    rule user_qc_version_save uses (own it, or be admin). A user deleting
+    their own mistaken/duplicate run shows up in the admin trash immediately
+    since it's the exact same qc_versions row and is_deleted flag."""
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT qv.quote_id, qv.version, qv.template_name, COALESCE(qv.kind, 'pre') as kind,
+                      qv.saved_by_user_id, qv.confirmed_by_user_id,
+                      q.quote_number, q.customer_name
+               FROM qc_versions qv JOIN quotes q ON q.id = qv.quote_id
+               WHERE qv.id = ?""",
+            (version_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "QC version not found.")
+    v = dict(row)
+    if (user.get("role") != "admin"
+            and v.get("saved_by_user_id") != user["id"]
+            and v.get("confirmed_by_user_id") != user["id"]):
+        raise HTTPException(403, "Access denied.")
+
+    db.soft_delete_qc_version(version_id, deleted_by_user_id=user["id"])
+    audit.log_event(request, "qc_version_deleted", username=user["username"], user_id=user["id"],
+                    detail=f"{v['kind']}-QC v{v['version']} ({v.get('template_name') or ''}) for quote "
+                           f"{v.get('quote_number') or v['quote_id']} ({v.get('customer_name') or ''})")
+    return RedirectResponse(url="/user/history", status_code=303)
 
 
 @router.post("/user/qc-version/{version_id}/save-email-only")
