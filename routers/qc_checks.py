@@ -66,6 +66,7 @@ from config import (
     CLAUDE_PRICE_PER_M_INPUT,
     CLAUDE_PRICE_PER_M_OUTPUT,
     MAX_UPLOAD_BYTES,
+    _index_context,
     _NO_CACHE,
     _get_claude,
     _resolve_theme,
@@ -1866,11 +1867,21 @@ def checklist_confirm(
             else:
                 xlsx_bytes = base64.b64decode(payload["xlsx"])
             db.save_qc_excel(record["id"], xlsx_bytes)
-            if version_id.strip():
-                # Editing an existing (revisited) version — update it in place
-                # instead of creating a new one.
+            # A fresh run (no version_id — the field only carries a value on
+            # an explicit revisit/re-run) can still be for a quote+kind that
+            # already has a version, e.g. running Post-QC again from scratch
+            # for a customer already confirmed or draft-saved earlier. Reuse
+            # that version instead of creating a duplicate — same as an
+            # explicit revisit — so History can't accumulate multiple rows
+            # for what a technician experiences as "the same QC run".
+            target_version_id = int(version_id) if version_id.strip() else None
+            if target_version_id is None:
+                existing = db.get_latest_qc_version(record["id"], kind)
+                if existing:
+                    target_version_id = existing["id"]
+            if target_version_id is not None:
                 db.update_qc_version(
-                    version_id=int(version_id),
+                    version_id=target_version_id,
                     xlsx_bytes=xlsx_bytes,
                     rows_json=rows_json,
                     yes_count=yes_count,
@@ -1901,7 +1912,13 @@ def checklist_confirm(
                     output_tokens=output_tokens,
                 )
         except Exception:
-            pass
+            logger.exception("checklist_confirm failed to save quote_id=%s", quote_id)
+            resp = templates.TemplateResponse(request, "user_home.html", _index_context(
+                user=user,
+                error="Something went wrong saving this QC result. Nothing was lost — please try Confirm again.",
+            ))
+            resp.headers.update(_NO_CACHE)
+            return resp
 
     preferred = (record or {}).get("preferred_install_date", "").strip() if record else ""
     install_date = preferred or ((record or {}).get("install_date", "").strip() if record else "")
@@ -1975,11 +1992,25 @@ def checklist_save_draft(
                     pass
             else:
                 xlsx_bytes = base64.b64decode(payload["xlsx"])
-            if version_id.strip():
-                # Editing an existing (revisited) draft — update it in place
-                # instead of creating a new one.
+            # Same reuse-if-one-already-exists rule as checklist_confirm —
+            # see its comment for why. Save Draft is the more common repeat
+            # offender in practice (a technician saving progress multiple
+            # times on the same customer before finally confirming).
+            #
+            # Only reuse an existing DRAFT, never a CONFIRMED one — Save
+            # Draft always writes status='draft', and reusing a confirmed
+            # version here would silently demote a signed-off result back
+            # to draft. A fresh Save Draft on top of an already-confirmed
+            # customer instead creates a new draft alongside it, leaving
+            # the confirmed version untouched.
+            target_version_id = int(version_id) if version_id.strip() else None
+            if target_version_id is None:
+                existing = db.get_latest_qc_version(record["id"], kind)
+                if existing and existing.get("status") == "draft":
+                    target_version_id = existing["id"]
+            if target_version_id is not None:
                 db.update_qc_version(
-                    version_id=int(version_id),
+                    version_id=target_version_id,
                     xlsx_bytes=xlsx_bytes,
                     rows_json=rows_json,
                     yes_count=yes_count,
@@ -2008,7 +2039,13 @@ def checklist_save_draft(
                     output_tokens=output_tokens,
                 )
         except Exception:
-            pass
+            logger.exception("checklist_save_draft failed to save quote_id=%s", quote_id)
+            resp = templates.TemplateResponse(request, "user_home.html", _index_context(
+                user=user,
+                error="Something went wrong saving this draft. Nothing was lost — please try Save Draft again.",
+            ))
+            resp.headers.update(_NO_CACHE)
+            return resp
 
     return RedirectResponse(url="/user/history", status_code=303)
 
