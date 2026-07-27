@@ -47,10 +47,15 @@
       </div>
 
       <div style="flex-shrink:0;">
-        {% if r['post_qc_count'] > 0 %}
+        {% if r['post_qc_status'] == 'confirmed' %}
         <span style="display:inline-flex;align-items:center;gap:4px;background:#2d7a4a;color:#fff;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700;letter-spacing:.3px;">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           Post-QC Done
+        </span>
+        {% elif r['post_qc_status'] == 'draft' %}
+        <span style="display:inline-flex;align-items:center;gap:4px;background:#b45309;color:#fff;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700;letter-spacing:.3px;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Draft Saved
         </span>
         {% else %}
         <span style="font-size:11px;font-weight:700;color:var(--brand);background:var(--brand-glow);border-radius:20px;padding:3px 12px;letter-spacing:.3px;">

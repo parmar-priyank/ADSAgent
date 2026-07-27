@@ -1062,7 +1062,15 @@ def get_post_qc_assignee(quote_id: int):
 
 def get_assigned_quotes_for_user(user_id: int) -> list:
     """Customers assigned to this user for Post-QC, most recently assigned
-    first — the list a Post-QC user sees on their home page."""
+    first — the list a Post-QC user sees on their home page.
+
+    post_qc_count stays for backward compatibility (any caller still
+    checking "> 0"); post_qc_status is the same 3-way convention
+    get_recent() already uses for Customer Records — 'none' (no Post-QC
+    version at all), 'draft' (saved but never confirmed), or 'confirmed'
+    (at least one confirmed version) — 'confirmed' wins over 'draft' if
+    both exist, since a customer can have an old confirmed version plus a
+    newer draft revision in progress."""
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -1078,27 +1086,38 @@ def get_assigned_quotes_for_user(user_id: int) -> list:
         if quotes:
             ids = [q["id"] for q in quotes]
             placeholders = ",".join("?" * len(ids))
-            kind_counts = conn.execute(
-                f"SELECT quote_id, COALESCE(kind, 'pre') as kind, COUNT(*) as cnt "
-                f"FROM qc_versions WHERE quote_id IN ({placeholders}) AND COALESCE(is_deleted, 0) = 0 "
-                f"GROUP BY quote_id, kind",
+            post_versions = conn.execute(
+                f"SELECT quote_id, COALESCE(status, 'confirmed') as status "
+                f"FROM qc_versions WHERE quote_id IN ({placeholders}) "
+                f"AND COALESCE(kind, 'pre') = 'post' AND COALESCE(is_deleted, 0) = 0",
                 ids,
             ).fetchall()
             post_count_map: dict = {}
-            for r in kind_counts:
-                if r["kind"] == "post":
-                    post_count_map[r["quote_id"]] = r["cnt"]
+            post_status_map: dict = {}
+            for r in post_versions:
+                qid = r["quote_id"]
+                post_count_map[qid] = post_count_map.get(qid, 0) + 1
+                if r["status"] == "confirmed":
+                    post_status_map[qid] = "confirmed"
+                elif post_status_map.get(qid) != "confirmed":
+                    post_status_map[qid] = "draft"
             for q in quotes:
                 q["post_qc_count"] = post_count_map.get(q["id"], 0)
+                q["post_qc_status"] = post_status_map.get(q["id"], "none")
     return quotes
 
 
 def get_quotes_pending_post_qc() -> list:
-    """Every customer with a confirmed Pre-QC but no confirmed Post-QC yet,
-    most recently confirmed first — the admin/super-admin view of "what
-    Post-QC work is left", independent of per-user assignment (unlike
-    get_assigned_quotes_for_user, which only shows a technician their own
-    assigned customers)."""
+    """Every customer with a confirmed Pre-QC, most recently confirmed
+    first — the admin/super-admin view of Post-QC work, independent of
+    per-user assignment (unlike get_assigned_quotes_for_user, which only
+    shows a technician their own assigned customers).
+
+    Includes customers whose Post-QC is already done or drafted, not just
+    ones with nothing started — post_qc_status (see
+    get_assigned_quotes_for_user for the 3-way meaning) tells them apart,
+    same as the technician-facing list, since both render through the same
+    template."""
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -1109,12 +1128,6 @@ def get_quotes_pending_post_qc() -> list:
               AND COALESCE(qv.status, 'confirmed') = 'confirmed'
               AND COALESCE(qv.is_deleted, 0) = 0
               AND COALESCE(q.is_deleted, 0) = 0
-              AND q.id NOT IN (
-                  SELECT quote_id FROM qc_versions
-                  WHERE COALESCE(kind, 'pre') = 'post'
-                    AND COALESCE(status, 'confirmed') = 'confirmed'
-                    AND COALESCE(is_deleted, 0) = 0
-              )
             GROUP BY q.id
             ORDER BY pre_confirmed_at DESC
             """
@@ -1122,11 +1135,26 @@ def get_quotes_pending_post_qc() -> list:
         if not rows:
             return []
         quotes = _attach_line_items(conn, [dict(r) for r in rows])
-        # Always 0 by construction (the query already excludes anyone with a
-        # confirmed post version) — set explicitly so the shared template's
-        # r['post_qc_count'] > 0 check has a real value, not a missing key.
+        ids = [q["id"] for q in quotes]
+        placeholders = ",".join("?" * len(ids))
+        post_versions = conn.execute(
+            f"SELECT quote_id, COALESCE(status, 'confirmed') as status "
+            f"FROM qc_versions WHERE quote_id IN ({placeholders}) "
+            f"AND COALESCE(kind, 'pre') = 'post' AND COALESCE(is_deleted, 0) = 0",
+            ids,
+        ).fetchall()
+        post_count_map: dict = {}
+        post_status_map: dict = {}
+        for r in post_versions:
+            qid = r["quote_id"]
+            post_count_map[qid] = post_count_map.get(qid, 0) + 1
+            if r["status"] == "confirmed":
+                post_status_map[qid] = "confirmed"
+            elif post_status_map.get(qid) != "confirmed":
+                post_status_map[qid] = "draft"
         for q in quotes:
-            q["post_qc_count"] = 0
+            q["post_qc_count"] = post_count_map.get(q["id"], 0)
+            q["post_qc_status"] = post_status_map.get(q["id"], "none")
         return quotes
 
 
