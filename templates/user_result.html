@@ -345,12 +345,7 @@
         <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
         <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
       </div>
-      <div style="margin-top:14px;display:flex;align-items:center;gap:14px;">
-        <span style="font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View & modify ›' if can_edit else 'View ›' }}</span>
-        {% if not is_admin and not is_revisit %}
-        <span style="font-size:11.5px;font-weight:700;color:#2d7a4a;text-decoration:underline;" onclick="event.stopPropagation();toggleRerun();">&#8635; Upload ZIP</span>
-        {% endif %}
-      </div>
+      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View & modify ›' if can_edit else 'View ›' }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted);">
         {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
@@ -688,6 +683,12 @@
            title="Re-run this Post-QC checklist against a fresh ZIP — replaces this version's results in place.">
           &#8593; Upload ZIP
         </a>
+        {% endif %}
+        {% if not is_admin and not is_revisit %}
+        <button type="button" class="link-btn" onclick="closeChecklistModal();toggleRerun();" style="font-weight:600;"
+                title="Re-run this checklist against a different ZIP before saving.">
+          &#8635; Upload ZIP
+        </button>
         {% endif %}
         <button onclick="closeChecklistModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;">&times;</button>
       </div>
