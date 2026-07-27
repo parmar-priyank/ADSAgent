@@ -163,11 +163,11 @@
           <span style="color:var(--text2);font-size:12px;">—</span>
           {% endif %}
         </td>
-        <td style="text-align:right;white-space:nowrap;position:relative;" onclick="event.stopPropagation();">
+        <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
           <button type="button" class="link-btn" onclick="toggleRecordActionsMenu(event, {{ r['id'] }})">
             Actions &#9662;
           </button>
-          <div id="record-actions-menu-{{ r['id'] }}" class="record-actions-menu" style="display:none;position:absolute;right:0;top:100%;z-index:20;background:var(--surface);border:1px solid var(--line2);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);min-width:180px;text-align:left;overflow:hidden;">
+          <div id="record-actions-menu-{{ r['id'] }}" class="record-actions-menu" style="display:none;position:fixed;z-index:2000;background:var(--surface);border:1px solid var(--line2);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);min-width:180px;text-align:left;overflow:hidden;">
             {% if r['pre_qc_latest_version_id'] %}
             <form action="/admin/qc-version/{{ r['pre_qc_latest_version_id'] }}/delete" method="post"
                   onsubmit="return confirm('Delete this customer\'s Pre-QC checklist? Post-QC and the customer record are unaffected. This cannot be undone.');">
@@ -246,16 +246,34 @@
   });
 
   // Actions menu — only one open at a time; closes on an outside click.
+  // position:fixed + coordinates computed from the trigger button, rather
+  // than position:absolute inside the table, so the menu isn't clipped by
+  // the table wrapper's overflow-x:auto (that clipping forced scrolling
+  // the table sideways just to see the rest of an open menu).
   function toggleRecordActionsMenu(event, recordId) {
     event.stopPropagation();
     var menu = document.getElementById('record-actions-menu-' + recordId);
     var wasOpen = menu.style.display !== 'none';
     document.querySelectorAll('.record-actions-menu').forEach(function(m) { m.style.display = 'none'; });
-    menu.style.display = wasOpen ? 'none' : 'block';
+    if (wasOpen) return;
+
+    var btnRect = event.currentTarget.getBoundingClientRect();
+    menu.style.display = 'block'; // must be visible to measure its height below
+    var menuHeight = menu.offsetHeight;
+    var spaceBelow = window.innerHeight - btnRect.bottom;
+    var openUpward = spaceBelow < menuHeight + 12 && btnRect.top > menuHeight + 12;
+
+    menu.style.right = '';
+    menu.style.left = Math.min(btnRect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8) + 'px';
+    menu.style.top = openUpward ? '' : (btnRect.bottom + 4) + 'px';
+    menu.style.bottom = openUpward ? (window.innerHeight - btnRect.top + 4) + 'px' : '';
   }
   document.addEventListener('click', function() {
     document.querySelectorAll('.record-actions-menu').forEach(function(m) { m.style.display = 'none'; });
   });
+  window.addEventListener('scroll', function() {
+    document.querySelectorAll('.record-actions-menu').forEach(function(m) { m.style.display = 'none'; });
+  }, true);
 
   var RECORDS_PER_PAGE = 10;
   var recordsCurrentPage = 1;
