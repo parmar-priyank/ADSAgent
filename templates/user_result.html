@@ -109,6 +109,15 @@
       <a href="/checklist-download?token={{ dl_token }}" class="link-btn" id="dl-link" style="font-weight:600;">
         &#8595; Download Excel
       </a>
+      {% if is_admin and revisit_version %}
+      <form action="/admin/qc-version/{{ revisit_version.id }}/delete" method="post"
+            onsubmit="return confirm('Delete this {{ 'Post-QC' if tpl.kind == 'post' else 'Pre-QC' }} run (v{{ revisit_version.version }})? It can be recovered from Deleted Records.');">
+        <button type="submit" title="Delete this {{ 'Post-QC' if tpl.kind == 'post' else 'Pre-QC' }} run"
+                style="padding:6px 12px;font-size:12.5px;font-weight:600;color:#dc2626;background:none;border:1.5px solid rgba(220,38,38,.35);border-radius:8px;cursor:pointer;">
+          &#128465; Delete
+        </button>
+      </form>
+      {% endif %}
     </div>
   </div>
   {% elif tpl.kind == 'post' %}
