@@ -403,22 +403,33 @@ def require_qc_access(request: Request):
     letting both a logged-in user AND a logged-in admin through — same
     checks, same route bodies, same save/history behavior either way.
 
+    Checks the ADMIN cookie first. Both cookies are independent (different
+    names, session_admin/session_user) and can be valid at once in the same
+    browser — e.g. someone who has ever logged into the plain user panel in
+    a tab still carries session_user even while actively working in the
+    admin panel elsewhere. Checking session_user first meant an admin
+    editing a QC version could get a spurious "Access denied" from routes
+    like /user/qc-version/{id}/save, which check role=='admin' explicitly —
+    the stray user cookie silently outranked their real admin session.
+    Admin is the more specific/privileged session, so it wins when both are
+    present.
+
     Does NOT require email_verified for either role. Regular user accounts
     are created by an admin (not self-registered), so there is no signup
     step to confirm — and email-OTP delivery to some domains has proven
     unreliable, so gating the QC flow on it was a real lockout risk.
     """
+    admin_user = _get_admin_session(request)
+    if admin_user and admin_user.get("role") == "admin":
+        fresh = adb.get_user(admin_user["id"])
+        return fresh if fresh else admin_user
+
     user = _get_session(request)
     if user and user.get("role") == "user":
         fresh = adb.get_user(user["id"])
         if fresh and not fresh.get("is_active", 1):
             raise _AuthRedirect("/login?error=Your+account+has+been+deactivated.")
         return fresh if fresh else user
-
-    admin_user = _get_admin_session(request)
-    if admin_user and admin_user.get("role") == "admin":
-        fresh = adb.get_user(admin_user["id"])
-        return fresh if fresh else admin_user
 
     raise _AuthRedirect("/login")
 
