@@ -1858,13 +1858,36 @@ def checklist_confirm(
             payload = _signer.loads(dl_token, max_age=7200)
             if "xlsx_path" in payload:
                 xlsx_path = payload["xlsx_path"]
-                with open(xlsx_path, "rb") as f:
-                    xlsx_bytes = f.read()
-                # Clean up the temp file now that it's been saved to DB
                 try:
-                    os.unlink(xlsx_path)
-                except OSError:
-                    pass
+                    with open(xlsx_path, "rb") as f:
+                        xlsx_bytes = f.read()
+                    # Clean up the temp file now that it's been saved to DB
+                    try:
+                        os.unlink(xlsx_path)
+                    except OSError:
+                        pass
+                except FileNotFoundError:
+                    # See the matching comment in checklist_save_draft — the
+                    # temp xlsx this token pointed at was already cleaned up
+                    # (2-hour TTL), most likely a revisit page left open past
+                    # that window. Rebuild from rows_json instead of failing.
+                    logger.warning(
+                        "checklist_confirm: tmp xlsx missing at %s, rebuilding from rows_json (quote_id=%s)",
+                        xlsx_path, quote_id,
+                    )
+                    _rebuild_rows = json.loads(rows_json) if rows_json else []
+                    _rebuild_filled = {}
+                    for _r in _rebuild_rows:
+                        if not _r.get("is_section") and _r.get("position") is not None:
+                            _rebuild_filled[_r["position"]] = {
+                                "status": _r.get("status", "N/A"),
+                                "remark": _r.get("remark", ""),
+                                "ai_status": _r.get("ai_status", ""),
+                            }
+                    xlsx_bytes = build_xlsx(
+                        _rebuild_rows, filled=_rebuild_filled,
+                        email_results=json.loads(email_results_json) if email_results_json else [],
+                    )
             else:
                 xlsx_bytes = base64.b64decode(payload["xlsx"])
             db.save_qc_excel(record["id"], xlsx_bytes)
@@ -1985,12 +2008,37 @@ def checklist_save_draft(
             payload = _signer.loads(dl_token, max_age=7200)
             if "xlsx_path" in payload:
                 xlsx_path = payload["xlsx_path"]
-                with open(xlsx_path, "rb") as f:
-                    xlsx_bytes = f.read()
                 try:
-                    os.unlink(xlsx_path)
-                except OSError:
-                    pass
+                    with open(xlsx_path, "rb") as f:
+                        xlsx_bytes = f.read()
+                    try:
+                        os.unlink(xlsx_path)
+                    except OSError:
+                        pass
+                except FileNotFoundError:
+                    # The temp xlsx this token pointed at was already cleaned
+                    # up (2-hour TTL, same as the token's own max_age) — e.g.
+                    # a revisit page left open in a tab past that window. The
+                    # actual checklist data is still right here in rows_json,
+                    # so rebuild the Excel from that instead of failing the
+                    # whole save over a missing temp file.
+                    logger.warning(
+                        "checklist_save_draft: tmp xlsx missing at %s, rebuilding from rows_json (quote_id=%s)",
+                        xlsx_path, quote_id,
+                    )
+                    _rebuild_rows = json.loads(rows_json) if rows_json else []
+                    _rebuild_filled = {}
+                    for _r in _rebuild_rows:
+                        if not _r.get("is_section") and _r.get("position") is not None:
+                            _rebuild_filled[_r["position"]] = {
+                                "status": _r.get("status", "N/A"),
+                                "remark": _r.get("remark", ""),
+                                "ai_status": _r.get("ai_status", ""),
+                            }
+                    xlsx_bytes = build_xlsx(
+                        _rebuild_rows, filled=_rebuild_filled,
+                        email_results=json.loads(email_results_json) if email_results_json else [],
+                    )
             else:
                 xlsx_bytes = base64.b64decode(payload["xlsx"])
             # Same reuse-if-one-already-exists rule as checklist_confirm —
