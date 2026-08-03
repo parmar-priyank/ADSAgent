@@ -1234,11 +1234,26 @@ async def upload_zip(
                 claimed.add(fn)
                 entry[1], entry[2] = fn, fd
 
-    # Pre-render every PDF in the ZIP exactly once (cache avoids re-rendering per item)
-    pdf_cache: dict[str, tuple[str, list[bytes]]] = {}
-    for fname, fdata in zip_files.items():
-        if _mime_of(fname, fdata) == "application/pdf":
-            pdf_cache[fname] = _render_pdf(fname, fdata)
+    # Pre-render every REFERENCED PDF in the ZIP exactly once (cache avoids
+    # re-rendering per item), concurrently across threads — same pattern the
+    # AI analysis step below already uses. This used to loop over every file
+    # in the ZIP sequentially and render all of them regardless of whether
+    # any checklist item actually referenced them; rendering (pdfplumber text
+    # extraction + full-page rasterization) is real, blocking CPU work per
+    # PDF, so a ZIP with several unrelated/unreferenced PDFs (or just a few
+    # multi-page ones) made every upload slow before any AI call even
+    # started. Now only the files item_resolved actually points at get
+    # rendered, and all of them render in parallel instead of one at a time.
+    referenced_pdf_names = sorted({
+        zname
+        for resolved in item_resolved.values()
+        for _, zname, zdata in resolved
+        if zname is not None and zdata is not None and _mime_of(zname, zdata) == "application/pdf"
+    })
+    pdf_render_results = await asyncio.gather(
+        *[asyncio.to_thread(_render_pdf, fname, zip_files[fname]) for fname in referenced_pdf_names]
+    )
+    pdf_cache: dict[str, tuple[str, list[bytes]]] = dict(zip(referenced_pdf_names, pdf_render_results))
 
     def _analyse_eml_item(eml_parts: list, context: str) -> dict:
         """
