@@ -41,6 +41,11 @@ try:
 except ImportError:
     pass
 
+try:
+    import docx as _docx   # python-docx — optional; .docx refs report a clear error if missing
+except ImportError:
+    _docx = None
+
 _CLAUDE_IMAGE_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 _PDF_DPI = 100        # 100 DPI is enough for Claude vision and cuts payload to 1/4
@@ -129,6 +134,37 @@ def _render_pdf(fname: str, fdata: bytes) -> tuple[str, list[bytes]]:
     return text, pages
 
 
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_DOC_MIME  = "application/msword"   # legacy Word 97-2003; unreadable, but worth naming
+_WORD_MIMES = (_DOCX_MIME, _DOC_MIME)
+
+
+def _extract_docx_text(fname: str, fdata: bytes) -> str:
+    """Return the readable text of a .docx (paragraphs + table cells).
+
+    Claude's API takes images and PDFs, never .docx, so a Word file has to be
+    reduced to text before it can be checked at all. Table cells are included
+    because solar paperwork puts most of its real content (model numbers,
+    serials, quantities) in tables, which paragraph text alone would miss.
+
+    Note this is text only — images embedded in the Word file (signatures,
+    photos, logos) are NOT visible to Claude this way, so an item asking
+    "is it signed?" can't be answered from a .docx the way it can from a PDF
+    or a photo. Raises on a corrupt/unreadable file so the caller can report
+    a specific reason instead of silently checking an empty document.
+    """
+    if _docx is None:
+        raise RuntimeError("python-docx is not installed on the server")
+    document = _docx.Document(io.BytesIO(fdata))
+    parts: list[str] = [p.text.strip() for p in document.paragraphs if p.text.strip()]
+    for table in document.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells]
+            if any(cells):
+                parts.append(" | ".join(cells))
+    return "\n".join(parts)
+
+
 def _mime_of(fname: str, fbytes: bytes) -> str:
     mime, _ = mimetypes.guess_type(fname)
     if mime:
@@ -145,6 +181,16 @@ def _mime_of(fname: str, fbytes: bytes) -> str:
         return "image/webp"
     if fbytes[:2] == b"BM":
         return "image/bmp"
+    # A .docx is a ZIP containing word/document.xml — checked last so a real
+    # ZIP archive isn't mistaken for a Word file, and only reached when the
+    # filename gave us nothing (mimetypes already handles a normal .docx).
+    if fbytes[:4] == b"PK\x03\x04":
+        try:
+            with zipmod.ZipFile(io.BytesIO(fbytes)) as _zf:
+                if "word/document.xml" in _zf.namelist():
+                    return _DOCX_MIME
+        except Exception:
+            pass
     return "application/octet-stream"
 
 
@@ -525,6 +571,21 @@ def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf
                 for page_png in pages[:_PDF_MAX_PAGES]:
                     b64 = base64.standard_b64encode(page_png).decode()
                     user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
+            elif mime in _WORD_MIMES:
+                # Text only — see _extract_docx_text; images inside the Word
+                # file (signatures, photos) are not visible to Claude here.
+                if fname.lower().endswith(".doc"):
+                    return {"status": "N/A", "remark":
+                            f"'{fname}' is a legacy Word 97-2003 file, which cannot be read. Re-save it as .docx or PDF."}
+                if _docx is None:
+                    return {"status": "N/A", "remark":
+                            f"Could not read '{fname}'. Install python-docx on the server (pip install python-docx)."}
+                try:
+                    docx_text = _extract_docx_text(fname, fdata)
+                except Exception as exc:
+                    return {"status": "N/A", "remark": f"Could not read Word document '{fname}': {exc}"}
+                if docx_text.strip():
+                    user_content.append({"type": "text", "text": f"Document text ({fname}):{docx_text[:8000]}"})
             elif mime.startswith("image/"):
                 safe = _claude_safe_image(fdata, mime)
                 if safe is None:
@@ -1171,6 +1232,8 @@ async def upload_zip(
             return "eml"
         if ext == ".pdf":
             return "pdf"
+        if ext in (".docx", ".doc"):
+            return "docx"
         if ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
             return "image"
         return "other"
@@ -1181,6 +1244,8 @@ async def upload_zip(
         mime = _mime_of(fname, fdata)
         if mime == "application/pdf":
             return "pdf"
+        if mime in _WORD_MIMES:
+            return "docx"
         if mime.startswith("image/"):
             return "image"
         return "other"
@@ -1327,7 +1392,7 @@ async def upload_zip(
         context = f"Checklist item: {item['text']}\nRequirement: {prompt_text}{ref_section}{missing_note}"
 
         try:
-            eml_parts, pdf_parts, image_parts, unsupported = [], [], [], []
+            eml_parts, pdf_parts, image_parts, docx_parts, unsupported = [], [], [], [], []
             for fname, fdata in resolved:
                 if fname.lower().endswith(".eml"):
                     eml_parts.append((fname, fdata))
@@ -1335,6 +1400,8 @@ async def upload_zip(
                 mime = _mime_of(fname, fdata)
                 if mime == "application/pdf":
                     pdf_parts.append((fname, fdata))
+                elif mime in _WORD_MIMES:
+                    docx_parts.append((fname, fdata))
                 elif mime.startswith("image/"):
                     image_parts.append((fname, fdata, mime))
                 else:
@@ -1356,6 +1423,23 @@ async def upload_zip(
                 if not cached_pages and not cached_text.strip():
                     if _fitz is None:
                         return {"status": "N/A", "remark": f"Could not render '{fname}' as image. Install PyMuPDF (pip install pymupdf)."}
+
+            # Word documents contribute text only (see _extract_docx_text) —
+            # folded into the same block the PDF text uses, so an item whose
+            # reference is a .docx takes the existing text-only Claude path.
+            for fname, fdata in docx_parts:
+                if fname.lower().endswith(".doc"):
+                    return {"status": "N/A", "remark":
+                            f"'{fname}' is a legacy Word 97-2003 file, which cannot be read. Re-save it as .docx or PDF."}
+                if _docx is None:
+                    return {"status": "N/A", "remark":
+                            f"Could not read '{fname}'. Install python-docx on the server (pip install python-docx)."}
+                try:
+                    docx_text = _extract_docx_text(fname, fdata)
+                except Exception as exc:
+                    return {"status": "N/A", "remark": f"Could not read Word document '{fname}': {exc}"}
+                if docx_text.strip():
+                    combined_pdf_text += f"\n\n--- {fname} ---\n{docx_text}"
 
             user_content = [{"type": "text", "text": context}]
             if combined_pdf_text.strip():
