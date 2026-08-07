@@ -59,7 +59,7 @@ _PDF_MAX_PAGES = 30
 import db.audit_repo as audit
 import db.quote_repo as db
 import db.checklist_repo as tdb
-from db.checklist_repo import store_pending_result, fetch_pending_result
+from db.checklist_repo import store_pending_result, fetch_pending_result, PENDING_TTL
 from reports.xlsx_builder import build_xlsx
 from db.connection import get_db
 
@@ -1842,12 +1842,18 @@ async def checklist_save_edits(request: Request, _auth=Depends(require_qc_access
     email_results = body.get("email_results", [])
 
     tpl_name = tpl.get("name", "checklist")
+    prev_xlsx_path = None
     try:
-        orig_payload = _signer.loads(orig_token, max_age=7200)
+        orig_payload = _signer.loads(orig_token, max_age=PENDING_TTL)
         tpl_name = orig_payload.get("name", tpl_name)
         # Preserve email_results from original token if not supplied by client
         if not email_results:
             email_results = orig_payload.get("email_results", [])
+        # Remember the file this token pointed at so it can be removed once
+        # its replacement is safely written (below) — every Save Changes
+        # mints a new temp file, and without this the previous one was left
+        # behind forever. A long editing session leaked one file per click.
+        prev_xlsx_path = orig_payload.get("xlsx_path")
     except Exception:
         pass
 
@@ -1881,13 +1887,25 @@ async def checklist_save_edits(request: Request, _auth=Depends(require_qc_access
         xlsx_tmp.close()
 
     new_dl_token = _signer.dumps({"xlsx_path": xlsx_tmp.name, "name": tpl_name})
+
+    # Only now that the replacement exists on disk is it safe to drop the
+    # previous one — deleting first would leave a window where a crash mid-
+    # write loses both. Guard the path so a forged/rewritten token can't
+    # point this at an unrelated file outside tmp_xlsx/.
+    if prev_xlsx_path and prev_xlsx_path != xlsx_tmp.name:
+        try:
+            if os.path.dirname(os.path.abspath(prev_xlsx_path)) == os.path.abspath(xlsx_dir):
+                os.unlink(prev_xlsx_path)
+        except OSError:
+            pass
+
     return {"dl_token": new_dl_token}
 
 
 @router.get("/checklist-download", response_class=Response)
 def checklist_download(token: str, _auth=Depends(require_qc_access)):
     try:
-        payload = _signer.loads(token, max_age=7200)
+        payload = _signer.loads(token, max_age=PENDING_TTL)
     except BadSignature:
         raise HTTPException(400, "Invalid or expired download token.")
 
@@ -1954,7 +1972,7 @@ def checklist_confirm(
 
     if dl_token and record:
         try:
-            payload = _signer.loads(dl_token, max_age=7200)
+            payload = _signer.loads(dl_token, max_age=PENDING_TTL)
             if "xlsx_path" in payload:
                 xlsx_path = payload["xlsx_path"]
                 try:
@@ -2104,7 +2122,7 @@ def checklist_save_draft(
 
     if dl_token and record:
         try:
-            payload = _signer.loads(dl_token, max_age=7200)
+            payload = _signer.loads(dl_token, max_age=PENDING_TTL)
             if "xlsx_path" in payload:
                 xlsx_path = payload["xlsx_path"]
                 try:

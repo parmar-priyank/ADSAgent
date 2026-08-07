@@ -7,6 +7,19 @@ import time
 
 from db.connection import get_db
 
+# How long a pending result / download token stays valid. Was 2 hours, which
+# a real QC session routinely outlives — open the result page, work through a
+# long checklist, break for lunch, then click Save Draft — and the token
+# expiring mid-session is not recoverable by the user.
+PENDING_TTL = 8 * 3600
+
+# The temp .xlsx files those tokens point at are swept on age. Deliberately
+# kept LONGER than PENDING_TTL: a file must never be deleted while a token
+# that references it is still valid, or the save falls back to rebuilding
+# from rows_json (works, but logs a warning every time). The extra hour is
+# slack for a request that starts just before the token expires.
+TMP_XLSX_TTL = PENDING_TTL + 3600
+
 
 def init_templates_db():
     with get_db() as conn:
@@ -329,7 +342,7 @@ def backfill_prompts():
             )
 
 
-def _cleanup_tmp_xlsx(ttl: int = 7200):
+def _cleanup_tmp_xlsx(ttl: int = TMP_XLSX_TTL):
     """Delete xlsx temp files older than ttl seconds from tmp_xlsx/."""
     import os
     xlsx_dir = os.path.join(os.path.dirname(__file__), "..", "tmp_xlsx")
@@ -345,7 +358,7 @@ def _cleanup_tmp_xlsx(ttl: int = 7200):
             pass
 
 
-def store_pending_result(payload: dict, ttl: int = 7200, user_id: int = None) -> str:
+def store_pending_result(payload: dict, ttl: int = PENDING_TTL, user_id: int = None) -> str:
     """Store result payload in DB, return a short random token. user_id (when
     given) lets the owner find this result again via
     get_latest_pending_result_for_user if they lose the token — e.g. a
@@ -367,7 +380,7 @@ def store_pending_result(payload: dict, ttl: int = 7200, user_id: int = None) ->
     return token
 
 
-def get_latest_pending_result_token(user_id: int, ttl: int = 7200) -> str | None:
+def get_latest_pending_result_token(user_id: int, ttl: int = PENDING_TTL) -> str | None:
     """Find the most recent still-live pending result token for this user —
     used to route them back to an already-computed result after a session
     expiry/crash, instead of making them re-upload and re-pay for AI analysis
@@ -381,7 +394,7 @@ def get_latest_pending_result_token(user_id: int, ttl: int = 7200) -> str | None
     return row["token"] if row else None
 
 
-def fetch_pending_result(token: str, ttl: int = 7200) -> dict | None:
+def fetch_pending_result(token: str, ttl: int = PENDING_TTL) -> dict | None:
     """Fetch and delete a pending result by token. Returns None if expired/missing."""
     with get_db() as conn:
         row = conn.execute(
