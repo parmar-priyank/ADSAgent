@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 import mimetypes
 import os
 import re
+import time
 import zipfile as zipmod
 from datetime import datetime
 
@@ -1115,7 +1116,15 @@ async def upload_zip(
         raise HTTPException(404, "Template not found.")
     items = tdb.get_items(template_id)
 
+    # Phase timings for this run. Without these there was no way to tell
+    # whether a slow upload was the AI calls, PDF rendering, or the upload
+    # itself — the whole thing was one opaque wait. Logged as a single line
+    # at the end so a slow run can be diagnosed from the journal alone.
+    _t_start = time.perf_counter()
+    _timings: dict[str, float] = {}
+
     data = await zip_file.read()
+    _timings["upload"] = time.perf_counter() - _t_start
 
     def _qc_error(error: str):
         saved = tdb.list_templates(kind=kind)
@@ -1137,6 +1146,7 @@ async def upload_zip(
     _ZIP_ENTRY_MAX = 500 * 1024 * 1024
     zip_files: dict[str, bytes] = {}
     duplicate_basenames: dict[str, list[str]] = {}
+    _t_unzip = time.perf_counter()
     try:
         with zipmod.ZipFile(io.BytesIO(data)) as zf:
             total_uncompressed = sum(e.file_size for e in zf.infolist())
@@ -1159,6 +1169,7 @@ async def upload_zip(
                 zip_files[key] = zf.read(name)
     except zipmod.BadZipFile:
         return _qc_error("Uploaded file is not a valid ZIP archive.")
+    _timings["unzip"] = time.perf_counter() - _t_unzip
 
     if duplicate_basenames:
         lines = "; ".join(
@@ -1346,9 +1357,11 @@ async def upload_zip(
     # threads win nothing here and would only compete with the API calls for
     # the GIL. The Claude calls are the opposite — blocked on the network —
     # which is why only those were given a bigger pool.
+    _t_pdf = time.perf_counter()
     pdf_render_results = await asyncio.gather(
         *[asyncio.to_thread(_render_pdf, fname, zip_files[fname]) for fname in referenced_pdf_names]
     )
+    _timings["pdf_render"] = time.perf_counter() - _t_pdf
     pdf_cache: dict[str, tuple[str, list[bytes]]] = dict(zip(referenced_pdf_names, pdf_render_results))
 
     def _analyse_eml_item(eml_parts: list, context: str) -> dict:
@@ -1593,6 +1606,7 @@ async def upload_zip(
     # pass below run one after the other, so a single semaphore keeps the
     # total in-flight Claude calls at CLAUDE_MAX_CONCURRENCY throughout.
     _claude_sem = asyncio.Semaphore(CLAUDE_MAX_CONCURRENCY)
+    _t_ai = time.perf_counter()
     try:
         batch_results_by_index: dict[int, dict] = {}
         if batched_item_indices:
@@ -1619,6 +1633,7 @@ async def upload_zip(
         results = [results_by_index[i] for i, _ in non_section]
     finally:
         _active_jobs.discard(uid)
+        _timings["ai"] = time.perf_counter() - _t_ai
 
     # Fold in this quote's Verify Email token spend (if any) and consume it —
     # read from the DB's running total, not the submitted form fields, so a
@@ -1685,8 +1700,26 @@ async def upload_zip(
         "address_label":  tpl.get("address_label"),
         "job_label":      tpl.get("job_label"),
     }
+    _t_xlsx = time.perf_counter()
     xlsx_blob = build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled,
                            email_results=email_results)
+    _timings["xlsx"] = time.perf_counter() - _t_xlsx
+
+    # One line per run showing where the time actually went. "other" is
+    # everything not covered by a named phase (file matching, DB work,
+    # response building) so the parts always add up to the total.
+    _total = time.perf_counter() - _t_start
+    _named = sum(_timings.values())
+    logger.info(
+        "checklist run done: total=%.1fs (upload=%.1f unzip=%.1f pdf_render=%.1f "
+        "ai=%.1f xlsx=%.1f other=%.1f) items=%d ai_items=%d pdfs=%d zip=%.1fMB "
+        "concurrency=%d quote_id=%s kind=%s",
+        _total, _timings.get("upload", 0), _timings.get("unzip", 0),
+        _timings.get("pdf_render", 0), _timings.get("ai", 0),
+        _timings.get("xlsx", 0), max(0.0, _total - _named),
+        len(items), len(non_section), len(referenced_pdf_names),
+        len(data) / 1024 / 1024, CLAUDE_MAX_CONCURRENCY, quote_id, kind,
+    )
 
     if target_version_id is not None:
         # Admin "Upload ZIP" re-run against an existing Post-QC version —
