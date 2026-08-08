@@ -2405,6 +2405,15 @@ def user_qc_version_revisit(request: Request, version_id: int, user=Depends(requ
         "today": datetime.now().strftime("%Y-%m-%d"),
         "record": record,
         "can_edit": can_edit,
+        # The Save Draft / Confirm forms carry these as hidden fields, and
+        # whatever they post is written straight to the version. Omitting
+        # them here left the template falling back to `| default(0)`, so
+        # reopening a saved draft and confirming it wrote 0 over the token
+        # counts the original run had recorded — the run's real cost, lost
+        # at the moment it was confirmed. Every August 2026 confirmed
+        # version shows exactly this: tokens stored as 0, not NULL.
+        "input_tokens": v.get("input_tokens") or 0,
+        "output_tokens": v.get("output_tokens") or 0,
         **other_ctx,
     })
     resp.headers.update(_NO_CACHE)
