@@ -71,6 +71,22 @@ CLAUDE_MODEL         = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 CLAUDE_PRICE_PER_M_INPUT  = float(os.environ.get("CLAUDE_PRICE_PER_M_INPUT", "2.0"))
 CLAUDE_PRICE_PER_M_OUTPUT = float(os.environ.get("CLAUDE_PRICE_PER_M_OUTPUT", "10.0"))
 
+# How many Claude calls a single checklist run may have in flight at once.
+#
+# A checklist run fans every item out with asyncio.to_thread, which uses the
+# default executor — capped at min(32, cpu_count + 4), i.e. only 6 threads on
+# a 2-core box. The real STC template has 49 items that call Claude, so those
+# 49 calls were forced through 6 slots: ~9 sequential rounds. Each vision call
+# takes seconds, which is why a ZIP run felt slow while the CPU sat idle —
+# the threads are blocked on the network, not computing.
+#
+# Raising this is nearly free (a blocked thread costs a stack, not CPU), but
+# it is capped rather than unbounded: fire all 49 at once and Anthropic
+# answers with 429 rate-limit errors, which would turn a slow run into a
+# failing one. 12 is a deliberate middle ground — a large speedup while
+# staying well inside normal rate limits. Tune via .env without a code change.
+CLAUDE_MAX_CONCURRENCY = max(1, int(os.environ.get("CLAUDE_MAX_CONCURRENCY", "12")))
+
 
 def claude_cost_usd(input_tokens: int, output_tokens: int) -> float:
     """Estimated USD cost for a token count, at the rate configured above."""

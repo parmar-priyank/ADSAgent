@@ -22,6 +22,7 @@ import base64
 import io
 import logging
 import json
+from concurrent.futures import ThreadPoolExecutor
 import mimetypes
 import os
 import re
@@ -68,6 +69,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from itsdangerous import BadSignature
 
 from config import (
+    CLAUDE_MAX_CONCURRENCY,
     CLAUDE_MODEL,
     CLAUDE_PRICE_PER_M_INPUT,
     CLAUDE_PRICE_PER_M_OUTPUT,
@@ -90,6 +92,27 @@ logger = logging.getLogger(__name__)
 # on the same signed tokens. Each worker process has its own set, which
 # is fine — jobs from the same user can land on different workers safely.
 _active_jobs: set[int] = set()
+
+# asyncio.to_thread always uses the loop's DEFAULT executor, which is capped
+# at min(32, cpu_count + 4) — 6 threads on a 2-core droplet. That cap, not
+# CPU or memory, is what made a 49-item checklist slow: the calls just queued.
+# These helpers run the same work on a dedicated pool sized to
+# CLAUDE_MAX_CONCURRENCY instead, with a semaphore so the ceiling is enforced
+# rather than merely implied by the pool size.
+_qc_executor = ThreadPoolExecutor(
+    max_workers=CLAUDE_MAX_CONCURRENCY,
+    thread_name_prefix="qc-claude",
+)
+
+
+def _bounded_gather(sem: asyncio.Semaphore, fn, *args):
+    """Run a blocking fn on the QC pool, holding a concurrency slot."""
+    async def _runner():
+        async with sem:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(_qc_executor, fn, *args)
+    return _runner()
+
 
 QC_SYSTEM = (
     "You are a QC document checker. "
@@ -819,9 +842,12 @@ async def email_verify_post(
         noun = "email" if len(eml_files) == 1 else "emails"
         return _err(f"No attachments found in the uploaded {noun}. Please check the .eml file(s).")
 
-    # Analyse all attachments (across all emails) concurrently
+    # Analyse all attachments (across all emails) concurrently, capped at
+    # CLAUDE_MAX_CONCURRENCY — an email with many attachments would otherwise
+    # queue behind the 6-thread default executor exactly like a checklist run.
+    _eml_sem = asyncio.Semaphore(CLAUDE_MAX_CONCURRENCY)
     analysed = await asyncio.gather(
-        *[asyncio.to_thread(_match_attachment_with_claude, client, att, reference_text)
+        *[_bounded_gather(_eml_sem, _match_attachment_with_claude, client, att, reference_text)
           for _, att in all_attachments]
     )
     # Tokens actually spent by THIS upload round, added to the quote's
@@ -1315,6 +1341,11 @@ async def upload_zip(
         for _, zname, zdata in resolved
         if zname is not None and zdata is not None and _mime_of(zname, zdata) == "application/pdf"
     })
+    # Deliberately still on the DEFAULT executor, not the larger QC pool the
+    # Claude calls use. Rendering is CPU-bound, so on a 2-core box extra
+    # threads win nothing here and would only compete with the API calls for
+    # the GIL. The Claude calls are the opposite — blocked on the network —
+    # which is why only those were given a bigger pool.
     pdf_render_results = await asyncio.gather(
         *[asyncio.to_thread(_render_pdf, fname, zip_files[fname]) for fname in referenced_pdf_names]
     )
@@ -1558,6 +1589,10 @@ async def upload_zip(
 
     _active_jobs.add(uid)
     run_input_tokens = run_output_tokens = 0
+    # One shared budget for this whole run: the batch pass and the per-item
+    # pass below run one after the other, so a single semaphore keeps the
+    # total in-flight Claude calls at CLAUDE_MAX_CONCURRENCY throughout.
+    _claude_sem = asyncio.Semaphore(CLAUDE_MAX_CONCURRENCY)
     try:
         batch_results_by_index: dict[int, dict] = {}
         if batched_item_indices:
@@ -1565,7 +1600,7 @@ async def upload_zip(
                 (zname, idxs) for zname, idxs in batch_groups.items() if len(idxs) >= 2
             ]
             batch_outcomes = await asyncio.gather(
-                *[asyncio.to_thread(_run_batch, zname, idxs) for zname, idxs in batch_jobs]
+                *[_bounded_gather(_claude_sem, _run_batch, zname, idxs) for zname, idxs in batch_jobs]
             )
             for outcome, batch_in, batch_out in batch_outcomes:
                 batch_results_by_index.update(outcome)
@@ -1574,7 +1609,7 @@ async def upload_zip(
 
         remaining = [(i, item) for i, item in non_section if i not in batched_item_indices]
         remaining_results = await asyncio.gather(
-            *[asyncio.to_thread(_analyse_item, i, item) for i, item in remaining]
+            *[_bounded_gather(_claude_sem, _analyse_item, i, item) for i, item in remaining]
         )
         for r in remaining_results:
             run_input_tokens  += r.get("_input_tokens", 0) or 0
@@ -2576,8 +2611,9 @@ async def user_qc_version_add_email(
     reference_text = _build_reference_text(v["quote_id"])
     client = _get_claude()
 
+    _eml_sem = asyncio.Semaphore(CLAUDE_MAX_CONCURRENCY)
     analysed = await asyncio.gather(
-        *[asyncio.to_thread(_match_attachment_with_claude, client, att, reference_text)
+        *[_bounded_gather(_eml_sem, _match_attachment_with_claude, client, att, reference_text)
           for att in attachments]
     )
 
