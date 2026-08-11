@@ -375,8 +375,16 @@ def store_pending_result(payload: dict, ttl: int = PENDING_TTL, user_id: int = N
             "DELETE FROM pending_results WHERE created_at < ?",
             (int(time.time()) - ttl,),
         )
-    # Clean up orphaned xlsx temp files at the same time
-    _cleanup_tmp_xlsx(ttl)
+    # Clean up orphaned xlsx temp files at the same time.
+    #
+    # Deliberately NOT passing `ttl` here. That argument is the PENDING
+    # RESULT lifetime; the temp files have their own, longer one. Passing it
+    # swept files at exactly the token lifetime, which reopened the very race
+    # TMP_XLSX_TTL exists to close: a token still valid, its file already
+    # gone. That produced repeated "tmp xlsx missing, rebuilding from
+    # rows_json" warnings even after TMP_XLSX_TTL was introduced, because the
+    # constant was defined but never actually reached the sweep.
+    _cleanup_tmp_xlsx()
     return token
 
 
