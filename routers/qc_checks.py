@@ -163,6 +163,74 @@ _DOC_MIME  = "application/msword"   # legacy Word 97-2003; unreadable, but worth
 _WORD_MIMES = (_DOCX_MIME, _DOC_MIME)
 
 
+def _discard_tmp_xlsx(xlsx_path: str | None) -> None:
+    """Delete a temp workbook once nothing needs it. Never raises.
+
+    Missing is an expected outcome, not an error — the file may already have
+    been swept, and nothing depends on it now that saves build from rows.
+    The path is constrained to tmp_xlsx/ so a rewritten token cannot aim this
+    at an unrelated file.
+    """
+    if not xlsx_path:
+        return
+    try:
+        xlsx_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tmp_xlsx"))
+        if os.path.dirname(os.path.abspath(xlsx_path)) != xlsx_dir:
+            return
+        os.unlink(xlsx_path)
+    except OSError:
+        pass
+
+
+def _xlsx_from_rows(rows_json: str, email_results_json: str, payload: dict) -> bytes:
+    """Build the QC Excel from the submitted rows — the single source of truth.
+
+    Every save route needs the workbook bytes. Two of them used to READ those
+    bytes back from a temp file on disk, which made a save depend on that file
+    still existing. It repeatedly did not (its lifetime is finite, the user's
+    editing session is not), and each fix for that was another timeout tweak.
+
+    The data needed to rebuild is already in the request: rows_json carries
+    every verdict and remark, and the signed token carries the header labels
+    and footer note. So the file is never actually required — it is at best a
+    cache. Building from rows here removes the dependency entirely rather than
+    trying to keep a temp file alive long enough, which is why this is the
+    permanent fix and not another TTL adjustment.
+
+    Three other save routes (user_qc_version_save, save-email-only,
+    add-email) already worked this way and were never affected by any of it.
+    """
+    try:
+        rows = json.loads(rows_json) if rows_json else []
+        if not isinstance(rows, list):
+            rows = []
+    except (ValueError, TypeError):
+        rows = []
+
+    try:
+        email_results = json.loads(email_results_json) if email_results_json else []
+        if not isinstance(email_results, list):
+            email_results = []
+    except (ValueError, TypeError):
+        email_results = []
+
+    filled: dict = {}
+    for r in rows:
+        if not r.get("is_section") and r.get("position") is not None:
+            filled[r["position"]] = {
+                "status": r.get("status", "N/A"),
+                "remark": r.get("remark", ""),
+                "ai_status": r.get("ai_status", ""),
+            }
+
+    # Header labels/note come from the signed token. Older tokens minted
+    # before they were added carry neither, so fall back to build_xlsx's own
+    # defaults rather than failing a save over a cosmetic label.
+    headers = payload.get("headers") or {}
+    note_text = payload.get("note_text") or ""
+    return build_xlsx(rows, headers, note_text, filled=filled, email_results=email_results)
+
+
 def _extract_docx_text(fname: str, fdata: bytes) -> str:
     """Return the readable text of a .docx (paragraphs + table cells).
 
@@ -1757,7 +1825,12 @@ async def upload_zip(
     finally:
         xlsx_tmp.close()
 
-    dl_token   = _signer.dumps({"xlsx_path": xlsx_tmp.name, "name": tpl["name"]})
+    dl_token   = _signer.dumps({
+        "xlsx_path": xlsx_tmp.name,
+        "name": tpl["name"],
+        "headers": headers,
+        "note_text": tpl.get("note_text", ""),
+    })
     tpl_safe   = {k: v for k, v in tpl.items() if not isinstance(v, (bytes, bytearray))}
     yes_count  = sum(1 for r in checklist_rows if r.get("status") == "Yes")
     no_count   = sum(1 for r in checklist_rows if r.get("status") == "No")
@@ -1954,7 +2027,16 @@ async def checklist_save_edits(request: Request, _auth=Depends(require_qc_access
     finally:
         xlsx_tmp.close()
 
-    new_dl_token = _signer.dumps({"xlsx_path": xlsx_tmp.name, "name": tpl_name})
+    # Carry the header labels and footer note in the token itself, not just
+    # the file path. A save must be able to rebuild a byte-identical Excel
+    # from the token alone — see _xlsx_from_rows. Without these, a rebuild
+    # silently dropped the customer/address/job labels and the note.
+    new_dl_token = _signer.dumps({
+        "xlsx_path": xlsx_tmp.name,
+        "name": tpl_name,
+        "headers": headers,
+        "note_text": note_text,
+    })
 
     # Only now that the replacement exists on disk is it safe to drop the
     # previous one — deleting first would leave a window where a crash mid-
@@ -1981,7 +2063,17 @@ def checklist_download(token: str, _auth=Depends(require_qc_access)):
     if "xlsx_path" in payload:
         xlsx_path = payload["xlsx_path"]
         if not os.path.isfile(xlsx_path):
-            raise HTTPException(410, "Download file has expired. Please re-run the checklist.")
+            # Saving no longer depends on this file (see _xlsx_from_rows), but
+            # a plain GET has no rows to rebuild from, so the download itself
+            # still needs it. Don't tell the user to re-run the checklist —
+            # that spends real AI budget to recreate a cache file. Saving the
+            # version and downloading it from the record is free.
+            raise HTTPException(
+                410,
+                "This download link has expired. Your checklist itself is safe — "
+                "save or confirm it, then download the Excel from the customer's "
+                "record. There is no need to re-run the checklist.",
+            )
         with open(xlsx_path, "rb") as f:
             xlsx_blob = f.read()
     else:
@@ -2041,40 +2133,18 @@ def checklist_confirm(
     if dl_token and record:
         try:
             payload = _signer.loads(dl_token, max_age=PENDING_TTL)
-            if "xlsx_path" in payload:
-                xlsx_path = payload["xlsx_path"]
-                try:
-                    with open(xlsx_path, "rb") as f:
-                        xlsx_bytes = f.read()
-                    # Clean up the temp file now that it's been saved to DB
-                    try:
-                        os.unlink(xlsx_path)
-                    except OSError:
-                        pass
-                except FileNotFoundError:
-                    # See the matching comment in checklist_save_draft — the
-                    # temp xlsx this token pointed at was already cleaned up
-                    # (2-hour TTL), most likely a revisit page left open past
-                    # that window. Rebuild from rows_json instead of failing.
-                    logger.warning(
-                        "checklist_confirm: tmp xlsx missing at %s, rebuilding from rows_json (quote_id=%s)",
-                        xlsx_path, quote_id,
-                    )
-                    _rebuild_rows = json.loads(rows_json) if rows_json else []
-                    _rebuild_filled = {}
-                    for _r in _rebuild_rows:
-                        if not _r.get("is_section") and _r.get("position") is not None:
-                            _rebuild_filled[_r["position"]] = {
-                                "status": _r.get("status", "N/A"),
-                                "remark": _r.get("remark", ""),
-                                "ai_status": _r.get("ai_status", ""),
-                            }
-                    xlsx_bytes = build_xlsx(
-                        _rebuild_rows, filled=_rebuild_filled,
-                        email_results=json.loads(email_results_json) if email_results_json else [],
-                    )
-            else:
+            # Always build from the submitted rows. The temp file is not
+            # consulted at all, so its lifetime can no longer affect a save
+            # (see _xlsx_from_rows). Legacy tokens that inlined the workbook
+            # are still honoured for anything mid-flight during a deploy.
+            if "xlsx" in payload:
                 xlsx_bytes = base64.b64decode(payload["xlsx"])
+            else:
+                xlsx_bytes = _xlsx_from_rows(rows_json, email_results_json, payload)
+            # The temp file has served its purpose (the Download Excel link
+            # on the page just left); drop it now rather than waiting for the
+            # sweep. Missing is fine — nothing depends on it.
+            _discard_tmp_xlsx(payload.get("xlsx_path"))
             db.save_qc_excel(record["id"], xlsx_bytes)
             # A fresh run (no version_id — the field only carries a value on
             # an explicit revisit/re-run) can still be for a quote+kind that
@@ -2191,41 +2261,14 @@ def checklist_save_draft(
     if dl_token and record:
         try:
             payload = _signer.loads(dl_token, max_age=PENDING_TTL)
-            if "xlsx_path" in payload:
-                xlsx_path = payload["xlsx_path"]
-                try:
-                    with open(xlsx_path, "rb") as f:
-                        xlsx_bytes = f.read()
-                    try:
-                        os.unlink(xlsx_path)
-                    except OSError:
-                        pass
-                except FileNotFoundError:
-                    # The temp xlsx this token pointed at was already cleaned
-                    # up (2-hour TTL, same as the token's own max_age) — e.g.
-                    # a revisit page left open in a tab past that window. The
-                    # actual checklist data is still right here in rows_json,
-                    # so rebuild the Excel from that instead of failing the
-                    # whole save over a missing temp file.
-                    logger.warning(
-                        "checklist_save_draft: tmp xlsx missing at %s, rebuilding from rows_json (quote_id=%s)",
-                        xlsx_path, quote_id,
-                    )
-                    _rebuild_rows = json.loads(rows_json) if rows_json else []
-                    _rebuild_filled = {}
-                    for _r in _rebuild_rows:
-                        if not _r.get("is_section") and _r.get("position") is not None:
-                            _rebuild_filled[_r["position"]] = {
-                                "status": _r.get("status", "N/A"),
-                                "remark": _r.get("remark", ""),
-                                "ai_status": _r.get("ai_status", ""),
-                            }
-                    xlsx_bytes = build_xlsx(
-                        _rebuild_rows, filled=_rebuild_filled,
-                        email_results=json.loads(email_results_json) if email_results_json else [],
-                    )
-            else:
+            # Same as checklist_confirm: build from the submitted rows and
+            # never read the temp file, so a save cannot fail (or warn)
+            # because that file was swept. See _xlsx_from_rows.
+            if "xlsx" in payload:
                 xlsx_bytes = base64.b64decode(payload["xlsx"])
+            else:
+                xlsx_bytes = _xlsx_from_rows(rows_json, email_results_json, payload)
+            _discard_tmp_xlsx(payload.get("xlsx_path"))
             # Same reuse-if-one-already-exists rule as checklist_confirm —
             # see its comment for why. Save Draft is the more common repeat
             # offender in practice (a technician saving progress multiple
