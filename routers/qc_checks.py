@@ -359,6 +359,22 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> tuple[
     wanted = set(item_indices)
     messages = [{"role": "user", "content": user_content}]
 
+    # Output budget for the whole batch. 150 tokens/item was too tight: real
+    # saved remarks run to ~610 characters at the top end (~170 tokens once
+    # JSON scaffolding is counted), so a large group — the STC template puts
+    # 17 items on "job pack" alone — could exceed the cap, get truncated
+    # mid-JSON, fail to parse, and take EVERY item in the batch down to N/A
+    # together (see _fallback). That is the "big Post-QC comes back mostly
+    # N/A" failure, and it hits hardest on exactly the big, document-heavy
+    # jobs where the remarks are longest.
+    #
+    # 320/item covers the longest remark observed in production with room to
+    # spare, and the floor keeps small batches sane. Costed on output tokens
+    # actually generated, not the ceiling, so a generous cap is close to free
+    # while a tight one is expensive: a truncated batch is billed in full and
+    # then discarded.
+    batch_max_tokens = min(8000, max(1000, 320 * len(item_indices)))
+
     def _fallback(remark: str) -> dict[int, dict]:
         return {idx: {"status": "N/A", "remark": remark} for idx in item_indices}
 
@@ -381,10 +397,37 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> tuple[
             return None
         return by_idx
 
+    def _salvage_partial(raw: str) -> dict[int, dict]:
+        """Pull out whatever complete, in-batch entries a malformed reply has.
+
+        Used only after both strict attempts have failed. A truncated reply
+        is typically valid JSON objects up to the cut, so scanning for
+        well-formed {"item_index": N, "status": ..., "remark": ...} objects
+        recovers most of the batch. Entries whose index was not requested are
+        ignored — a wrong index must never be written onto another item's row.
+        """
+        found: dict[int, dict] = {}
+        for m in re.finditer(r'\{[^{}]*"item_index"\s*:\s*(\d+)[^{}]*\}', raw or ""):
+            try:
+                entry = json.loads(m.group(0))
+            except (ValueError, TypeError):
+                continue
+            try:
+                idx = int(entry.get("item_index"))
+            except (TypeError, ValueError):
+                continue
+            if idx not in wanted or idx in found:
+                continue
+            status = entry.get("status")
+            if status not in ("Yes", "No", "N/A"):
+                continue
+            found[idx] = {"status": status, "remark": entry.get("remark", "")}
+        return found
+
     usage_in = usage_out = 0
     try:
         resp = client.messages.create(
-            model=CLAUDE_MODEL, max_tokens=max(500, 150 * len(item_indices)),
+            model=CLAUDE_MODEL, max_tokens=batch_max_tokens,
             system=_QC_BATCH_SYSTEM, messages=messages,
         )
         usage_in  += getattr(resp.usage, "input_tokens", 0) or 0
@@ -406,7 +449,7 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> tuple[
                 f"{sorted(wanted)}. Each object: "
                 '{"item_index": <number>, "status": "Yes" or "No" or "N/A", "remark": "one sentence explanation"}'})
             resp2 = client.messages.create(
-                model=CLAUDE_MODEL, max_tokens=max(500, 150 * len(item_indices)),
+                model=CLAUDE_MODEL, max_tokens=batch_max_tokens,
                 system=_QC_BATCH_SYSTEM, messages=messages,
             )
             usage_in  += getattr(resp2.usage, "input_tokens", 0) or 0
@@ -414,6 +457,29 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> tuple[
             raw2 = resp2.content[0].text if resp2.content else ""
             result = _try_parse(raw2)
             if result is None:
+                # Both attempts failed the strict all-or-nothing check. Before
+                # writing off the whole group, salvage any entries that ARE
+                # valid and belong to this batch — a truncated reply usually
+                # contains many complete objects before the cut, and throwing
+                # 16 good verdicts away because the 17th was clipped is the
+                # worst outcome for the user. Anything genuinely missing still
+                # falls back to N/A, so a salvaged batch is never worse than
+                # the previous behaviour and is usually much better.
+                salvaged = _salvage_partial(raw2) or _salvage_partial(raw)
+                if salvaged:
+                    missing = wanted - set(salvaged)
+                    merged = dict(salvaged)
+                    for idx in missing:
+                        merged[idx] = {
+                            "status": "N/A",
+                            "remark": "AI response was incomplete for this item — re-run or set it manually.",
+                        }
+                    logger.warning(
+                        "Claude batch check: recovered %d/%d item(s) from a malformed reply "
+                        "for item_indices=%s; %d fell back to N/A",
+                        len(salvaged), len(wanted), item_indices, len(missing),
+                    )
+                    return merged, usage_in, usage_out
                 logger.warning(
                     "Claude batch check returned unparseable/mismatched JSON twice "
                     "for item_indices=%s; raw replies: %r / %r", item_indices, raw, raw2,
