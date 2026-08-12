@@ -111,6 +111,11 @@ def admin_dashboard(request: Request, user=Depends(require_admin), cal: str = ""
         install_map_json=_build_install_map(all_records),
         cal_jump=cal,  # e.g. "2026-08" — tells the calendar JS which month to open
         success=success,
+        # Pre-QC finished but nobody assigned to do the Post-QC. Invisible to
+        # every regular user (their list is assignment-driven), so without
+        # this the work silently stalls — the team just reports that the
+        # customer "can't be found".
+        unassigned_post_qc=db.get_unassigned_post_qc_quotes(),
     )
     response = templates.TemplateResponse(request, "admin_dashboard.html", ctx)
     response.headers.update(_NO_CACHE)

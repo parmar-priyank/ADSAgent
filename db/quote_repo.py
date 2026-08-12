@@ -1122,6 +1122,45 @@ def get_assigned_quotes_for_user(user_id: int) -> list:
     return quotes
 
 
+def get_unassigned_post_qc_quotes() -> list:
+    """Customers whose Pre-QC is confirmed but who have no Post-QC assignee.
+
+    These are invisible to every regular user: the Post-QC list is driven
+    entirely by post_qc_assignments, and My QC History only shows runs that
+    user personally saved or confirmed. So a customer sitting here is work
+    nobody can pick up — the team reports it as "completed the Pre-QC but
+    can't find the customer". Surfaced on the admin dashboard so the gap is
+    visible instead of silent.
+
+    Excludes customers whose Post-QC is already confirmed (nothing left to
+    assign) and soft-deleted records.
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT q.id, q.customer_name, q.quote_number,
+                   q.preferred_install_date, q.install_date,
+                   MAX(qv.confirmed_at) AS pre_confirmed_at
+            FROM quotes q
+            JOIN qc_versions qv ON qv.quote_id = q.id
+            WHERE COALESCE(qv.kind, 'pre') = 'pre'
+              AND COALESCE(qv.status, 'confirmed') = 'confirmed'
+              AND COALESCE(qv.is_deleted, 0) = 0
+              AND COALESCE(q.is_deleted, 0) = 0
+              AND q.id NOT IN (SELECT quote_id FROM post_qc_assignments)
+              AND q.id NOT IN (
+                  SELECT quote_id FROM qc_versions
+                  WHERE COALESCE(kind, 'pre') = 'post'
+                    AND COALESCE(status, 'confirmed') = 'confirmed'
+                    AND COALESCE(is_deleted, 0) = 0
+              )
+            GROUP BY q.id
+            ORDER BY pre_confirmed_at DESC
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_quotes_pending_post_qc() -> list:
     """Every customer with a confirmed Pre-QC, most recently confirmed
     first — the admin/super-admin view of Post-QC work, independent of
