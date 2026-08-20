@@ -274,7 +274,7 @@
   {% set post_no        = no_count       if tpl.kind == 'post' else other_no_count %}
   {% set post_na        = na_count       if tpl.kind == 'post' else other_na_count %}
 
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,270px));gap:16px;margin-bottom:24px;justify-content:start;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-bottom:24px;">
 
     <!-- Tile 1: Signed Agreement -->
     <div onclick="openAgreementModal()" class="card qc-tile"
