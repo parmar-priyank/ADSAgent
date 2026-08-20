@@ -251,7 +251,7 @@
   {% set post_no        = no_count       if tpl.kind == 'post' else other_no_count %}
   {% set post_na        = na_count       if tpl.kind == 'post' else other_na_count %}
 
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:24px;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,270px));gap:16px;margin-bottom:24px;justify-content:start;">
 
     <!-- Tile 1: Signed Agreement -->
     <div onclick="openAgreementModal()" class="card qc-tile"
@@ -984,7 +984,7 @@
   /* Summary tiles: per-category accent strip along the top edge + a gentle
      lift on hover. Empty tiles ("No … run yet") read as dashed placeholders
      instead of ghosted cards, and don't react to hover. */
-  .qc-tile { position:relative; overflow:hidden; transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+  .qc-tile { position:relative; overflow:hidden; padding:20px; transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
   .qc-tile::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--tile-accent); }
   .qc-tile:hover { transform:translateY(-3px); box-shadow:0 10px 26px rgba(0,0,0,.10); border-color:var(--tile-accent); }
   .qc-tile.is-empty { border-style:dashed; opacity:.75; }
