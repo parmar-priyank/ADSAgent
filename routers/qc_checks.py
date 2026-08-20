@@ -8,6 +8,7 @@ Routes:
   POST /checklist-analyse-file
   POST /checklist-save-edits
   GET  /checklist-download
+  GET  /checklist-download-version/{version_id}
   POST /checklist-confirm
   POST /checklist-save-draft
   GET  /user/history
@@ -2151,6 +2152,48 @@ def checklist_download(token: str, _auth=Depends(require_qc_access)):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": f'attachment; filename="{safe_name}_QC.xlsx"',
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+        },
+    )
+
+
+@router.get("/checklist-download-version/{version_id}", response_class=Response)
+def checklist_download_version(version_id: int, user=Depends(require_qc_access)):
+    """Download a saved QC version's Excel by id — used by the Pre-QC/Post-QC
+    picker on the Download Excel button, so it can fetch whichever kind was
+    chosen straight from what's already persisted (draft or confirmed),
+    instead of depending on the fragile temp-file dl_token (see
+    checklist_download above). Same access rule as user_qc_version_revisit:
+    admin always allowed; a plain user only for their own version or a
+    customer they're assigned to for Post-QC."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id, quote_id, saved_by_user_id, confirmed_by_user_id "
+            "FROM qc_versions WHERE id = ? AND COALESCE(is_deleted, 0) = 0",
+            (version_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "QC version not found.")
+    v = dict(row)
+    if user.get("role") != "admin":
+        is_own_version = (
+            v.get("saved_by_user_id") == user["id"]
+            or v.get("confirmed_by_user_id") == user["id"]
+        )
+        assignee = db.get_post_qc_assignee(v["quote_id"])
+        is_assigned_to_customer = assignee is not None and assignee.get("user_id") == user["id"]
+        if not is_own_version and not is_assigned_to_customer:
+            raise HTTPException(403, "Access denied.")
+
+    xlsx = db.get_qc_version_excel(version_id)
+    if not xlsx:
+        raise HTTPException(404, "No saved Excel found for this QC version.")
+    return Response(
+        content=xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="QC_v{version_id}.xlsx"',
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "Pragma": "no-cache",
         },

@@ -103,9 +103,33 @@
         </button>
       </form>
       {% endif %}
-      <a href="/checklist-download?token={{ dl_token }}" class="link-btn" id="dl-link" style="font-weight:600;">
-        &#8595; Download Excel
-      </a>
+      {% set pre_dl_version  = revisit_version if tpl.kind != 'post' else other_version %}
+      {% set post_dl_version = revisit_version if tpl.kind == 'post' else other_version %}
+      <div style="position:relative;" id="dl-picker-wrap">
+        <button type="button" onclick="toggleDlPicker()" class="link-btn" style="font-weight:600;cursor:pointer;">
+          &#8595; Download Excel
+        </button>
+        <div id="dl-picker-menu"
+             style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--surface2);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:170px;overflow:hidden;z-index:50;">
+          {% if pre_dl_version %}
+          <a href="/checklist-download-version/{{ pre_dl_version.id }}"
+             style="display:block;padding:10px 14px;font-size:12.5px;font-weight:600;color:var(--ink);text-decoration:none;">
+            Pre-QC Excel
+          </a>
+          {% else %}
+          <div style="padding:10px 14px;font-size:12.5px;font-weight:600;color:var(--muted);">Pre-QC Excel <span style="font-weight:400;">(not available)</span></div>
+          {% endif %}
+          <div style="height:1px;background:var(--line2);"></div>
+          {% if post_dl_version %}
+          <a href="/checklist-download-version/{{ post_dl_version.id }}"
+             style="display:block;padding:10px 14px;font-size:12.5px;font-weight:600;color:var(--ink);text-decoration:none;">
+            Post-QC Excel
+          </a>
+          {% else %}
+          <div style="padding:10px 14px;font-size:12.5px;font-weight:600;color:var(--muted);">Post-QC Excel <span style="font-weight:400;">(not available)</span></div>
+          {% endif %}
+        </div>
+      </div>
       {% if can_edit and revisit_version %}
       <form action="{{ '/admin/qc-version/' if is_admin else '/user/qc-version/' }}{{ revisit_version.id }}/delete" method="post"
             onsubmit="return confirm('Delete this {{ 'Post-QC' if tpl.kind == 'post' else 'Pre-QC' }} run (v{{ revisit_version.version }})? It can be recovered from Deleted Records.');">
@@ -1029,6 +1053,19 @@
     return response.redirected && /\/login(\?|$)/.test(response.url);
   }
   var SESSION_EXPIRED_MESSAGE = 'Your session has expired due to inactivity. Please log in again to continue — your edits were not saved.';
+
+  // ── Download Excel: Pre-QC / Post-QC picker ─────────────────────────────
+  function toggleDlPicker() {
+    var menu = document.getElementById('dl-picker-menu');
+    if (menu) menu.style.display = (menu.style.display === 'none') ? 'block' : 'none';
+  }
+  document.addEventListener('click', function(e) {
+    var wrap = document.getElementById('dl-picker-wrap');
+    var menu = document.getElementById('dl-picker-menu');
+    if (wrap && menu && !wrap.contains(e.target)) {
+      menu.style.display = 'none';
+    }
+  });
 
   // ── Modal open/close ───────────────────────────────────────────────────
   function openAgreementModal() { document.getElementById('agreement-modal-overlay').style.display = 'flex'; }
