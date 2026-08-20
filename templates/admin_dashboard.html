@@ -305,6 +305,13 @@
     }
   });
 
+  // The tooltip is positioned once (in viewport coordinates) when opened and
+  // never re-anchored, so scrolling the page — the scrolling container is
+  // .dash-main, not window — leaves it stuck in place while the calendar
+  // cell it belongs to moves away underneath it. Closing it on scroll (same
+  // as clicking outside) avoids a tooltip that visibly points at nothing.
+  document.addEventListener('scroll', function() { hideCalTip(); }, true);
+
   renderCal();
 </script>
 {% endblock %}
