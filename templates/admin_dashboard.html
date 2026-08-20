@@ -310,7 +310,16 @@
   // .dash-main, not window — leaves it stuck in place while the calendar
   // cell it belongs to moves away underneath it. Closing it on scroll (same
   // as clicking outside) avoids a tooltip that visibly points at nothing.
-  document.addEventListener('scroll', function() { hideCalTip(); }, true);
+  // Scroll events don't bubble, so the capture phase is what's needed to
+  // hear them at all — but that also means the tooltip's OWN internal list
+  // (#cal-tooltip-body, scrollable when there are several entries for one
+  // day) fires here too. Skip closing when the scroll originated inside the
+  // tooltip itself, so scrolling that list doesn't dismiss it.
+  document.addEventListener('scroll', function(e) {
+    var tip = document.getElementById('cal-tooltip');
+    if (tip && tip.contains(e.target)) return;
+    hideCalTip();
+  }, true);
 
   renderCal();
 </script>
