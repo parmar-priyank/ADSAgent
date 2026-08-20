@@ -2,6 +2,18 @@
 
 {% block title %}Checklist Result{% endblock %}
 
+{# admin_base.html (used when is_admin) only links base.css + admin.css —
+   this template's styling (result tiles, remark view/edit toggle, modal
+   headers, etc.) all lives in home.css, which user_base.html loads on its
+   own. Without this, the admin path silently rendered with none of those
+   rules: .remark-edit-btn's "display:none unless editing" never applied,
+   so both the read-only remark text AND the edit button showed at once. #}
+{% block extra_css %}
+{% if is_admin %}
+<link rel="stylesheet" href="/static/home.css?v=8">
+{% endif %}
+{% endblock %}
+
 {% block nav_back %}
 {% if not revisit_version %}
 <a href="/qc-check?quote_id={{ quote_id }}{% if tpl.kind == 'post' %}&kind=post{% endif %}" class="home-nav-btn">
