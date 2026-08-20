@@ -1957,6 +1957,42 @@ async def upload_zip(
     yes_count  = sum(1 for r in checklist_rows if r.get("status") == "Yes")
     no_count   = sum(1 for r in checklist_rows if r.get("status") == "No")
     na_count   = sum(1 for r in checklist_rows if r.get("status") == "N/A")
+
+    # Auto-save this run as a draft the moment analysis finishes, instead of
+    # only ever existing as an 8-hour signed token pointing at a temp file.
+    # This is real, billed AI work — if the browser/laptop dies or the token
+    # simply expires before the user gets around to clicking Save Draft, the
+    # checklist itself was already lost and re-running it costs money and
+    # Claude time all over again. Saving it here means the worst case is
+    # "reopen it from History and click Save Draft/Confirm" instead of
+    # "run the whole thing again". Reuses whatever the next real Save
+    # Draft/Confirm click already does (update_qc_version keyed off this
+    # version_id), so it isn't a duplicate row.
+    auto_saved_version_id = None
+    if ref_record:
+        try:
+            auto_saved_version_id, _ = db.add_qc_version(
+                quote_id=ref_record["id"],
+                xlsx_bytes=xlsx_blob,
+                template_name=tpl["name"],
+                zip_filename=zip_file.filename or "",
+                yes_count=yes_count,
+                no_count=no_count,
+                na_count=na_count,
+                rows_json=json.dumps(checklist_rows),
+                email_results_json=json.dumps(email_results),
+                saved_by_user_id=uid,
+                status="draft",
+                kind=kind,
+                input_tokens=run_input_tokens,
+                output_tokens=run_output_tokens,
+            )
+        except Exception:
+            # Never let the auto-save itself block the user from seeing
+            # their result — worst case they're back to relying on the
+            # token, same as before this existed.
+            logger.exception("checklist auto-save-as-draft failed quote_id=%s", quote_id)
+
     result_token = store_pending_result({
         "tpl": tpl_safe,
         "rows": checklist_rows,
@@ -1969,6 +2005,7 @@ async def upload_zip(
         "email_results": email_results,
         "input_tokens": run_input_tokens,
         "output_tokens": run_output_tokens,
+        "auto_saved_version_id": auto_saved_version_id,
     }, user_id=uid)
     return RedirectResponse(url=f"/checklist-result?token={result_token}", status_code=303)
 
@@ -2023,6 +2060,7 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
         "record": record,
         "input_tokens": payload.get("input_tokens", 0),
         "output_tokens": payload.get("output_tokens", 0),
+        "auto_saved_version_id": payload.get("auto_saved_version_id"),
         "claude_price_in": CLAUDE_PRICE_PER_M_INPUT,
         "claude_price_out": CLAUDE_PRICE_PER_M_OUTPUT,
         **other_ctx,

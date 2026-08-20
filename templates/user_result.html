@@ -485,7 +485,7 @@
         <input type="hidden" name="rows_json"          id="draft-rows-json" value='{{ checklist_rows | tojson }}'>
         <input type="hidden" name="email_results_json" id="draft-email-json" value='{{ email_results | default([]) | tojson }}'>
         <input type="hidden" name="preferred_install_date" id="draft-preferred-install-date" value="{{ preferred_install_date or '' }}">
-        <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
+        <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else (auto_saved_version_id | default('')) }}">
         <input type="hidden" name="input_tokens"       id="draft-input-tokens"  value="{{ input_tokens | default(0) }}">
         <input type="hidden" name="output_tokens"      id="draft-output-tokens" value="{{ output_tokens | default(0) }}">
         <button type="submit"
@@ -513,7 +513,7 @@
         <input type="hidden" name="rows_json"          id="confirm-rows-json" value='{{ checklist_rows | tojson }}'>
         <input type="hidden" name="email_results_json" id="confirm-email-json" value='{{ email_results | default([]) | tojson }}'>
         <input type="hidden" name="preferred_install_date" id="confirm-preferred-install-date" value="{{ preferred_install_date or '' }}">
-        <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else '' }}">
+        <input type="hidden" name="version_id" value="{{ revisit_version.id if revisit_version else (auto_saved_version_id | default('')) }}">
         <input type="hidden" name="input_tokens"       id="confirm-input-tokens"  value="{{ input_tokens | default(0) }}">
         <input type="hidden" name="output_tokens"      id="confirm-output-tokens" value="{{ output_tokens | default(0) }}">
         <button type="submit"
