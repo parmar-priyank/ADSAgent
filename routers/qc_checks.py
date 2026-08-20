@@ -183,7 +183,30 @@ def _discard_tmp_xlsx(xlsx_path: str | None) -> None:
         pass
 
 
-def _xlsx_from_rows(rows_json: str, email_results_json: str, payload: dict) -> bytes:
+def _customer_info_for_xlsx(record: dict | None, user: dict | None, kind: str) -> dict:
+    """Values written into the Customer Name / Correct Address / Checked By /
+    Date / Job Details row of the downloaded Excel — previously only the
+    labels were ever written, leaving that whole block blank on every
+    download regardless of which customer or QC run it was."""
+    record = record or {}
+    checked_by = ""
+    if user:
+        checked_by = user.get("full_name") or user.get("username") or ""
+    job_bits = [b for b in (
+        record.get("quote_number"),
+        "Post-QC" if kind == "post" else "Pre-QC",
+    ) if b]
+    return {
+        "customer_name": record.get("customer_name") or "",
+        "address":       record.get("billing_address") or "",
+        "checked_by":    checked_by,
+        "date":          datetime.now().strftime("%d-%m-%Y"),
+        "job_details":   " · ".join(job_bits),
+    }
+
+
+def _xlsx_from_rows(rows_json: str, email_results_json: str, payload: dict,
+                     customer_info: dict = None) -> bytes:
     """Build the QC Excel from the submitted rows — the single source of truth.
 
     Every save route needs the workbook bytes. Two of them used to READ those
@@ -229,7 +252,8 @@ def _xlsx_from_rows(rows_json: str, email_results_json: str, payload: dict) -> b
     # defaults rather than failing a save over a cosmetic label.
     headers = payload.get("headers") or {}
     note_text = payload.get("note_text") or ""
-    return build_xlsx(rows, headers, note_text, filled=filled, email_results=email_results)
+    return build_xlsx(rows, headers, note_text, filled=filled, email_results=email_results,
+                       customer_info=customer_info)
 
 
 def _extract_docx_text(fname: str, fdata: bytes) -> str:
@@ -1320,6 +1344,7 @@ async def upload_zip(
     # Build reference context from the linked quote record
     reference_pdf_text = ""
     job_line_items: list = []
+    ref_record = None
     if quote_id:
         try:
             ref_record = db.get_quote(int(quote_id))
@@ -1837,7 +1862,8 @@ async def upload_zip(
     }
     _t_xlsx = time.perf_counter()
     xlsx_blob = build_xlsx(items, headers, tpl.get("note_text", ""), filled=filled,
-                           email_results=email_results)
+                           email_results=email_results,
+                           customer_info=_customer_info_for_xlsx(ref_record, user, kind))
     _timings["xlsx"] = time.perf_counter() - _t_xlsx
 
     # One line per run showing where the time actually went. "other" is
@@ -2249,7 +2275,8 @@ def checklist_confirm(
             if "xlsx" in payload:
                 xlsx_bytes = base64.b64decode(payload["xlsx"])
             else:
-                xlsx_bytes = _xlsx_from_rows(rows_json, email_results_json, payload)
+                xlsx_bytes = _xlsx_from_rows(rows_json, email_results_json, payload,
+                                              customer_info=_customer_info_for_xlsx(record, user, kind))
             # The temp file has served its purpose (the Download Excel link
             # on the page just left); drop it now rather than waiting for the
             # sweep. Missing is fine — nothing depends on it.
@@ -2376,7 +2403,8 @@ def checklist_save_draft(
             if "xlsx" in payload:
                 xlsx_bytes = base64.b64decode(payload["xlsx"])
             else:
-                xlsx_bytes = _xlsx_from_rows(rows_json, email_results_json, payload)
+                xlsx_bytes = _xlsx_from_rows(rows_json, email_results_json, payload,
+                                              customer_info=_customer_info_for_xlsx(record, user, kind))
             _discard_tmp_xlsx(payload.get("xlsx_path"))
             # Same reuse-if-one-already-exists rule as checklist_confirm —
             # see its comment for why. Save Draft is the more common repeat
@@ -2631,9 +2659,13 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
                     "ai_status": r.get("ai_status", ""),
                 }
 
+        quote_id = v["quote_id"]
+        record = db.get_quote(quote_id)
+
         xlsx_blob = build_xlsx(
             rows, filled=filled,
             email_results=email_results if has_email_edit else json.loads(v.get("email_results_json") or "[]"),
+            customer_info=_customer_info_for_xlsx(record, user, v.get("kind") or "pre"),
         )
         yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
         no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
@@ -2654,8 +2686,6 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
             output_tokens=new_output_tokens if (input_tokens_delta or output_tokens_delta) else None,
         )
 
-        quote_id = v["quote_id"]
-        record = db.get_quote(quote_id)
         if record and preferred_install_date != (record.get("preferred_install_date") or ""):
             db.update_preferred_install_date(quote_id, preferred_install_date)
     except Exception as e:
@@ -2739,7 +2769,9 @@ async def user_qc_version_save_email_only(request: Request, version_id: int, use
                     "remark": r.get("remark", ""),
                     "ai_status": r.get("ai_status", ""),
                 }
-        xlsx_blob = build_xlsx(own_rows, filled=filled, email_results=email_results)
+        record = db.get_quote(v["quote_id"])
+        xlsx_blob = build_xlsx(own_rows, filled=filled, email_results=email_results,
+                                customer_info=_customer_info_for_xlsx(record, user, v.get("kind") or "pre"))
         yes_count = sum(1 for r in own_rows if not r.get("is_section") and r.get("status") == "Yes")
         no_count  = sum(1 for r in own_rows if not r.get("is_section") and r.get("status") == "No")
         na_count  = sum(1 for r in own_rows if not r.get("is_section") and r.get("status") == "N/A")
@@ -2847,7 +2879,9 @@ async def user_qc_version_add_email(
                 "remark": r.get("remark", ""),
                 "ai_status": r.get("ai_status", ""),
             }
-    xlsx_blob = build_xlsx(rows, filled=filled, email_results=merged_results)
+    record = db.get_quote(v["quote_id"])
+    xlsx_blob = build_xlsx(rows, filled=filled, email_results=merged_results,
+                            customer_info=_customer_info_for_xlsx(record, user, v.get("kind") or "pre"))
 
     was_confirmed = v.get("status") == "confirmed"
     db.update_qc_version(

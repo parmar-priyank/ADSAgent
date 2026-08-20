@@ -179,13 +179,19 @@ def _label_at(ws, needle: str):
 
 def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
                title: str = "||  JOB COMPLIANCE CHECKLIST (QC)  ||",
-               filled: dict = None, email_results: list = None) -> bytes:
+               filled: dict = None, email_results: list = None,
+               customer_info: dict = None) -> bytes:
     """
     Build a styled .xlsx from structured items.
     filled (optional): {position: {"status": "Y"/"N", "remark": "..."}}
+    customer_info (optional): {"customer_name", "address", "checked_by",
+    "date", "job_details"} — actual values written beside the header labels
+    (Customer Name/Correct Address/Checked By/Date/Job Details), which
+    otherwise render as empty label rows with nothing filled in.
     """
     header_labels = header_labels or {}
     filled = filled or {}
+    customer_info = customer_info or {}
 
     wb = Workbook()
     ws = wb.active
@@ -206,16 +212,30 @@ def build_xlsx(items: list, header_labels: dict = None, note_text: str = "",
     c.alignment = center
     ws.row_dimensions[1].height = 22
 
-    ws.merge_cells("A3:C3")
+    ws.merge_cells("A3:B3")
     ws.cell(3, 1, header_labels.get("customer_label") or "Customer Name  :").font = bold
-    ws.merge_cells("A4:C4")
+    ws.merge_cells("C3:E3")
+    ws.cell(3, 3, customer_info.get("customer_name") or "").font = normal
+
+    ws.merge_cells("A4:B4")
     ws.cell(4, 1, header_labels.get("address_label") or "Correct Address  :").font = bold
-    ws.merge_cells("A5:C5")
+    ws.merge_cells("C4:E4")
+    ws.cell(4, 3, customer_info.get("address") or "").font = normal
+
+    ws.merge_cells("A5:B5")
     ws.cell(5, 1, "Checked By  :").font = bold
-    ws.merge_cells("A6:C6")
+    ws.merge_cells("C5:E5")
+    ws.cell(5, 3, customer_info.get("checked_by") or "").font = normal
+
+    ws.merge_cells("A6:B6")
     ws.cell(6, 1, "Date  :").font = bold
-    ws.merge_cells("A7:E7")
+    ws.merge_cells("C6:E6")
+    ws.cell(6, 3, customer_info.get("date") or "").font = normal
+
+    ws.merge_cells("A7:B7")
     ws.cell(7, 1, header_labels.get("job_label") or "Job Details  :").font = bold
+    ws.merge_cells("C7:E7")
+    ws.cell(7, 3, customer_info.get("job_details") or "").font = normal
 
     headers = ["Sno.", "Checklist Item", "Yes/No", "Remarks", "What to verify as per Agreement"]
     for ci, h in enumerate(headers, start=1):
