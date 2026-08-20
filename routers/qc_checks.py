@@ -190,6 +190,22 @@ def _checked_by_name(user: dict | None) -> str:
     return user.get("full_name") or user.get("username") or ""
 
 
+def _resolve_quote(quote_id: str) -> dict | None:
+    """quote_id arrives as a form/query string that's usually a numeric id
+    but is sometimes a quote_number string instead — try the id lookup
+    first, fall back to quote_number on a non-numeric value. Returns None
+    for a falsy quote_id or one that matches nothing. Same 4-line
+    try/except was previously copy-pasted at 7 call sites across this file
+    under two different local variable names (record/ref_record); this is
+    that pattern, extracted once."""
+    if not quote_id:
+        return None
+    try:
+        return db.get_quote(int(quote_id))
+    except (ValueError, TypeError):
+        return db.find_by_quote_number(quote_id)
+
+
 def _customer_info_for_xlsx(record: dict | None, user: dict | None, kind: str,
                              version: dict | None = None) -> dict:
     """Values written into the Customer Name / Correct Address / Checked By /
@@ -274,6 +290,72 @@ def _xlsx_from_rows(rows_json: str, email_results_json: str, payload: dict,
     note_text = payload.get("note_text") or ""
     return build_xlsx(rows, headers, note_text, filled=filled, email_results=email_results,
                        customer_info=customer_info)
+
+
+def _save_or_update_qc_version(
+    *, quote_id: int, kind: str, tpl_name: str, zip_filename: str,
+    yes_count: int, no_count: int, na_count: int,
+    rows_json: str, email_results_json: str, xlsx_bytes: bytes,
+    version_id: str, input_tokens: int, output_tokens: int,
+    user: dict, confirm: bool,
+) -> int:
+    """Write a checklist run to qc_versions — shared by checklist_confirm and
+    checklist_save_draft, which differ only in whether this call confirms
+    the version and, when no explicit version_id was submitted, which
+    existing version (if any) counts as "already have one for this
+    quote+kind, reuse it instead of creating a duplicate":
+
+    - Confirm reuses ANY existing version (draft or already-confirmed) —
+      re-confirming an already-confirmed run is still one History entry,
+      not a new one every time.
+    - Save Draft reuses only an existing DRAFT, never a confirmed one —
+      reusing a confirmed version here would silently demote a signed-off
+      result back to draft. A fresh Save Draft on top of an
+      already-confirmed customer instead creates a new draft alongside it,
+      leaving the confirmed version untouched.
+
+    Returns the version_id that was written to (existing or newly created).
+    """
+    target_version_id = int(version_id) if version_id.strip() else None
+    if target_version_id is None:
+        existing = db.get_latest_qc_version(quote_id, kind)
+        if existing and (confirm or existing.get("status") == "draft"):
+            target_version_id = existing["id"]
+
+    if target_version_id is not None:
+        db.update_qc_version(
+            version_id=target_version_id,
+            xlsx_bytes=xlsx_bytes,
+            rows_json=rows_json,
+            yes_count=yes_count,
+            no_count=no_count,
+            na_count=na_count,
+            confirm=confirm,
+            confirmed_by_user_id=user["id"] if confirm else None,
+            email_results_json=email_results_json,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        return target_version_id
+
+    version_id_out, _ = db.add_qc_version(
+        quote_id=quote_id,
+        xlsx_bytes=xlsx_bytes,
+        template_name=tpl_name,
+        zip_filename=zip_filename,
+        yes_count=yes_count,
+        no_count=no_count,
+        na_count=na_count,
+        rows_json=rows_json,
+        email_results_json=email_results_json,
+        confirmed_by_user_id=user["id"] if confirm else None,
+        saved_by_user_id=user["id"],
+        status="confirmed" if confirm else "draft",
+        kind=kind,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+    return version_id_out
 
 
 def _extract_docx_text(fname: str, fdata: bytes) -> str:
@@ -824,12 +906,7 @@ def _build_reference_text(quote_id) -> str:
     """Build the same 'Quote Number: ...\\nCustomer Name: ...' reference
     block used when matching an uploaded file against a quote's signed
     agreement — shared by the "add one more email" endpoints below."""
-    if not quote_id:
-        return ""
-    try:
-        ref_record = db.get_quote(int(quote_id))
-    except (ValueError, TypeError):
-        ref_record = db.find_by_quote_number(quote_id)
+    ref_record = _resolve_quote(quote_id)
     if not ref_record:
         return ""
     fields = [
@@ -972,26 +1049,22 @@ async def email_verify_post(
 
     # Build reference text from the linked quote (shared across all emails)
     reference_text = ""
-    if quote_id:
-        try:
-            ref_record = db.get_quote(int(quote_id))
-        except (ValueError, TypeError):
-            ref_record = db.find_by_quote_number(quote_id)
-        if ref_record:
-            fields = [
-                ("Quote Number",    ref_record.get("quote_number", "")),
-                ("Customer Name",   ref_record.get("customer_name", "")),
-                ("Install Date",    ref_record.get("install_date", "")),
-                ("System Price",    ref_record.get("system_price", "")),
-                ("Total Price",     ref_record.get("total_price", "")),
-                ("Deposit",         ref_record.get("deposit", "")),
-                ("Balance",         ref_record.get("balance", "")),
-                ("Payment Terms",   ref_record.get("payment_terms", "")),
-                ("Billing Address", ref_record.get("billing_address", "")),
-                ("Email",           ref_record.get("email", "")),
-                ("Phone",           ref_record.get("phone", "")),
-            ]
-            reference_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
+    ref_record = _resolve_quote(quote_id)
+    if ref_record:
+        fields = [
+            ("Quote Number",    ref_record.get("quote_number", "")),
+            ("Customer Name",   ref_record.get("customer_name", "")),
+            ("Install Date",    ref_record.get("install_date", "")),
+            ("System Price",    ref_record.get("system_price", "")),
+            ("Total Price",     ref_record.get("total_price", "")),
+            ("Deposit",         ref_record.get("deposit", "")),
+            ("Balance",         ref_record.get("balance", "")),
+            ("Payment Terms",   ref_record.get("payment_terms", "")),
+            ("Billing Address", ref_record.get("billing_address", "")),
+            ("Email",           ref_record.get("email", "")),
+            ("Phone",           ref_record.get("phone", "")),
+        ]
+        reference_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
 
     client = _get_claude()
 
@@ -1371,39 +1444,34 @@ async def upload_zip(
     # Build reference context from the linked quote record
     reference_pdf_text = ""
     job_line_items: list = []
-    ref_record = None
-    if quote_id:
-        try:
-            ref_record = db.get_quote(int(quote_id))
-        except (ValueError, TypeError):
-            ref_record = db.find_by_quote_number(quote_id)
-        if ref_record:
-            fields = [
-                ("Quote Number",    ref_record.get("quote_number", "")),
-                ("Customer Name",   ref_record.get("customer_name", "")),
-                ("Install Date",    ref_record.get("install_date", "")),
-                ("System Price",    ref_record.get("system_price", "")),
-                ("STC Incentive",   ref_record.get("stc_incentive", "")),
-                ("VIC Rebate",      ref_record.get("vic_rebate", "")),
-                ("Battery Rebate",  ref_record.get("battery_rebate", "")),
-                ("Total Price",     ref_record.get("total_price", "")),
-                ("Deposit",         ref_record.get("deposit", "")),
-                ("Balance",         ref_record.get("balance", "")),
-                ("Payment Terms",   ref_record.get("payment_terms", "")),
-                ("Billing Address", ref_record.get("billing_address", "")),
-                ("Delivery Address",ref_record.get("delivery_address", "")),
-                ("Roof Type",       ref_record.get("roof_type", "")),
-                ("Email",           ref_record.get("email", "")),
-                ("Phone",           ref_record.get("phone", "")),
-                ("Notes",           ref_record.get("notes", "")),
-            ]
-            reference_pdf_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
-            job_line_items = ref_record.get("line_items") or []
-            if job_line_items:
-                reference_pdf_text += "\n\nSystem Components:\n" + "\n".join(
-                    f"- {li.get('item','')}: {li.get('specification','')}"
-                    for li in job_line_items if li.get("item")
-                )
+    ref_record = _resolve_quote(quote_id)
+    if ref_record:
+        fields = [
+            ("Quote Number",    ref_record.get("quote_number", "")),
+            ("Customer Name",   ref_record.get("customer_name", "")),
+            ("Install Date",    ref_record.get("install_date", "")),
+            ("System Price",    ref_record.get("system_price", "")),
+            ("STC Incentive",   ref_record.get("stc_incentive", "")),
+            ("VIC Rebate",      ref_record.get("vic_rebate", "")),
+            ("Battery Rebate",  ref_record.get("battery_rebate", "")),
+            ("Total Price",     ref_record.get("total_price", "")),
+            ("Deposit",         ref_record.get("deposit", "")),
+            ("Balance",         ref_record.get("balance", "")),
+            ("Payment Terms",   ref_record.get("payment_terms", "")),
+            ("Billing Address", ref_record.get("billing_address", "")),
+            ("Delivery Address",ref_record.get("delivery_address", "")),
+            ("Roof Type",       ref_record.get("roof_type", "")),
+            ("Email",           ref_record.get("email", "")),
+            ("Phone",           ref_record.get("phone", "")),
+            ("Notes",           ref_record.get("notes", "")),
+        ]
+        reference_pdf_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
+        job_line_items = ref_record.get("line_items") or []
+        if job_line_items:
+            reference_pdf_text += "\n\nSystem Components:\n" + "\n".join(
+                f"- {li.get('item','')}: {li.get('specification','')}"
+                for li in job_line_items if li.get("item")
+            )
 
     # Battery-only job detection — free, deterministic, no extra Claude call.
     # The original PDF extraction already captures every System/pricing table
@@ -2043,14 +2111,9 @@ def checklist_result(request: Request, token: str, user=Depends(require_qc_acces
 
     preferred_install_date = ""
     quote_id = payload["quote_id"]
-    record = None
-    if quote_id:
-        try:
-            record = db.get_quote(int(quote_id))
-        except (ValueError, TypeError):
-            record = db.find_by_quote_number(quote_id)
-        if record:
-            preferred_install_date = record.get("preferred_install_date") or ""
+    record = _resolve_quote(quote_id)
+    if record:
+        preferred_install_date = record.get("preferred_install_date") or ""
 
     # Pull in the OTHER kind's latest saved version — same lookup
     # user_qc_version_revisit and admin_qc_version_view do for an
@@ -2117,38 +2180,34 @@ async def checklist_analyse_file(
         file_pairs.append((f.filename or "upload", fdata))
 
     reference_pdf_text = ""
-    if quote_id:
-        try:
-            ref_record = db.get_quote(int(quote_id))
-        except (ValueError, TypeError):
-            ref_record = db.find_by_quote_number(quote_id)
-        if ref_record:
-            fields = [
-                ("Quote Number",    ref_record.get("quote_number", "")),
-                ("Customer Name",   ref_record.get("customer_name", "")),
-                ("Install Date",    ref_record.get("install_date", "")),
-                ("System Price",    ref_record.get("system_price", "")),
-                ("STC Incentive",   ref_record.get("stc_incentive", "")),
-                ("VIC Rebate",      ref_record.get("vic_rebate", "")),
-                ("Battery Rebate",  ref_record.get("battery_rebate", "")),
-                ("Total Price",     ref_record.get("total_price", "")),
-                ("Deposit",         ref_record.get("deposit", "")),
-                ("Balance",         ref_record.get("balance", "")),
-                ("Payment Terms",   ref_record.get("payment_terms", "")),
-                ("Billing Address", ref_record.get("billing_address", "")),
-                ("Delivery Address",ref_record.get("delivery_address", "")),
-                ("Roof Type",       ref_record.get("roof_type", "")),
-                ("Email",           ref_record.get("email", "")),
-                ("Phone",           ref_record.get("phone", "")),
-                ("Notes",           ref_record.get("notes", "")),
-            ]
-            reference_pdf_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
-            line_items = ref_record.get("line_items") or []
-            if line_items:
-                reference_pdf_text += "\n\nSystem Components:\n" + "\n".join(
-                    f"- {li.get('item','')}: {li.get('specification','')}"
-                    for li in line_items if li.get("item")
-                )
+    ref_record = _resolve_quote(quote_id)
+    if ref_record:
+        fields = [
+            ("Quote Number",    ref_record.get("quote_number", "")),
+            ("Customer Name",   ref_record.get("customer_name", "")),
+            ("Install Date",    ref_record.get("install_date", "")),
+            ("System Price",    ref_record.get("system_price", "")),
+            ("STC Incentive",   ref_record.get("stc_incentive", "")),
+            ("VIC Rebate",      ref_record.get("vic_rebate", "")),
+            ("Battery Rebate",  ref_record.get("battery_rebate", "")),
+            ("Total Price",     ref_record.get("total_price", "")),
+            ("Deposit",         ref_record.get("deposit", "")),
+            ("Balance",         ref_record.get("balance", "")),
+            ("Payment Terms",   ref_record.get("payment_terms", "")),
+            ("Billing Address", ref_record.get("billing_address", "")),
+            ("Delivery Address",ref_record.get("delivery_address", "")),
+            ("Roof Type",       ref_record.get("roof_type", "")),
+            ("Email",           ref_record.get("email", "")),
+            ("Phone",           ref_record.get("phone", "")),
+            ("Notes",           ref_record.get("notes", "")),
+        ]
+        reference_pdf_text = "\n".join(f"{k}: {v}" for k, v in fields if v)
+        line_items = ref_record.get("line_items") or []
+        if line_items:
+            reference_pdf_text += "\n\nSystem Components:\n" + "\n".join(
+                f"- {li.get('item','')}: {li.get('specification','')}"
+                for li in line_items if li.get("item")
+            )
 
     client = _get_claude()
     result = _analyse_single_file(client, item_text, prompt, reference_pdf_text, file_pairs)
@@ -2342,12 +2401,7 @@ def checklist_confirm(
     if kind == "post":
         email_results_json = "[]"
 
-    record = None
-    if quote_id:
-        try:
-            record = db.get_quote(int(quote_id))
-        except (ValueError, TypeError):
-            record = db.find_by_quote_number(quote_id)
+    record = _resolve_quote(quote_id)
 
     if record and preferred_install_date.strip() != (record.get("preferred_install_date") or ""):
         db.update_preferred_install_date(record["id"], preferred_install_date.strip())
@@ -2376,44 +2430,16 @@ def checklist_confirm(
             # for a customer already confirmed or draft-saved earlier. Reuse
             # that version instead of creating a duplicate — same as an
             # explicit revisit — so History can't accumulate multiple rows
-            # for what a technician experiences as "the same QC run".
-            target_version_id = int(version_id) if version_id.strip() else None
-            if target_version_id is None:
-                existing = db.get_latest_qc_version(record["id"], kind)
-                if existing:
-                    target_version_id = existing["id"]
-            if target_version_id is not None:
-                db.update_qc_version(
-                    version_id=target_version_id,
-                    xlsx_bytes=xlsx_bytes,
-                    rows_json=rows_json,
-                    yes_count=yes_count,
-                    no_count=no_count,
-                    na_count=na_count,
-                    confirm=True,
-                    confirmed_by_user_id=user["id"],
-                    email_results_json=email_results_json,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                )
-            else:
-                db.add_qc_version(
-                    quote_id=record["id"],
-                    xlsx_bytes=xlsx_bytes,
-                    template_name=tpl_name,
-                    zip_filename=zip_filename,
-                    yes_count=yes_count,
-                    no_count=no_count,
-                    na_count=na_count,
-                    rows_json=rows_json,
-                    email_results_json=email_results_json,
-                    confirmed_by_user_id=user["id"],
-                    saved_by_user_id=user["id"],
-                    status="confirmed",
-                    kind=kind,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                )
+            # for what a technician experiences as "the same QC run". See
+            # _save_or_update_qc_version for the reuse rule (confirm reuses
+            # any existing version; save-draft only reuses an existing draft).
+            _save_or_update_qc_version(
+                quote_id=record["id"], kind=kind, tpl_name=tpl_name, zip_filename=zip_filename,
+                yes_count=yes_count, no_count=no_count, na_count=na_count,
+                rows_json=rows_json, email_results_json=email_results_json, xlsx_bytes=xlsx_bytes,
+                version_id=version_id, input_tokens=input_tokens, output_tokens=output_tokens,
+                user=user, confirm=True,
+            )
         except Exception:
             logger.exception("checklist_confirm failed to save quote_id=%s", quote_id)
             resp = templates.TemplateResponse(request, "user_home.html", _index_context(
@@ -2472,12 +2498,7 @@ def checklist_save_draft(
     if kind == "post":
         email_results_json = "[]"
 
-    record = None
-    if quote_id:
-        try:
-            record = db.get_quote(int(quote_id))
-        except (ValueError, TypeError):
-            record = db.find_by_quote_number(quote_id)
+    record = _resolve_quote(quote_id)
 
     if record and preferred_install_date.strip() != (record.get("preferred_install_date") or ""):
         db.update_preferred_install_date(record["id"], preferred_install_date.strip())
@@ -2495,51 +2516,18 @@ def checklist_save_draft(
                                               customer_info=_customer_info_for_xlsx(record, user, kind))
             _discard_tmp_xlsx(payload.get("xlsx_path"))
             # Same reuse-if-one-already-exists rule as checklist_confirm —
-            # see its comment for why. Save Draft is the more common repeat
-            # offender in practice (a technician saving progress multiple
-            # times on the same customer before finally confirming).
-            #
-            # Only reuse an existing DRAFT, never a CONFIRMED one — Save
-            # Draft always writes status='draft', and reusing a confirmed
-            # version here would silently demote a signed-off result back
-            # to draft. A fresh Save Draft on top of an already-confirmed
-            # customer instead creates a new draft alongside it, leaving
-            # the confirmed version untouched.
-            target_version_id = int(version_id) if version_id.strip() else None
-            if target_version_id is None:
-                existing = db.get_latest_qc_version(record["id"], kind)
-                if existing and existing.get("status") == "draft":
-                    target_version_id = existing["id"]
-            if target_version_id is not None:
-                db.update_qc_version(
-                    version_id=target_version_id,
-                    xlsx_bytes=xlsx_bytes,
-                    rows_json=rows_json,
-                    yes_count=yes_count,
-                    no_count=no_count,
-                    na_count=na_count,
-                    confirm=False,
-                    email_results_json=email_results_json,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                )
-            else:
-                db.add_qc_version(
-                    quote_id=record["id"],
-                    xlsx_bytes=xlsx_bytes,
-                    template_name=tpl_name,
-                    zip_filename=zip_filename,
-                    yes_count=yes_count,
-                    no_count=no_count,
-                    na_count=na_count,
-                    rows_json=rows_json,
-                    email_results_json=email_results_json,
-                    saved_by_user_id=user["id"],
-                    status="draft",
-                    kind=kind,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                )
+            # see _save_or_update_qc_version's docstring for why. Save Draft
+            # is the more common repeat offender in practice (a technician
+            # saving progress multiple times on the same customer before
+            # finally confirming), and only ever reuses an existing DRAFT,
+            # never a CONFIRMED one.
+            _save_or_update_qc_version(
+                quote_id=record["id"], kind=kind, tpl_name=tpl_name, zip_filename=zip_filename,
+                yes_count=yes_count, no_count=no_count, na_count=na_count,
+                rows_json=rows_json, email_results_json=email_results_json, xlsx_bytes=xlsx_bytes,
+                version_id=version_id, input_tokens=input_tokens, output_tokens=output_tokens,
+                user=user, confirm=False,
+            )
         except Exception:
             logger.exception("checklist_save_draft failed to save quote_id=%s", quote_id)
             resp = templates.TemplateResponse(request, "user_home.html", _index_context(

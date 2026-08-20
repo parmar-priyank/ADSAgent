@@ -9,6 +9,17 @@
   <link rel="stylesheet" href="/static/base.css">
   <link rel="stylesheet" href="/static/admin.css">
   {% block extra_css %}{% endblock %}
+  {# user_result.html conditionally extends this template or user_base.html
+     depending on is_admin, and defines a nav_back block for user_base.html's
+     topbar "Back" link. admin_base.html has no equivalent slot in its own
+     topbar, so without this placeholder Jinja silently drops the whole
+     block on the admin path with no error — it happens to render nothing
+     today (admin always has revisit_version set, so nav_back's own
+     {% if not revisit_version %} guard is always false here), but the next
+     template that defines a new block admin_base.html doesn't know about
+     will hit the exact same silent-drop trap. Declaring it a no-op here
+     documents the gap instead of leaving it invisible. #}
+  {% block nav_back %}{% endblock %}
   <style>
     body { margin: 0; }
     .pwd-rule {
