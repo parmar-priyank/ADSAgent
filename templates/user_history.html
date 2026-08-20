@@ -28,6 +28,20 @@
   <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
     {% set confirmed = history | selectattr('status','equalto','confirmed') | list %}
     {% set drafts    = history | selectattr('status','equalto','draft')     | list %}
+    {% set pre_qc    = history | selectattr('kind','equalto','pre')  | list %}
+    {% set post_qc   = history | selectattr('kind','equalto','post') | list %}
+    <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:10px;
+                padding:10px 18px;display:flex;align-items:center;gap:8px;">
+      <span style="width:8px;height:8px;border-radius:50%;background:#c45010;flex-shrink:0;"></span>
+      <span style="font-size:13px;color:var(--ink);font-weight:600;">{{ pre_qc|length }}</span>
+      <span style="font-size:12px;color:var(--muted);">Pre-QC</span>
+    </div>
+    <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:10px;
+                padding:10px 18px;display:flex;align-items:center;gap:8px;">
+      <span style="width:8px;height:8px;border-radius:50%;background:#2d7a4a;flex-shrink:0;"></span>
+      <span style="font-size:13px;color:var(--ink);font-weight:600;">{{ post_qc|length }}</span>
+      <span style="font-size:12px;color:var(--muted);">Post-QC</span>
+    </div>
     <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:10px;
                 padding:10px 18px;display:flex;align-items:center;gap:8px;">
       <span style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;"></span>
@@ -39,6 +53,12 @@
       <span style="width:8px;height:8px;border-radius:50%;background:var(--brand);flex-shrink:0;"></span>
       <span style="font-size:13px;color:var(--ink);font-weight:600;">{{ drafts|length }}</span>
       <span style="font-size:12px;color:var(--muted);">Saved Drafts</span>
+    </div>
+    <div style="background:var(--surface3);border:1px solid var(--line2);border-radius:10px;
+                padding:10px 18px;display:flex;align-items:center;gap:8px;">
+      <span style="width:8px;height:8px;border-radius:50%;background:var(--ink2);flex-shrink:0;"></span>
+      <span style="font-size:13px;color:var(--ink);font-weight:600;">{{ history|length }}</span>
+      <span style="font-size:12px;color:var(--muted);">Total</span>
     </div>
   </div>
 
