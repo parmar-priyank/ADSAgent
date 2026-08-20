@@ -803,6 +803,7 @@ def admin_qc_version_view(request: Request, version_id: int, user=Depends(requir
     resp = templates.TemplateResponse(request, "user_result.html", {
         "current_user": user,
         "theme": _resolve_theme(user),
+        "user_panel_theme": adb.get_setting("user_panel_theme", "dark"),
         "is_admin": True,
         "tpl": tpl,
         "checklist_rows": rows,

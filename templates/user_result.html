@@ -1,4 +1,4 @@
-{% extends "user_base.html" %}
+{% extends "admin_base.html" if is_admin else "user_base.html" %}
 
 {% block title %}Checklist Result{% endblock %}
 
