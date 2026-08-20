@@ -11,23 +11,6 @@
 <div style="background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:10px;padding:11px 18px;margin-bottom:18px;font-size:13px;font-weight:500;">&#10003; {{ success }}</div>
 {% endif %}
 
-{% if unassigned_post_qc %}
-<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:10px;padding:12px 18px;margin-bottom:18px;font-size:13px;">
-  <strong>{{ unassigned_post_qc | length }} customer{{ 's' if unassigned_post_qc | length != 1 else '' }}</strong>
-  finished Pre-QC but {{ 'have' if unassigned_post_qc | length != 1 else 'has' }} nobody assigned for Post-QC,
-  so {{ 'they are' if unassigned_post_qc | length != 1 else 'it is' }} not visible to anyone on the team yet.
-  <div style="margin-top:7px;font-size:12.5px;">
-    {% for q in unassigned_post_qc[:5] %}
-    <a href="/admin/record/{{ q['id'] }}" style="color:#92400e;font-weight:600;text-decoration:underline;">{{ q['customer_name'] or q['quote_number'] or ('#' ~ q['id']) }}</a>{% if not loop.last %}, {% endif %}
-    {% endfor %}
-    {% if unassigned_post_qc | length > 5 %}
-    and {{ unassigned_post_qc | length - 5 }} more
-    {% endif %}
-    &middot; <a href="/admin/records" style="color:#92400e;font-weight:700;text-decoration:underline;">assign from Customer Records</a>
-  </div>
-</div>
-{% endif %}
-
 <!-- ① Solar Installation Calendar — full width, top priority -->
 <div class="dash-card" style="margin-bottom:20px;">
   <div class="dash-card-header">

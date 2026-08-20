@@ -50,7 +50,7 @@ from reports.xlsx_builder import build_xlsx
 from db.connection import get_db
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from config import (
     CLAUDE_MODEL,
@@ -111,11 +111,6 @@ def admin_dashboard(request: Request, user=Depends(require_admin), cal: str = ""
         install_map_json=_build_install_map(all_records),
         cal_jump=cal,  # e.g. "2026-08" — tells the calendar JS which month to open
         success=success,
-        # Pre-QC finished but nobody assigned to do the Post-QC. Invisible to
-        # every regular user (their list is assignment-driven), so without
-        # this the work silently stalls — the team just reports that the
-        # customer "can't be found".
-        unassigned_post_qc=db.get_unassigned_post_qc_quotes(),
     )
     response = templates.TemplateResponse(request, "admin_dashboard.html", ctx)
     response.headers.update(_NO_CACHE)
@@ -436,7 +431,12 @@ def admin_reschedule_install_date(record_id: int, request: Request,
     Writes the same preferred_install_date column the technician-facing
     Confirm screen already edits, so the calendar picks the new date up
     immediately (it already prefers preferred_install_date over the
-    original AI-extracted install_date)."""
+    original AI-extracted install_date).
+
+    Returns JSON rather than redirecting — the caller (the Reschedule
+    button on the QC-version page) applies the result in place and shows
+    its own toast, instead of navigating away to the Dashboard just to
+    confirm the save worked."""
     record = db.get_quote(record_id)
     if not record:
         raise HTTPException(404, "Record not found.")
@@ -448,22 +448,10 @@ def admin_reschedule_install_date(record_id: int, request: Request,
         audit.log_event(request, "install_date_rescheduled", username=user["username"], user_id=user["id"],
                         detail=f"quote {record.get('quote_number') or record_id} ({record.get('customer_name') or ''}): "
                                f"'{old_date or '(none)'}' -> '{new_date or '(none)'}'")
-    # Land back on the Dashboard (where the calendar lives) rather than the
-    # QC-version page the request came from — that page was itself reached
-    # through a chain of earlier redirects, so bouncing back there just made
-    # the browser's Back button retrace that whole chain instead of reaching
-    # the Dashboard in one step. Jump the calendar to the new date's month so
-    # the moved job is immediately visible, confirming the change worked.
-    cal_param = ""
-    if new_date:
-        try:
-            cal_param = f"&cal={new_date[:7]}"  # "YYYY-MM-DD" -> "YYYY-MM"
-        except Exception:
-            cal_param = ""
-    msg = urllib.parse.quote(f"Installation date updated to {new_date}." if new_date and changed
-                              else "Installation date cleared." if changed
-                              else "No change — installation date was already set to that value.")
-    return RedirectResponse(url=f"/admin?success={msg}{cal_param}", status_code=303)
+    message = (f"Installation date updated to {new_date}." if new_date and changed
+               else "Installation date cleared." if changed
+               else "No change — installation date was already set to that value.")
+    return JSONResponse({"ok": True, "changed": changed, "date": new_date, "message": message})
 
 
 @router.post("/admin/records/{record_id}/delete")

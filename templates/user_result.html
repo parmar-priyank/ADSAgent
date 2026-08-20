@@ -108,12 +108,13 @@
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;">
       {% if is_admin %}
-      <form action="/admin/records/{{ revisit_version.quote_id }}/reschedule" method="post"
+      <form id="reschedule-form" onsubmit="return submitReschedule(event)"
+            data-record-id="{{ revisit_version.quote_id }}"
             style="display:flex;align-items:center;gap:6px;" title="Change this job's install date, e.g. after a rain delay — updates the calendar immediately, no need to resave the checklist.">
         <input type="date" name="preferred_install_date" id="admin-reschedule-date-input"
                value="{{ record.preferred_install_date if record else '' }}"
                style="padding:6px 8px;border:1.5px solid var(--line2);border-radius:7px;font-size:12.5px;color:var(--ink);background:var(--surface2);outline:none;">
-        <button type="submit" class="link-btn" style="font-weight:600;">
+        <button type="submit" id="reschedule-btn" class="link-btn" style="font-weight:600;">
           &#128197; Reschedule
         </button>
       </form>
@@ -1068,6 +1069,58 @@
     return response.redirected && /\/login(\?|$)/.test(response.url);
   }
   var SESSION_EXPIRED_MESSAGE = 'Your session has expired due to inactivity. Please log in again to continue — your edits were not saved.';
+
+  // ── Toast: brief on-page confirmation, no navigation ────────────────────
+  function showToast(message, isError) {
+    var existing = document.getElementById('page-toast');
+    if (existing) existing.remove();
+    var el = document.createElement('div');
+    el.id = 'page-toast';
+    el.textContent = (isError ? '' : '✓ ') + message;
+    el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9000;'
+      + 'padding:11px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.18);'
+      + (isError
+          ? 'background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;'
+          : 'background:#dcfce7;border:1px solid #86efac;color:#166534;');
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 4000);
+  }
+
+  // ── Reschedule: save in place, no page navigation ───────────────────────
+  function submitReschedule(e) {
+    e.preventDefault();
+    var form = document.getElementById('reschedule-form');
+    var btn  = document.getElementById('reschedule-btn');
+    var dateInput = document.getElementById('admin-reschedule-date-input');
+    var origLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    var body = new URLSearchParams();
+    body.set('preferred_install_date', dateInput.value || '');
+
+    fetch('/admin/records/' + form.dataset.recordId + '/reschedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    })
+    .then(function(r) {
+      if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
+      return r.json().then(function(data) { return { ok: r.ok, data: data }; });
+    })
+    .then(function(result) {
+      if (!result.ok) throw new Error((result.data && result.data.detail) || 'Failed to reschedule.');
+      showToast(result.data.message, false);
+    })
+    .catch(function(err) {
+      showToast((err && err.message) || 'Failed to reschedule. Please try again.', true);
+    })
+    .finally(function() {
+      btn.disabled = false;
+      btn.textContent = origLabel;
+    });
+    return false;
+  }
 
   // ── Download Excel: Pre-QC / Post-QC picker ─────────────────────────────
   function toggleDlPicker() {
