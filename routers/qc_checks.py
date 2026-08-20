@@ -61,6 +61,7 @@ _PDF_MAX_PAGES = 30
 
 import db.audit_repo as audit
 import db.quote_repo as db
+import db.user_repo as adb
 import db.checklist_repo as tdb
 from db.checklist_repo import store_pending_result, fetch_pending_result, PENDING_TTL
 from reports.xlsx_builder import build_xlsx
@@ -183,15 +184,34 @@ def _discard_tmp_xlsx(xlsx_path: str | None) -> None:
         pass
 
 
-def _customer_info_for_xlsx(record: dict | None, user: dict | None, kind: str) -> dict:
+def _checked_by_name(user: dict | None) -> str:
+    if not user:
+        return ""
+    return user.get("full_name") or user.get("username") or ""
+
+
+def _customer_info_for_xlsx(record: dict | None, user: dict | None, kind: str,
+                             version: dict | None = None) -> dict:
     """Values written into the Customer Name / Correct Address / Checked By /
     Date / Job Details row of the downloaded Excel — previously only the
     labels were ever written, leaving that whole block blank on every
-    download regardless of which customer or QC run it was."""
+    download regardless of which customer or QC run it was.
+
+    customer_name/address come from the signed agreement (the quote record
+    extracted from the uploaded PDF). checked_by is whoever actually did
+    THIS QC run — the version's confirmed_by/saved_by user — falling back to
+    the current `user` only when there's no version yet (a fresh run being
+    generated for the first time, before it's been saved as one). date is
+    the customer's selected installation date (preferred_install_date), not
+    today's date or the AI-extracted original install_date."""
     record = record or {}
-    checked_by = ""
-    if user:
-        checked_by = user.get("full_name") or user.get("username") or ""
+    checked_by = _checked_by_name(user)
+    if version:
+        doer_id = version.get("confirmed_by_user_id") or version.get("saved_by_user_id")
+        if doer_id:
+            doer = adb.get_user(doer_id)
+            if doer:
+                checked_by = _checked_by_name(doer)
     job_bits = [b for b in (
         record.get("quote_number"),
         "Post-QC" if kind == "post" else "Pre-QC",
@@ -200,7 +220,7 @@ def _customer_info_for_xlsx(record: dict | None, user: dict | None, kind: str) -
         "customer_name": record.get("customer_name") or "",
         "address":       record.get("billing_address") or "",
         "checked_by":    checked_by,
-        "date":          datetime.now().strftime("%d-%m-%Y"),
+        "date":          record.get("preferred_install_date") or "",
         "job_details":   " · ".join(job_bits),
     }
 
@@ -1043,15 +1063,22 @@ async def email_verify_post(
     # Dedup exact duplicates: same sender address AND same attachment name.
     # Different attachments from the same sender (e.g. contract vs warranty
     # doc in separate emails) are kept — only true re-uploads collapse into
-    # a single unified answer.
+    # a single unified answer. When source_address is blank (couldn't be
+    # extracted from the email), fall back to matching on attachment name
+    # alone — requiring a real address before dedup applies at all let every
+    # blank-address repeat straight through, showing the same attachment
+    # duplicated in the results.
     seen_keys: set = set()
     deduped = []
     for r in results:
-        key = ((r.get("source_address") or ""), (r.get("name") or "").strip().lower())
-        if key[0] and key[1] and key in seen_keys:
+        name = (r.get("name") or "").strip().lower()
+        if not name:
+            deduped.append(r)
             continue
-        if key[0] and key[1]:
-            seen_keys.add(key)
+        key = (r.get("source_address") or "").strip().lower(), name
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
         deduped.append(r)
     results = deduped
 
@@ -1838,20 +1865,22 @@ async def upload_zip(
             pass
 
     # Dedup exact duplicates: same sender address AND same attachment name
-    # (same guard as the Step 2 upload handler) — keeps a single unified
-    # answer per attachment even if results were re-submitted with repeats.
+    # (same rule as the Step 2 upload handler, including its blank-address
+    # fallback to name-only matching — see its comment) — keeps a single
+    # unified answer per attachment even if results were re-submitted with
+    # repeats.
     if email_results:
         _seen_keys: set = set()
         _deduped = []
         for r in email_results:
-            _key = (
-                (r.get("source_address") or "").strip().lower(),
-                (r.get("name") or "").strip().lower(),
-            )
-            if _key[0] and _key[1] and _key in _seen_keys:
+            _name = (r.get("name") or "").strip().lower()
+            if not _name:
+                _deduped.append(r)
                 continue
-            if _key[0] and _key[1]:
-                _seen_keys.add(_key)
+            _key = (r.get("source_address") or "").strip().lower(), _name
+            if _key in _seen_keys:
+                continue
+            _seen_keys.add(_key)
             _deduped.append(r)
         email_results = _deduped
 
@@ -2665,7 +2694,7 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
         xlsx_blob = build_xlsx(
             rows, filled=filled,
             email_results=email_results if has_email_edit else json.loads(v.get("email_results_json") or "[]"),
-            customer_info=_customer_info_for_xlsx(record, user, v.get("kind") or "pre"),
+            customer_info=_customer_info_for_xlsx(record, user, v.get("kind") or "pre", version=v),
         )
         yes_count = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "Yes")
         no_count  = sum(1 for r in rows if not r.get("is_section") and r.get("status") == "No")
@@ -2771,7 +2800,7 @@ async def user_qc_version_save_email_only(request: Request, version_id: int, use
                 }
         record = db.get_quote(v["quote_id"])
         xlsx_blob = build_xlsx(own_rows, filled=filled, email_results=email_results,
-                                customer_info=_customer_info_for_xlsx(record, user, v.get("kind") or "pre"))
+                                customer_info=_customer_info_for_xlsx(record, user, v.get("kind") or "pre", version=v))
         yes_count = sum(1 for r in own_rows if not r.get("is_section") and r.get("status") == "Yes")
         no_count  = sum(1 for r in own_rows if not r.get("is_section") and r.get("status") == "No")
         na_count  = sum(1 for r in own_rows if not r.get("is_section") and r.get("status") == "N/A")
@@ -2881,7 +2910,7 @@ async def user_qc_version_add_email(
             }
     record = db.get_quote(v["quote_id"])
     xlsx_blob = build_xlsx(rows, filled=filled, email_results=merged_results,
-                            customer_info=_customer_info_for_xlsx(record, user, v.get("kind") or "pre"))
+                            customer_info=_customer_info_for_xlsx(record, user, v.get("kind") or "pre", version=v))
 
     was_confirmed = v.get("status") == "confirmed"
     db.update_qc_version(
