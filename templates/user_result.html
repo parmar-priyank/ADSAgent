@@ -108,16 +108,29 @@
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;">
       {% if is_admin %}
-      <form id="reschedule-form" onsubmit="return submitReschedule(event)"
-            data-record-id="{{ revisit_version.quote_id }}"
-            style="display:flex;align-items:center;gap:6px;" title="Change this job's install date, e.g. after a rain delay — updates the calendar immediately, no need to resave the checklist.">
-        <input type="date" name="preferred_install_date" id="admin-reschedule-date-input"
-               value="{{ record.preferred_install_date if record else '' }}"
-               style="padding:6px 8px;border:1.5px solid var(--line2);border-radius:7px;font-size:12.5px;color:var(--ink);background:var(--surface2);outline:none;">
-        <button type="submit" id="reschedule-btn" class="link-btn" style="font-weight:600;">
+      <div style="position:relative;" id="reschedule-wrap" data-record-id="{{ revisit_version.quote_id }}"
+           title="Change this job's install date, e.g. after a rain delay — updates the calendar immediately, no need to resave the checklist.">
+        <button type="button" onclick="toggleReschedulePicker()" class="link-btn" style="font-weight:600;cursor:pointer;">
           &#128197; Reschedule
         </button>
-      </form>
+        <div id="reschedule-menu"
+             style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--surface2);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:14px;z-index:50;min-width:200px;">
+          <label for="admin-reschedule-date-input" style="display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">Installation date</label>
+          <input type="date" id="admin-reschedule-date-input"
+                 value="{{ record.preferred_install_date if record else '' }}"
+                 style="width:100%;padding:7px 9px;border:1.5px solid var(--line2);border-radius:7px;font-size:12.5px;color:var(--ink);background:var(--surface3);outline:none;box-sizing:border-box;">
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button type="button" onclick="toggleReschedulePicker(false)"
+                    style="flex:1;padding:7px;border-radius:7px;border:1px solid var(--line2);background:none;color:var(--ink2);font-size:12px;font-weight:600;cursor:pointer;">
+              Cancel
+            </button>
+            <button type="button" id="reschedule-confirm-btn" onclick="submitReschedule()"
+                    style="flex:1;padding:7px;border-radius:7px;border:none;background:var(--brand);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">
+              Confirm
+            </button>
+          </div>
+        </div>
+      </div>
       {% endif %}
       {% set pre_dl_version  = revisit_version if tpl.kind != 'post' else other_version %}
       {% set post_dl_version = revisit_version if tpl.kind == 'post' else other_version %}
@@ -1086,11 +1099,25 @@
     setTimeout(function() { el.remove(); }, 4000);
   }
 
-  // ── Reschedule: save in place, no page navigation ───────────────────────
-  function submitReschedule(e) {
-    e.preventDefault();
-    var form = document.getElementById('reschedule-form');
-    var btn  = document.getElementById('reschedule-btn');
+  // ── Reschedule: click opens a small popup (date + Confirm), save in
+  // place with no page navigation ─────────────────────────────────────────
+  function toggleReschedulePicker(open) {
+    var menu = document.getElementById('reschedule-menu');
+    if (!menu) return;
+    var show = (open === undefined) ? (menu.style.display === 'none') : open;
+    menu.style.display = show ? 'block' : 'none';
+  }
+  document.addEventListener('click', function(e) {
+    var wrap = document.getElementById('reschedule-wrap');
+    var menu = document.getElementById('reschedule-menu');
+    if (wrap && menu && !wrap.contains(e.target)) {
+      menu.style.display = 'none';
+    }
+  });
+
+  function submitReschedule() {
+    var wrap = document.getElementById('reschedule-wrap');
+    var btn  = document.getElementById('reschedule-confirm-btn');
     var dateInput = document.getElementById('admin-reschedule-date-input');
     var origLabel = btn.textContent;
     btn.disabled = true;
@@ -1099,7 +1126,7 @@
     var body = new URLSearchParams();
     body.set('preferred_install_date', dateInput.value || '');
 
-    fetch('/admin/records/' + form.dataset.recordId + '/reschedule', {
+    fetch('/admin/records/' + wrap.dataset.recordId + '/reschedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
@@ -1111,6 +1138,7 @@
     .then(function(result) {
       if (!result.ok) throw new Error((result.data && result.data.detail) || 'Failed to reschedule.');
       showToast(result.data.message, false);
+      toggleReschedulePicker(false);
     })
     .catch(function(err) {
       showToast((err && err.message) || 'Failed to reschedule. Please try again.', true);
@@ -1119,7 +1147,6 @@
       btn.disabled = false;
       btn.textContent = origLabel;
     });
-    return false;
   }
 
   // ── Download Excel: Pre-QC / Post-QC picker ─────────────────────────────
