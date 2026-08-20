@@ -1808,6 +1808,20 @@ async def upload_zip(
                 run_input_tokens  += batch_in
                 run_output_tokens += batch_out
 
+        # Checkpoint whatever's done so far. Not a resume feature — see the
+        # run_checkpoints comment in db/checklist_repo.py — just makes sure a
+        # server crash between here and the end of the per-item pass below
+        # doesn't silently throw away AI calls that already succeeded and
+        # were already paid for.
+        if ref_record and batch_results_by_index:
+            try:
+                tdb.save_run_checkpoint(
+                    uid, ref_record["id"], kind, batch_results_by_index,
+                    run_input_tokens, run_output_tokens,
+                )
+            except Exception:
+                logger.exception("checklist run checkpoint (batch pass) failed quote_id=%s", quote_id)
+
         remaining = [(i, item) for i, item in non_section if i not in batched_item_indices]
         remaining_results = await asyncio.gather(
             *[_bounded_gather(_claude_sem, _analyse_item, i, item) for i, item in remaining]
@@ -1821,6 +1835,13 @@ async def upload_zip(
     finally:
         _active_jobs.discard(uid)
         _timings["ai"] = time.perf_counter() - _t_ai
+        # The run either finished (results saved via the auto-save-as-draft
+        # below) or raised — either way the checkpoint's job is done.
+        if ref_record:
+            try:
+                tdb.clear_run_checkpoint(uid, ref_record["id"], kind)
+            except Exception:
+                pass
 
     # Fold in this quote's Verify Email token spend (if any) and consume it —
     # read from the DB's running total, not the submitted form fields, so a

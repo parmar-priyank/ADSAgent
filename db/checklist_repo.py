@@ -97,6 +97,20 @@ def init_templates_db():
             # already paid for) result again after a session hiccup bounces
             # them off the results page — see get_latest_pending_result_for_user.
             conn.execute("ALTER TABLE pending_results ADD COLUMN user_id INTEGER")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS run_checkpoints (
+                user_id     INTEGER NOT NULL,
+                quote_id    INTEGER NOT NULL,
+                kind        TEXT NOT NULL,
+                results     TEXT NOT NULL,
+                input_tokens  INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                updated_at  INTEGER NOT NULL,
+                PRIMARY KEY (user_id, quote_id, kind)
+            )
+            """
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -416,6 +430,47 @@ def fetch_pending_result(token: str, ttl: int = PENDING_TTL) -> dict | None:
             return None
         # Keep the row so page refresh still works within TTL
     return json.loads(row["payload"])
+
+
+# ---------------------------------------------------------------------------
+# Run checkpoints — recovery aid for a checklist run interrupted by a server
+# crash/restart mid-analysis (not a client disconnect: the server keeps
+# analysing even if the user's browser/laptop/internet drops, and the
+# already-implemented auto-save-as-draft covers that case once the run
+# finishes). This only helps the rarer case where the SERVER PROCESS itself
+# dies partway through — items are analysed in concurrent batches for speed,
+# so this checkpoints whatever's completed after each batch returns, capping
+# the AI spend lost to a crash at one batch instead of the whole run. Not a
+# self-service "resume" feature — nothing in the UI reads this yet; it exists
+# so partial results aren't silently gone and can be recovered by hand if a
+# crash is ever investigated.
+# ---------------------------------------------------------------------------
+
+def save_run_checkpoint(user_id: int, quote_id: int, kind: str, results: dict,
+                        input_tokens: int, output_tokens: int) -> None:
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO run_checkpoints (user_id, quote_id, kind, results, input_tokens, output_tokens, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, quote_id, kind) DO UPDATE SET
+                results = excluded.results,
+                input_tokens = excluded.input_tokens,
+                output_tokens = excluded.output_tokens,
+                updated_at = excluded.updated_at
+            """,
+            (user_id, quote_id, kind, json.dumps(results), input_tokens, output_tokens, int(time.time())),
+        )
+
+
+def clear_run_checkpoint(user_id: int, quote_id: int, kind: str) -> None:
+    """Called once a run finishes (success or failure) — a checkpoint only
+    matters while analysis is actually in flight."""
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM run_checkpoints WHERE user_id = ? AND quote_id = ? AND kind = ?",
+            (user_id, quote_id, kind),
+        )
 
 
 init_templates_db()
