@@ -69,27 +69,40 @@
         {{ (((record.customer_name if record else '') or 'C')[0]) | upper }}
       </div>
       <div style="min-width:0;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="font-size:18px;font-weight:800;color:var(--ink);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ (record.customer_name if record else '') or 'Customer' }}</div>
-          {% if is_readonly %}
-          <span style="font-size:10.5px;font-weight:700;color:#16a34a;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);border-radius:20px;padding:2px 9px;white-space:nowrap;flex-shrink:0;">&#10003; Confirmed</span>
-          {% else %}
-          <span style="font-size:10.5px;font-weight:700;color:#d97706;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:20px;padding:2px 9px;white-space:nowrap;flex-shrink:0;">Draft</span>
-          {% endif %}
-          {% if not is_admin and not can_edit %}
-          <span style="font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surface3);border:1px solid var(--line2);border-radius:20px;padding:2px 9px;white-space:nowrap;flex-shrink:0;">View only</span>
-          {% endif %}
-          {% if is_admin and revisit_version and revisit_version.input_tokens is not none %}
-          {% set _qc_total_tokens = (revisit_version.input_tokens or 0) + (revisit_version.output_tokens or 0) %}
-          {% set _qc_cost = ((revisit_version.input_tokens or 0) / 1000000 * claude_price_in) + ((revisit_version.output_tokens or 0) / 1000000 * claude_price_out) %}
-          <span title="{{ '{:,}'.format(revisit_version.input_tokens or 0) }} input + {{ '{:,}'.format(revisit_version.output_tokens or 0) }} output tokens"
-                style="font-size:10.5px;font-weight:700;color:#6b5b95;background:rgba(107,91,149,.1);border:1px solid rgba(107,91,149,.3);border-radius:20px;padding:2px 9px;white-space:nowrap;flex-shrink:0;">
-            &#36;{{ '%.4f' | format(_qc_cost) }} &middot; {{ '{:,}'.format(_qc_total_tokens) }} tokens
+        <div style="font-size:18px;font-weight:800;color:var(--ink);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ (record.customer_name if record else '') or 'Customer' }}</div>
+
+        {# Combine Pre-QC + Post-QC token/cost once both kinds exist, so the
+           total reflects the whole job rather than whichever kind happens to
+           be on screen right now. #}
+        {% set _pre_v  = revisit_version if tpl.kind != 'post' else other_version %}
+        {% set _post_v = revisit_version if tpl.kind == 'post' else other_version %}
+        {% set _in_tok  = (_pre_v.input_tokens  if _pre_v  else 0) | default(0, true) + (_post_v.input_tokens  if _post_v  else 0) | default(0, true) %}
+        {% set _out_tok = (_pre_v.output_tokens if _pre_v  else 0) | default(0, true) + (_post_v.output_tokens if _post_v  else 0) | default(0, true) %}
+        {% set _qc_total_tokens = _in_tok + _out_tok %}
+        {% if is_admin and _qc_total_tokens %}
+        {% set _qc_cost = (_in_tok / 1000000 * (claude_price_in | default(0))) + (_out_tok / 1000000 * (claude_price_out | default(0))) %}
+        {% endif %}
+
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 16px;margin-top:6px;padding-top:8px;border-top:1px solid var(--line2);">
+          <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);">
+            QC
+            {% if is_readonly %}
+            <span style="font-weight:700;color:#16a34a;">&#10003; Confirmed</span>
+            {% else %}
+            <span style="font-weight:700;color:#d97706;">Draft</span>
+            {% endif %}
+            {% if not is_admin and not can_edit %}
+            <span style="font-weight:700;color:var(--muted);">&middot; View only</span>
+            {% endif %}
           </span>
+          <span style="font-size:11.5px;color:var(--muted);">Quote No. <span style="font-weight:700;color:var(--ink2);">{{ (record.quote_number if record else '') or '—' }}</span></span>
+          {% if is_admin and _qc_total_tokens %}
+          <span title="{{ '{:,}'.format(_in_tok) }} input + {{ '{:,}'.format(_out_tok) }} output tokens{% if _pre_v and _post_v %} (Pre-QC + Post-QC){% elif _post_v %} (Post-QC only){% else %} (Pre-QC only){% endif %}"
+                style="font-size:11.5px;color:var(--muted);">
+            Tokens Used <span style="font-weight:700;color:var(--ink2);">{{ '{:,}'.format(_qc_total_tokens) }}</span>
+          </span>
+          <span style="font-size:11.5px;color:var(--muted);">Total Cost <span style="font-weight:700;color:var(--ink2);">&#36;{{ '%.4f' | format(_qc_cost) }}</span></span>
           {% endif %}
-        </div>
-        <div style="font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          {{ (record.quote_number if record else '') or '—' }}
         </div>
       </div>
     </div>
