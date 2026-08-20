@@ -37,30 +37,34 @@
 .sidebar-nav { flex: 1; padding: 16px 14px; overflow-y: auto; }
 
 .nav-section-label {
-  font-size: 9px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .14em; color: var(--muted);
+  font-size: 10.5px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .14em; color: var(--brand);
+  opacity: .75;
   padding: 12px 12px 6px;
 }
 .nav-section-label:first-child { padding-top: 4px; }
 
 .nav-item {
   display: flex; align-items: center; gap: 12px;
-  padding: 8px 12px; border-radius: 10px;
+  padding: 11px 14px; border-radius: 10px;
   color: var(--ink2); text-decoration: none;
-  font-size: 13.5px; font-weight: 500; letter-spacing: -.01em;
-  transition: background .15s, color .15s;
-  margin-bottom: 1px;
+  font-size: 15.5px; font-weight: 700; letter-spacing: -.01em;
+  border-left: 3px solid transparent;
+  transition: background .15s, color .15s, border-color .15s;
+  margin-bottom: 3px;
 }
 .nav-item:hover  { background: var(--surface2); color: var(--ink); }
 .nav-item.active {
   background: var(--brand-glow);
   color: var(--brand);
-  font-weight: 600;
+  font-weight: 800;
+  border-left-color: var(--brand);
 }
 .nav-icon {
-  width: 22px; height: 22px; display: grid; place-items: center;
-  opacity: .5; flex: none; transition: opacity .15s;
+  width: 24px; height: 24px; display: grid; place-items: center;
+  opacity: .65; flex: none; transition: opacity .15s;
 }
+.nav-icon svg { width: 17px; height: 17px; stroke-width: 2.4; }
 .nav-item:hover .nav-icon,
 .nav-item.active .nav-icon { opacity: 1; }
 
@@ -339,7 +343,8 @@
 [data-theme="light"] .sidebar-brand-name { color: var(--ink); }
 [data-theme="light"] .nav-item           { color: var(--muted); }
 [data-theme="light"] .nav-item:hover     { background: #f5f3ef; color: var(--ink); }
-[data-theme="light"] .nav-item.active    { background: rgba(222,93,24,.08); color: #b94a0e; }
+[data-theme="light"] .nav-item.active    { background: rgba(222,93,24,.10); color: #b94a0e; border-left-color: #b94a0e; }
+[data-theme="light"] .nav-section-label  { color: #b94a0e; opacity: .8; }
 [data-theme="light"] .dash-main          { background: #f7f5f0; }
 [data-theme="light"] .dash-topbar        { background: #fff; border-bottom-color: rgba(28,26,23,.08); }
 [data-theme="light"] .dash-topbar-title  { color: var(--ink); }
