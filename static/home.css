@@ -252,8 +252,8 @@
 .checklist-sno-cell    { width: 5%; text-align: center; font-weight: 700; color: var(--ink); }
 .checklist-item-cell   { width: 20%; }
 .checklist-ref-cell    { width: 14%; color: var(--muted); font-size: 12px; }
-.checklist-prompt-cell { width: 18%; color: var(--muted); font-size: 12px; }
-.checklist-status-cell { width: 9%; text-align: center; }
+.checklist-prompt-cell { width: 14%; color: var(--muted); font-size: 12px; }
+.checklist-status-cell { width: 13%; text-align: center; }
 .remark-cell           { width: 34%; }
 .remark-cell .remark-view { display: block; white-space: normal; word-break: break-word; line-height: 1.5; font-size: 12px; color: var(--ink2); max-width: 100%; }
 .remark-edit-btn       { display: none; width: 100%; padding: 4px 6px 4px 8px; border-radius: 5px; border: 1px solid var(--line2); background: var(--surface2); color: var(--ink2); font-size: 12px; cursor: pointer; font-family: inherit; box-sizing: border-box; align-items: center; gap: 5px; min-height: 28px; text-align: left; transition: border-color .15s; }
@@ -274,7 +274,7 @@
 .result-card.is-edit-mode .remark-view     { display: none; }
 .result-card.is-edit-mode .remark-edit-btn { display: flex; }
 
-.status-edit-row { align-items: center; gap: 6px; justify-content: center; }
+.status-edit-row { align-items: center; gap: 6px; justify-content: center; flex-wrap: wrap; row-gap: 4px; }
 .status-edit-row .status-edit { margin: 0; flex-shrink: 0; min-width: 58px; }
 
 .file-upload-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex-shrink: 0; border-radius: 5px; border: 1px solid var(--line2); background: var(--surface2); color: var(--muted); cursor: pointer; padding: 0; transition: border-color .15s, color .15s; }
