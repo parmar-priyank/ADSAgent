@@ -765,8 +765,12 @@
       </div>
     </div>
 
-    <!-- Edit mode save bar (hidden by default, shown in edit mode) -->
-    <div id="edit-bar" style="background:var(--brand-glow);border:1px solid var(--brand-glow);color:var(--brand);border-radius:8px;padding:8px 16px;margin-bottom:12px;align-items:center;gap:16px;">
+    <!-- Edit mode save bar. Its own display is toggled directly by
+         enterEditMode()/cancelEditMode() (not left to the
+         .result-card.is-edit-mode #edit-bar CSS rule alone), so it can't
+         render visible before Modify is clicked regardless of whether
+         home.css has loaded on whatever base template this page extends. -->
+    <div id="edit-bar" style="display:none;background:var(--brand-glow);border:1px solid var(--brand-glow);color:var(--brand);border-radius:8px;padding:8px 16px;margin-bottom:12px;align-items:center;gap:16px;">
       <span style="font-size:13px;font-weight:600;flex:1;">&#9998; Edit mode — change Yes/No and remarks, then save.</span>
       <div style="display:flex;gap:8px;flex-shrink:0;">
         <button type="button" onclick="cancelEditMode()"
@@ -1496,9 +1500,20 @@
   // ── ZIP Checklist edit mode — single class toggle drives all visibility ──
   var _card = document.querySelector('#checklist-modal-overlay .result-card');
 
+  // #edit-bar's shown/hidden state is set directly here rather than relying
+  // solely on the .result-card.is-edit-mode #edit-bar CSS rule — a
+  // stylesheet rule can never override the div's own inline style once one
+  // is set, so keeping both toggled together here is what actually keeps
+  // the bar hidden until Modify is clicked, independent of that CSS rule.
+  function _setChecklistEditMode(on) {
+    _card.classList.toggle('is-edit-mode', on);
+    var bar = document.getElementById('edit-bar');
+    if (bar) bar.style.display = on ? 'flex' : 'none';
+  }
+
   function enterEditMode() {
     _editMode = true;
-    _card.classList.add('is-edit-mode');
+    _setChecklistEditMode(true);
     document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
       tr.dataset.savedStatus = tr.dataset.status;
     });
@@ -1513,7 +1528,7 @@
 
   function cancelEditMode() {
     _editMode = false;
-    _card.classList.remove('is-edit-mode');
+    _setChecklistEditMode(false);
     document.querySelectorAll('#checklist-tbody tr[data-position]').forEach(function(tr) {
       tr.dataset.status = tr.dataset.savedStatus || tr.dataset.status;
       tr.querySelector('.status-edit').value = tr.dataset.status;
@@ -1670,7 +1685,7 @@
         document.getElementById('filter-no').textContent  = '✗ ' + data.no_count  + ' No';
         document.getElementById('filter-na').textContent  = '— ' + data.na_count  + ' N/A';
         _editMode = false;
-        _card.classList.remove('is-edit-mode');
+        _setChecklistEditMode(false);
         setFilter(_activeFilter);
         saveBtn.disabled    = false;
         saveBtn.textContent = origLabel;
@@ -1708,7 +1723,7 @@
       document.getElementById('filter-na').textContent  = '— ' + counts.na  + ' N/A';
 
       _editMode = false;
-      _card.classList.remove('is-edit-mode');
+      _setChecklistEditMode(false);
       setFilter(_activeFilter);
       saveBtn.disabled    = false;
       saveBtn.textContent = 'Save Changes';
