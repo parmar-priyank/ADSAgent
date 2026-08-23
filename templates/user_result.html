@@ -595,7 +595,7 @@
         {{ field('Deposit',         record.get('deposit','')) }}
         {{ field('Balance',         record.get('balance','')) }}
         {{ field('Payment Terms',   record.get('payment_terms','')) }}
-        {{ field('Install Date',    record.get('install_date','')) }}
+        {{ field('Install Date',    record.get('preferred_install_date') or record.get('install_date','')) }}
         {{ field('Balance Due Date',record.get('balance_due_date','')) }}
         {{ field('Notes',           record.get('notes','')) }}
       </div>
