@@ -2403,9 +2403,19 @@ def checklist_confirm(
 
     record = _resolve_quote(quote_id)
 
-    if record and preferred_install_date.strip() != (record.get("preferred_install_date") or ""):
-        db.update_preferred_install_date(record["id"], preferred_install_date.strip())
-        record["preferred_install_date"] = preferred_install_date.strip()
+    # Only ever write a non-blank date here. This save endpoint isn't a
+    # dedicated "edit the install date" action — the date field just rides
+    # along with whatever checklist edit triggered the request — so a blank
+    # submitted value almost always means the page's date input wasn't
+    # populated (timing, a missing element, etc.), not a deliberate clear.
+    # Blindly overwriting on any difference (including blank) previously
+    # wiped out a real, already-saved date on an unrelated Confirm/Save
+    # Draft click. Deliberately clearing the date is still possible via the
+    # admin Reschedule action, which is a dedicated endpoint for exactly that.
+    _new_date = preferred_install_date.strip()
+    if record and _new_date and _new_date != (record.get("preferred_install_date") or ""):
+        db.update_preferred_install_date(record["id"], _new_date)
+        record["preferred_install_date"] = _new_date
 
     if dl_token and record:
         try:
@@ -2500,8 +2510,11 @@ def checklist_save_draft(
 
     record = _resolve_quote(quote_id)
 
-    if record and preferred_install_date.strip() != (record.get("preferred_install_date") or ""):
-        db.update_preferred_install_date(record["id"], preferred_install_date.strip())
+    # Same guard as checklist_confirm — never let a blank submitted date
+    # overwrite an already-saved one; see that comment for why.
+    _new_date = preferred_install_date.strip()
+    if record and _new_date and _new_date != (record.get("preferred_install_date") or ""):
+        db.update_preferred_install_date(record["id"], _new_date)
 
     if dl_token and record:
         try:
@@ -2762,7 +2775,9 @@ async def user_qc_version_save(request: Request, version_id: int, user=Depends(r
             output_tokens=new_output_tokens if (input_tokens_delta or output_tokens_delta) else None,
         )
 
-        if record and preferred_install_date != (record.get("preferred_install_date") or ""):
+        # Same guard as checklist_confirm/checklist_save_draft — never let a
+        # blank submitted date overwrite an already-saved one.
+        if record and preferred_install_date and preferred_install_date != (record.get("preferred_install_date") or ""):
             db.update_preferred_install_date(quote_id, preferred_install_date)
     except Exception as e:
         raise HTTPException(500, f"Failed to save: {e}")
