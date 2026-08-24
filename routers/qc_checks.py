@@ -1574,17 +1574,27 @@ async def upload_zip(
     # Pass 2: for references still unmatched, fall back to the single unclaimed
     # file left in the ZIP of the same kind (image/pdf/eml) the reference name
     # implies — only when that leaves exactly one candidate, so it's unambiguous.
+    #
+    # _file_kind is deliberately NOT named `kind` here — this function's own
+    # `kind` parameter (the QC run type, "pre"/"post") is in scope for this
+    # whole function body, and a `for` loop doesn't create a new scope in
+    # Python. Reusing the name here used to silently overwrite the real
+    # `kind` with a file-type string ("pdf"/"image"/"eml"/"other") for the
+    # rest of the request, which add_qc_version's `kind not in ("pre",
+    # "post")` guard then coerced to "pre" — so every Post-QC run whose ZIP
+    # matching reached this fallback pass got saved as a Pre-QC version
+    # instead, regardless of which template was actually used.
     for i, resolved in item_resolved.items():
         for entry in resolved:
             rname, zname, zdata = entry
             if zdata is not None:
                 continue
-            kind = _expected_kind(rname)
-            if kind == "other":
+            _file_kind = _expected_kind(rname)
+            if _file_kind == "other":
                 continue
             candidates = [
                 (fn, fd) for fn, fd in zip_files.items()
-                if fn not in claimed and _actual_kind(fn, fd) == kind
+                if fn not in claimed and _actual_kind(fn, fd) == _file_kind
             ]
             if len(candidates) == 1:
                 fn, fd = candidates[0]
