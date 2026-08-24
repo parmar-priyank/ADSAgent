@@ -295,12 +295,23 @@
   </div>
   {% endif %}
 
-  <!-- Summary tiles — click any tile to open its modal. Always 4 tiles:
+  <!-- Summary tiles — click any tile to open its modal. Up to 4 tiles:
        Signed Agreement, Email Verification, Pre-QC Checklist, Post-QC
        Checklist. The two checklist tiles show whichever kind's data this
        page already has loaded (checklist_rows/tpl.kind) plus the other
        kind's latest version if one exists (other_version) — with a clean
-       pending/empty state when it doesn't, so the grid is always 4 boxes. -->
+       pending/empty state when it doesn't, so the grid is always up to 4
+       boxes wide.
+
+       Signed Agreement is common to both flows and always shows. The
+       other three are scoped to what the viewing user's own QC access
+       covers — a Pre-QC-only user has no reason to see a Post-QC tile for
+       a customer they were never assigned Post-QC work for (and vice
+       versa: Email Verification and the Pre-QC tile are hidden from a
+       Post-QC-only user) — admin and anyone with both accesses still sees
+       everything, same as before. -->
+  {% set _can_see_pre  = is_admin or current_user.can_pre_qc %}
+  {% set _can_see_post = is_admin or current_user.can_post_qc %}
   {% set pre_rows       = checklist_rows if tpl.kind != 'post' else other_checklist_rows %}
   {% set pre_zip        = zip_filename   if tpl.kind != 'post' else (other_version.zip_filename if other_version else '') %}
   {% set pre_yes        = yes_count      if tpl.kind != 'post' else other_yes_count %}
@@ -329,7 +340,8 @@
       <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#4D96FF;">View details &rsaquo;</div>
     </div>
 
-    <!-- Tile 2: Email Verification -->
+    <!-- Tile 2: Email Verification (Pre-QC only) -->
+    {% if _can_see_pre %}
     <div onclick="openEmailModal()" class="card qc-tile"
          style="--tile-accent:var(--brand);margin:0;border-radius:14px;cursor:pointer;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
@@ -353,99 +365,104 @@
       {% endif %}
       {% endif %}
     </div>
-
-    <!-- Tile 3: Pre-QC Checklist -->
-    {% if tpl.kind != 'post' %}
-    <div onclick="{% if checklist_rows %}openChecklistModal(){% endif %}" class="card qc-tile{% if not pre_rows %} is-empty{% endif %}"
-         style="--tile-accent:#c45010;margin:0;border-radius:14px;{% if pre_rows %}cursor:pointer;{% endif %}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <div style="width:34px;height:34px;border-radius:9px;background:rgba(196,80,16,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c45010" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        </div>
-        <span style="font-size:14px;font-weight:800;color:var(--ink);">Pre-QC Checklist</span>
-      </div>
-      {% if pre_rows %}
-      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ pre_zip or 'checklist' }}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <span class="badge-yes" style="border-radius:20px;">&#10003; {{ pre_yes }}</span>
-        <span class="badge-no" style="border-radius:20px;">&#10007; {{ pre_no }}</span>
-        <span class="badge-na" style="border-radius:20px;">&#8212; {{ pre_na }}</span>
-      </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View & modify ›' if can_edit else 'View ›' }}</div>
-      {% else %}
-      <div style="font-size:12.5px;color:var(--muted);">No Pre-QC run yet.</div>
-      {% endif %}
-    </div>
-    {% else %}
-    <div onclick="{% if other_checklist_rows %}openOtherChecklistModal(){% endif %}" class="card qc-tile{% if not other_checklist_rows %} is-empty{% endif %}"
-       style="--tile-accent:#c45010;margin:0;border-radius:14px;{% if other_checklist_rows %}cursor:pointer;{% endif %}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <div style="width:34px;height:34px;border-radius:9px;background:rgba(196,80,16,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c45010" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        </div>
-        <span style="font-size:14px;font-weight:800;color:var(--ink);">Pre-QC Checklist</span>
-      </div>
-      {% if pre_rows %}
-      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ pre_zip or 'checklist' }}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <span class="badge-yes" style="border-radius:20px;">&#10003; {{ pre_yes }}</span>
-        <span class="badge-no" style="border-radius:20px;">&#10007; {{ pre_no }}</span>
-        <span class="badge-na" style="border-radius:20px;">&#8212; {{ pre_na }}</span>
-      </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View & modify ›' if can_edit_other_checklist else 'View ›' }}</div>
-      {% else %}
-      <div style="font-size:12.5px;color:var(--muted);">No Pre-QC run yet.</div>
-      {% endif %}
-    </div>
     {% endif %}
 
-    <!-- Tile 4: Post-QC Checklist -->
-    {% if tpl.kind == 'post' %}
-    <div onclick="{% if checklist_rows %}openChecklistModal(){% endif %}" class="card qc-tile{% if not post_rows %} is-empty{% endif %}"
-         style="--tile-accent:#2d7a4a;margin:0;border-radius:14px;{% if post_rows %}cursor:pointer;{% endif %}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <div style="width:34px;height:34px;border-radius:9px;background:rgba(45,122,74,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2d7a4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    <!-- Tile 3: Pre-QC Checklist (Pre-QC access only) -->
+    {% if _can_see_pre %}
+      {% if tpl.kind != 'post' %}
+      <div onclick="{% if checklist_rows %}openChecklistModal(){% endif %}" class="card qc-tile{% if not pre_rows %} is-empty{% endif %}"
+           style="--tile-accent:#c45010;margin:0;border-radius:14px;{% if pre_rows %}cursor:pointer;{% endif %}">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <div style="width:34px;height:34px;border-radius:9px;background:rgba(196,80,16,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c45010" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </div>
+          <span style="font-size:14px;font-weight:800;color:var(--ink);">Pre-QC Checklist</span>
         </div>
-        <span style="font-size:14px;font-weight:800;color:var(--ink);">Post-QC Checklist</span>
+        {% if pre_rows %}
+        <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ pre_zip or 'checklist' }}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <span class="badge-yes" style="border-radius:20px;">&#10003; {{ pre_yes }}</span>
+          <span class="badge-no" style="border-radius:20px;">&#10007; {{ pre_no }}</span>
+          <span class="badge-na" style="border-radius:20px;">&#8212; {{ pre_na }}</span>
+        </div>
+        <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View & modify ›' if can_edit else 'View ›' }}</div>
+        {% else %}
+        <div style="font-size:12.5px;color:var(--muted);">No Pre-QC run yet.</div>
+        {% endif %}
       </div>
-      {% if post_rows %}
-      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ post_zip or 'checklist' }}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <span class="badge-yes" style="border-radius:20px;">&#10003; {{ post_yes }}</span>
-        <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
-        <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
-      </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View & modify ›' if can_edit else 'View ›' }}</div>
       {% else %}
-      <div style="font-size:12.5px;color:var(--muted);">
-        {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
+      <div onclick="{% if other_checklist_rows %}openOtherChecklistModal(){% endif %}" class="card qc-tile{% if not other_checklist_rows %} is-empty{% endif %}"
+         style="--tile-accent:#c45010;margin:0;border-radius:14px;{% if other_checklist_rows %}cursor:pointer;{% endif %}">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <div style="width:34px;height:34px;border-radius:9px;background:rgba(196,80,16,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c45010" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </div>
+          <span style="font-size:14px;font-weight:800;color:var(--ink);">Pre-QC Checklist</span>
+        </div>
+        {% if pre_rows %}
+        <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ pre_zip or 'checklist' }}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <span class="badge-yes" style="border-radius:20px;">&#10003; {{ pre_yes }}</span>
+          <span class="badge-no" style="border-radius:20px;">&#10007; {{ pre_no }}</span>
+          <span class="badge-na" style="border-radius:20px;">&#8212; {{ pre_na }}</span>
+        </div>
+        <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#c45010;">{{ 'View & modify ›' if can_edit_other_checklist else 'View ›' }}</div>
+        {% else %}
+        <div style="font-size:12.5px;color:var(--muted);">No Pre-QC run yet.</div>
+        {% endif %}
       </div>
       {% endif %}
-    </div>
-    {% else %}
-    <div onclick="{% if other_checklist_rows %}openOtherChecklistModal(){% endif %}" class="card qc-tile{% if not other_checklist_rows %} is-empty{% endif %}"
-       style="--tile-accent:#2d7a4a;margin:0;border-radius:14px;{% if other_checklist_rows %}cursor:pointer;{% endif %}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <div style="width:34px;height:34px;border-radius:9px;background:rgba(45,122,74,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2d7a4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    {% endif %}
+
+    <!-- Tile 4: Post-QC Checklist (Post-QC access only) -->
+    {% if _can_see_post %}
+      {% if tpl.kind == 'post' %}
+      <div onclick="{% if checklist_rows %}openChecklistModal(){% endif %}" class="card qc-tile{% if not post_rows %} is-empty{% endif %}"
+           style="--tile-accent:#2d7a4a;margin:0;border-radius:14px;{% if post_rows %}cursor:pointer;{% endif %}">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <div style="width:34px;height:34px;border-radius:9px;background:rgba(45,122,74,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2d7a4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </div>
+          <span style="font-size:14px;font-weight:800;color:var(--ink);">Post-QC Checklist</span>
         </div>
-        <span style="font-size:14px;font-weight:800;color:var(--ink);">Post-QC Checklist</span>
+        {% if post_rows %}
+        <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ post_zip or 'checklist' }}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <span class="badge-yes" style="border-radius:20px;">&#10003; {{ post_yes }}</span>
+          <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
+          <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
+        </div>
+        <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">{{ 'View & modify ›' if can_edit else 'View ›' }}</div>
+        {% else %}
+        <div style="font-size:12.5px;color:var(--muted);">
+          {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
+        </div>
+        {% endif %}
       </div>
-      {% if post_rows %}
-      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ post_zip or 'checklist' }}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <span class="badge-yes" style="border-radius:20px;">&#10003; {{ post_yes }}</span>
-        <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
-        <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
-      </div>
-      <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">View ›</div>
       {% else %}
-      <div style="font-size:12.5px;color:var(--muted);">
-        {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
+      <div onclick="{% if other_checklist_rows %}openOtherChecklistModal(){% endif %}" class="card qc-tile{% if not other_checklist_rows %} is-empty{% endif %}"
+         style="--tile-accent:#2d7a4a;margin:0;border-radius:14px;{% if other_checklist_rows %}cursor:pointer;{% endif %}">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <div style="width:34px;height:34px;border-radius:9px;background:rgba(45,122,74,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2d7a4a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </div>
+          <span style="font-size:14px;font-weight:800;color:var(--ink);">Post-QC Checklist</span>
+        </div>
+        {% if post_rows %}
+        <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-bottom:8px;">{{ post_zip or 'checklist' }}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <span class="badge-yes" style="border-radius:20px;">&#10003; {{ post_yes }}</span>
+          <span class="badge-no" style="border-radius:20px;">&#10007; {{ post_no }}</span>
+          <span class="badge-na" style="border-radius:20px;">&#8212; {{ post_na }}</span>
+        </div>
+        <div style="margin-top:14px;font-size:11.5px;font-weight:700;color:#2d7a4a;">View ›</div>
+        {% else %}
+        <div style="font-size:12.5px;color:var(--muted);">
+          {% if post_qc_assignee %}No Post-QC run yet — assigned to <strong style="color:var(--ink);">{{ post_qc_assignee.username }}</strong>.{% else %}No Post-QC run yet.{% endif %}
+        </div>
+        {% endif %}
       </div>
       {% endif %}
-    </div>
     {% endif %}
 
   </div>
@@ -873,7 +890,7 @@
 {% endif %}
 
 <!-- ═══════════════════════════ Modal 3b: Other-kind Checklist (borrowed from the sibling QC run — editable for admin/super-admin, read-only otherwise) ═══════════════════════════ -->
-{% if other_checklist_rows %}
+{% if other_checklist_rows and (_can_see_pre if other_kind == 'pre' else _can_see_post) %}
 <div id="other-checklist-modal-overlay"
      onclick="if(event.target===this)closeOtherChecklistModal()"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 20px;">
