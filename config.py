@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.requests import ClientDisconnect
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -373,7 +374,19 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
     """Last-resort handler — logs the full traceback for any exception that
     escapes a route (a real "app crash": unexpected code path, DB error,
     etc.) to logs/app.log, then returns a plain 500 same as FastAPI's
-    default would, so behavior for the client is unchanged."""
+    default would, so behavior for the client is unchanged.
+
+    A ClientDisconnect (the browser tab closed, or the connection dropped,
+    while the server was still reading the request body — e.g. mid Save
+    Changes) isn't a bug: nothing is left broken, the client just isn't
+    there anymore to receive whatever response we'd send. Logging it at
+    ERROR with a full traceback made it indistinguishable from a real
+    crash in the logs; log it quietly instead so real crashes stand out."""
+    if isinstance(exc, ClientDisconnect):
+        _crash_logger.info(
+            "Client disconnected mid-request on %s %s", request.method, request.url.path,
+        )
+        return PlainTextResponse("Internal Server Error", status_code=500)
     _crash_logger.error(
         "Unhandled exception on %s %s", request.method, request.url.path,
         exc_info=exc,
