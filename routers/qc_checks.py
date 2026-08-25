@@ -740,16 +740,24 @@ def _match_attachment_with_claude(client, attachment: dict, reference_text: str)
             except Exception:
                 pass
         # Also extract text
+        pdf_text = ""
         try:
             with pdfplumber.open(io.BytesIO(data)) as pdf:
-                txt = "\n".join(p.extract_text() or "" for p in pdf.pages)
-            if txt.strip():
-                user_content.append({"type": "text", "text": f"Attachment text:\n{txt[:6000]}"})
+                pdf_text = "\n".join(p.extract_text() or "" for p in pdf.pages)
+            if pdf_text.strip():
+                user_content.append({"type": "text", "text": f"Attachment text:\n{pdf_text[:6000]}"})
         except Exception:
             pass
         for png in pages:
             b64 = base64.standard_b64encode(png).decode()
             user_content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}})
+        if not pages and not pdf_text.strip():
+            # Couldn't render pages or extract text — nothing to send to
+            # Claude, so don't bother with the call (it would have nothing
+            # to analyse and could reply with unparseable text).
+            return {"name": name, "size_kb": size_kb, "mime": mime,
+                    "status": "N/A", "remark": "Could not read this PDF's content — it may be corrupted, empty, or password-protected.",
+                    "_input_tokens": 0, "_output_tokens": 0}
     elif mime.startswith("image/"):
         safe = _claude_safe_image(data, mime)
         if safe is None:
@@ -772,27 +780,40 @@ def _match_attachment_with_claude(client, attachment: dict, reference_text: str)
             max_tokens=300,
             messages=[{"role": "user", "content": user_content}],
         )
-        usage_in  = getattr(resp.usage, "input_tokens", 0) or 0
-        usage_out = getattr(resp.usage, "output_tokens", 0) or 0
-        if usage_in == 0 and usage_out == 0:
-            # See matching note in _claude_check — a real, successful Claude
-            # response should never report 0/0 usage; log the raw usage
-            # object so a recurrence is diagnosable instead of guessed at.
-            logger.warning("Attachment-match Claude call returned real content but zero usage tokens; raw usage=%r", resp.usage)
-        raw_resp = resp.content[0].text.strip()
-        if raw_resp.startswith("```"):
-            raw_resp = raw_resp.split("```", 2)[1]
-            if raw_resp.startswith("json"):
-                raw_resp = raw_resp[4:]
-            raw_resp = raw_resp.rsplit("```", 1)[0].strip()
-        r = json.loads(raw_resp)
-        return {"name": name, "size_kb": size_kb, "mime": mime,
-                "status": r.get("status", "N/A"), "remark": r.get("remark", ""),
-                "_input_tokens": usage_in, "_output_tokens": usage_out}
     except Exception as e:
         return {"name": name, "size_kb": size_kb, "mime": mime,
                 "status": "N/A", "remark": f"Error analysing attachment: {e}",
                 "_input_tokens": 0, "_output_tokens": 0}
+
+    usage_in  = getattr(resp.usage, "input_tokens", 0) or 0
+    usage_out = getattr(resp.usage, "output_tokens", 0) or 0
+    if usage_in == 0 and usage_out == 0:
+        # See matching note in _claude_check — a real, successful Claude
+        # response should never report 0/0 usage; log the raw usage
+        # object so a recurrence is diagnosable instead of guessed at.
+        logger.warning("Attachment-match Claude call returned real content but zero usage tokens; raw usage=%r", resp.usage)
+
+    raw_resp = resp.content[0].text.strip() if resp.content else ""
+    try:
+        cleaned = raw_resp
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```", 2)[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+            cleaned = cleaned.rsplit("```", 1)[0].strip()
+        r = json.loads(cleaned)
+        return {"name": name, "size_kb": size_kb, "mime": mime,
+                "status": r.get("status", "N/A"), "remark": r.get("remark", ""),
+                "_input_tokens": usage_in, "_output_tokens": usage_out}
+    except Exception:
+        # Claude replied but not with the requested JSON shape (usually
+        # because it had nothing usable to analyse, e.g. a PDF that yielded
+        # no extractable text/images). Fall back to its raw reply as the
+        # remark instead of leaking a Python parse-error string to the user.
+        fallback_remark = raw_resp or "Could not read this attachment's content to verify it."
+        return {"name": name, "size_kb": size_kb, "mime": mime,
+                "status": "N/A", "remark": fallback_remark,
+                "_input_tokens": usage_in, "_output_tokens": usage_out}
 
 
 def _analyse_single_file(client, item_text: str, prompt_text: str, reference_pdf_text: str,
