@@ -249,7 +249,14 @@
             if (submitter) submitter.disabled = true;
 
             fetch(action, { method: method, body: formData })
-              .then(function() { loadTplEditor(id, document.querySelector('.tpl-row-active')); })
+              .then(function(resp) {
+                if (!resp.ok) {
+                  if (submitter) submitter.disabled = false;
+                  alert('Save failed (server returned ' + resp.status + '). Nothing was saved — please try again.');
+                  return;
+                }
+                loadTplEditor(id, document.querySelector('.tpl-row-active'));
+              })
               .catch(function(err) {
                 console.error('Action failed', err);
                 if (submitter) submitter.disabled = false;
