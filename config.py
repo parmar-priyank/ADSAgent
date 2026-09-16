@@ -10,7 +10,7 @@ import json
 import os
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
 import anthropic
@@ -280,8 +280,25 @@ SESSION_MAX_AGE = 86400 * 7     # 7 days — absolute cap on a session's lifetim
 INACTIVITY_TIMEOUT = 60 * 60 * 4  # 4 hours — session ends early if idle this long
 
 
+def _utc_now_ts() -> int:
+    """Current time as a true UTC epoch second.
+
+    Replaces datetime.utcnow(), which is deprecated and scheduled for removal
+    from Python. The old call also had a latent bug worth recording: utcnow()
+    returns a NAIVE datetime, and .timestamp() then interprets a naive value as
+    LOCAL time — so on a server not set to UTC the stored number was offset by
+    the machine's UTC offset rather than being a real UTC epoch. That went
+    unnoticed because all three call sites made the same mistake consistently,
+    so the differences cancelled out in every comparison.
+
+    _decode_token() tolerates tokens minted under the old calculation, so this
+    change does not invalidate sessions that were already live at deploy time.
+    """
+    return int(datetime.now(timezone.utc).timestamp())
+
+
 def _make_token(user: dict) -> str:
-    now = int(datetime.utcnow().timestamp())
+    now = _utc_now_ts()
     return _signer.dumps({
         "id":        user["id"],
         "username":  user["username"],
@@ -307,13 +324,30 @@ def _decode_token(token: str):
     except BadSignature:
         return None
 
-    now = int(datetime.utcnow().timestamp())
+    now = _utc_now_ts()
+
+    # A timestamp AHEAD of now is not something a legitimately-aged cookie can
+    # produce. It means either a cookie minted by the old naive-utcnow() code
+    # on a server east of UTC (see _utc_now_ts), or a backwards clock
+    # adjustment. In both cases the session is genuinely recent, so clamp the
+    # age to 0 instead of letting a negative age flow into the comparisons.
+    #
+    # Deliberately one-directional. The mirror case — a legacy cookie from a
+    # server WEST of UTC looking up to ~12h older than it is — is NOT forgiven,
+    # because the allowance needed (12h) is larger than INACTIVITY_TIMEOUT
+    # itself (4h), so honouring it would let an idle session outlive its own
+    # timeout. Expiring such a cookie early is the safe failure: the user logs
+    # in again once. This server runs UTC (timedatectl: Etc/UTC), so in
+    # practice no cookie is affected either way.
+    def _age(ts: int) -> int:
+        return max(0, now - ts)
+
     issued_at = payload.get("issued_at")
-    if issued_at is not None and now - issued_at > SESSION_MAX_AGE:
+    if issued_at is not None and _age(issued_at) > SESSION_MAX_AGE:
         return None
 
     activity = payload.get("activity")
-    if activity is not None and now - activity > INACTIVITY_TIMEOUT:
+    if activity is not None and _age(activity) > INACTIVITY_TIMEOUT:
         return None
 
     return payload
@@ -356,7 +390,7 @@ class InactivityTimeoutMiddleware(BaseHTTPMiddleware):
     still valid right now."""
 
     async def dispatch(self, request: Request, call_next):
-        now = int(datetime.utcnow().timestamp())
+        now = _utc_now_ts()
         refresh_cookies = {}
 
         for cookie_name in (COOKIE, COOKIE_ADMIN):
