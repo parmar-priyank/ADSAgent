@@ -28,18 +28,35 @@ def test_utc_now_ts_is_a_true_utc_epoch(app_module):
 
 def test_utc_now_ts_is_not_offset_by_local_timezone(app_module):
     """On a non-UTC machine the old naive form differed from the correct value
-    by the machine's UTC offset. Guards against that being reintroduced."""
+    by the machine's UTC offset. Guards against that being reintroduced.
+
+    The old buggy value is reconstructed arithmetically rather than by calling
+    datetime.utcnow(): that call is itself deprecated (it would make this test
+    emit the very warning the fix removed) and will eventually be deleted from
+    Python, which would break this test. utcnow() returned a naive datetime
+    whose wall-clock fields were UTC, and .timestamp() then treated those
+    fields as LOCAL time — so the result was the true epoch shifted by the
+    local UTC offset, which is exactly what is computed here.
+    """
     import config
-    naive_local_interpretation = int(datetime.utcnow().timestamp()) \
-        if hasattr(datetime, "utcnow") else None
+
     correct = int(datetime.now(timezone.utc).timestamp())
-    assert abs(config._utc_now_ts() - correct) <= 2
-    # If the machine is not UTC, the old form is measurably different — and
-    # _utc_now_ts must agree with the correct one, not the old one.
-    if naive_local_interpretation is not None:
-        offset = abs(correct - naive_local_interpretation)
-        if offset > 60:  # machine is not UTC
-            assert abs(config._utc_now_ts() - naive_local_interpretation) > 60
+
+    # Local UTC offset in seconds, for the current moment (handles DST).
+    local_offset = datetime.now(timezone.utc).astimezone().utcoffset()
+    offset_seconds = int(local_offset.total_seconds()) if local_offset else 0
+
+    # What the old naive utcnow().timestamp() would have produced.
+    old_buggy_value = correct - offset_seconds
+
+    assert abs(config._utc_now_ts() - correct) <= 2, "must be a true UTC epoch"
+
+    # On a machine that is not UTC, the two differ — and _utc_now_ts() must
+    # agree with the correct value, never with the old buggy one.
+    if abs(offset_seconds) > 60:
+        assert abs(config._utc_now_ts() - old_buggy_value) > 60, (
+            "still producing the old timezone-offset timestamp"
+        )
 
 
 # --------------------------------------------------------------------------
