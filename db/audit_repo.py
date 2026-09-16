@@ -7,13 +7,25 @@ and device (user agent), so that if a cyber incident is ever suspected
 there is an evidence trail of who did what, from where, and when.
 
 Append-only by design: the app exposes no route that edits or deletes
-audit rows. Rows older than 365 days are pruned automatically on insert.
+audit rows. Rows older than 365 days are pruned automatically, on a small
+fraction of inserts (see _PRUNE_ONE_IN) rather than on every one.
 """
 import logging
+import random
 
 from db.connection import get_db
 
 _log = logging.getLogger("adsagent.audit")
+
+# Retention pruning runs on roughly 1 in this many inserts rather than on every
+# one. The old DELETE ran on every insert; it is an indexed range probe (SEARCH
+# audit_log USING INDEX idx_audit_ts), not a table scan, so it was never slow —
+# but it almost always matched zero rows, so it was a second statement's worth
+# of write work per login for nothing. Retention is a housekeeping concern with
+# no deadline: pruning within the next ~100 events still keeps the table to one
+# year, because a row only has to be deleted some time after it turns 365 days
+# old, not the instant it does.
+_PRUNE_ONE_IN = 100
 
 
 def init_audit_db():
@@ -73,8 +85,11 @@ def log_event(request, event: str, username: str = "", user_id=None, detail: str
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (event[:60], (username or "")[:150], user_id, ip[:64], ua, (detail or "")[:500]),
             )
-            # Retention: keep one year of evidence, prune older rows.
-            conn.execute("DELETE FROM audit_log WHERE ts < datetime('now', '-365 days')")
+            # Retention: keep one year of evidence, prune older rows. Sampled
+            # rather than run every insert — see _PRUNE_ONE_IN above. Same
+            # retention window and same DELETE as before, just far less often.
+            if random.randrange(_PRUNE_ONE_IN) == 0:
+                conn.execute("DELETE FROM audit_log WHERE ts < datetime('now', '-365 days')")
     except Exception:
         _log.exception("Failed to write audit event %r", event)
 
