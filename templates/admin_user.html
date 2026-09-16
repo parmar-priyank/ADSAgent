@@ -69,6 +69,7 @@
     {% if target.id != current_user.id and target.role != 'admin' %}
     <div style="border-top:1px solid var(--line2);padding:14px 22px;display:flex;gap:8px;">
       <form action="/admin/users/{{ target.id }}/toggle-active" method="post" style="flex:1;margin:0;">
+      {{ csrf_input(request) }}
         {% if target.is_active %}
         <button type="submit" style="width:100%;font-size:12px;font-weight:600;color:#a35a1a;background:#fdf0e4;border:1.5px solid #f0d3ae;border-radius:8px;padding:7px 0;cursor:pointer;">Deactivate</button>
         {% else %}
@@ -77,6 +78,7 @@
       </form>
       <form action="/admin/users/{{ target.id }}/delete" method="post" style="flex:1;margin:0;"
             onsubmit="return confirm('Permanently delete {{ target.username }}? This cannot be undone.');">
+      {{ csrf_input(request) }}
         <button type="submit" style="width:100%;font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:8px;padding:7px 0;cursor:pointer;">Delete User</button>
       </form>
     </div>
@@ -105,6 +107,7 @@
         {% else %}
         <form action="/admin/users/{{ target.id }}/change-role" method="post"
               style="display:flex;gap:8px;align-items:center;margin:0;">
+      {{ csrf_input(request) }}
           <select name="new_role" style="flex:1;max-width:220px;padding:8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--surface3);color:var(--ink);font-size:13px;">
             <option value="user"  {% if target.role == 'user'  %}selected{% endif %}>User</option>
             <option value="admin" {% if target.role == 'admin' %}selected{% endif %}>Admin</option>
@@ -131,6 +134,7 @@
         {% else %}
         <form action="/admin/users/{{ target.id }}/change-password" method="post"
               id="reset-pwd-form" onsubmit="return validateResetPwd(event)" style="margin:0;">
+      {{ csrf_input(request) }}
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <div style="position:relative;flex:1;min-width:170px;">
               <input type="password" name="new_password" id="reset-pwd-new" required minlength="8"
@@ -170,6 +174,7 @@
       </div>
       <div class="settings-control">
         <form action="/admin/users/{{ target.id }}/qc-access" method="post" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin:0;">
+      {{ csrf_input(request) }}
           <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;">
             <input type="checkbox" name="can_pre_qc" value="1" {% if target.can_pre_qc %}checked{% endif %} style="width:16px;height:16px;">
             Pre-Install QC

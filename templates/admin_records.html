@@ -14,6 +14,7 @@
   <span id="bulk-assign-count" style="font-size:13px;font-weight:700;color:#1a1a1a;white-space:nowrap;flex-shrink:0;"></span>
   <form action="/admin/records/bulk-assign-post-qc" method="post" id="bulk-assign-form"
         style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;min-width:0;">
+      {{ csrf_input(request) }}
     <span id="bulk-assign-ids-wrap"></span>
     <select name="assignee_id" required
             style="font-size:13px;padding:7px 10px;border:1px solid var(--line2);border-radius:7px;background:#fff;color:var(--ink);width:200px;max-width:100%;flex-shrink:0;">
@@ -171,17 +172,20 @@
             {% if r['pre_qc_latest_version_id'] %}
             <form action="/admin/qc-version/{{ r['pre_qc_latest_version_id'] }}/delete" method="post"
                   onsubmit="return confirm('Delete this customer\'s Pre-QC checklist? Post-QC and the customer record are unaffected. This cannot be undone.');">
+      {{ csrf_input(request) }}
               <button type="submit" style="display:block;width:100%;text-align:left;padding:9px 14px;background:none;border:none;font-size:13px;color:var(--ink);cursor:pointer;">Delete Pre-QC</button>
             </form>
             {% endif %}
             {% if r['post_qc_latest_version_id'] %}
             <form action="/admin/qc-version/{{ r['post_qc_latest_version_id'] }}/delete" method="post"
                   onsubmit="return confirm('Delete this customer\'s Post-QC checklist? Pre-QC and the customer record are unaffected. This cannot be undone.');">
+      {{ csrf_input(request) }}
               <button type="submit" style="display:block;width:100%;text-align:left;padding:9px 14px;background:none;border:none;font-size:13px;color:var(--ink);cursor:pointer;">Delete Post-QC</button>
             </form>
             {% endif %}
             <form action="/admin/records/{{ r['id'] }}/delete" method="post"
                   onsubmit="return confirm('Delete this ENTIRE customer record — Pre-QC, Post-QC, everything? This cannot be undone.');">
+      {{ csrf_input(request) }}
               <button type="submit" style="display:block;width:100%;text-align:left;padding:9px 14px;background:none;border:none;border-top:1px solid var(--line2);font-size:13px;color:#dc2626;font-weight:600;cursor:pointer;">Delete Entire Record</button>
             </form>
           </div>

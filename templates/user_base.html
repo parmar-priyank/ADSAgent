@@ -39,6 +39,7 @@
 
         <!-- Theme toggle -->
         <form action="/toggle-theme" method="post" style="display:inline;margin:0;" id="theme-toggle-form">
+      {{ csrf_input(request) }}
           <input type="hidden" name="next" id="theme-next-input" value="">
           <button type="submit" class="theme-toggle" title="Toggle light/dark mode">
             {% if theme == "dark" %}
@@ -160,6 +161,7 @@
       </div>
 
       <form action="/user/profile/update" method="post" style="padding:24px;" onsubmit="return validateUserPhone()">
+      {{ csrf_input(request) }}
         <div style="display:flex;flex-direction:column;gap:16px;">
 
           <!-- Display Name -->
@@ -235,6 +237,7 @@
         <button onclick="closeUserPwdModal()" style="width:30px;height:30px;border-radius:50%;border:1px solid #e8e4e0;background:#f5f3f0;color:#666;font-size:16px;cursor:pointer;display:grid;place-items:center;padding:0;">&times;</button>
       </div>
       <form action="/user/change-password" method="post" style="padding:24px;" onsubmit="return validateUserPwd(event)">
+      {{ csrf_input(request) }}
         <div style="display:flex;flex-direction:column;gap:14px;">
           <div>
             <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Current Password</label>

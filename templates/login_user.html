@@ -52,6 +52,7 @@
         {% endif %}
 
         <form method="post" action="/login">
+      {{ csrf_input(request) }}
           <div class="login-field">
             <label>Username</label>
             <input type="text" name="username" id="username" required autofocus placeholder="Enter your username">

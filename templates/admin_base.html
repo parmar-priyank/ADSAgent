@@ -48,6 +48,7 @@
 
       <!-- Theme toggle -->
       <form method="post" action="/admin/settings/theme" style="margin:0;">
+      {{ csrf_input(request) }}
         <input type="hidden" name="theme" value="{{ 'light' if user_panel_theme == 'dark' else 'dark' }}">
         <button type="submit" class="theme-toggle" title="Switch user panel theme">
           {% if user_panel_theme == 'dark' %}
@@ -186,6 +187,7 @@
         <button onclick="closePwdModal()" style="width:30px;height:30px;border-radius:50%;border:1px solid #e8e4e0;background:#f5f3f0;color:#666;font-size:16px;cursor:pointer;display:grid;place-items:center;padding:0;">&times;</button>
       </div>
       <form action="/admin/users/{{ current_user.id }}/change-password" method="post" style="padding:24px;" onsubmit="return validatePwdMatch(event)">
+      {{ csrf_input(request) }}
         <div style="display:flex;flex-direction:column;gap:14px;">
           <div>
             <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px;">Current Password</label>
@@ -250,6 +252,7 @@
       </div>
 
       <form action="/admin/users/{{ current_user.id }}/update-profile" method="post" style="padding:24px;" onsubmit="return validatePhone()">
+      {{ csrf_input(request) }}
         <div style="display:flex;flex-direction:column;gap:16px;">
 
           <!-- Display Name -->

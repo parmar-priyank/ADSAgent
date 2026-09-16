@@ -41,7 +41,7 @@
         <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px;">Restore Database</div>
         <div style="font-size:12.5px;color:var(--muted);">Upload a previously downloaded <code>.db</code> file to replace the current database. <strong style="color:var(--err);">This cannot be undone.</strong></div>
       </div>
-      <form action="/db/restore" method="post" enctype="multipart/form-data"
+      <form action="/db/restore?csrf={{ csrf_token(request) }}" method="post" enctype="multipart/form-data"
             onsubmit="return confirm('WARNING: This will replace ALL current data with the uploaded backup. Are you sure?');">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;

@@ -27,6 +27,7 @@
         <p>{{ items|length }} items</p>
       </div>
       <form action="/toggle-theme" method="post" style="display:inline;margin:0;margin-right:10px;">
+      {{ csrf_input(request) }}
         <button type="submit" class="theme-toggle" title="Toggle theme">
           {% if theme == 'dark' %}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -51,6 +52,7 @@
       <!-- Upload form (hidden by default) -->
       <div id="upload-form-wrap" style="display:none;margin-bottom:20px;padding:18px;background:var(--bg);border:1px solid var(--line);border-radius:10px;">
         <form action="/templates/upload" method="post" enctype="multipart/form-data" id="tplUploadForm">
+      {{ csrf_input(request) }}
           <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
             <div class="form-field" style="flex:1;min-width:180px;margin-bottom:0;">
               <label>Template Name</label>
@@ -86,6 +88,7 @@
               <a href="/templates/{{ t['id'] }}/download" class="link-btn">Download</a>
               <form action="/templates/{{ t['id'] }}/delete" method="post" style="display:inline;"
                     onsubmit="return confirm('Delete this template?');">
+      {{ csrf_input(request) }}
                 <button type="submit" class="link-btn danger">Delete</button>
               </form>
             </td>
@@ -112,7 +115,7 @@
             Download DB
           </a>
           <!-- Upload / Restore -->
-          <form action="/db/restore" method="post" enctype="multipart/form-data"
+          <form action="/db/restore?csrf={{ csrf_token(request) }}" method="post" enctype="multipart/form-data"
                 onsubmit="return confirm('This will REPLACE the current database with the uploaded file. Are you sure?');"
                 style="display:inline-flex;align-items:center;gap:8px;">
             <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;
@@ -136,6 +139,7 @@
       <h2>{{ selected["name"] }} &middot; {{ items|length }} items</h2>
 
       <form action="/templates/{{ selected['id'] }}/items/add" method="post" style="margin-bottom:18px;">
+      {{ csrf_input(request) }}
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
           <div class="form-field" style="flex:0 0 90px;margin-bottom:0;">
             <label>Sno.</label>
@@ -175,7 +179,8 @@
           {# Form must live outside the table — browsers eject <form> from inside <tr> #}
           <form id="row-form-{{ it['id'] }}"
                 action="/templates/{{ selected['id'] }}/items/{{ it['id'] }}/update"
-                method="post" style="display:none;"></form>
+                method="post" style="display:none;">
+      {{ csrf_input(request) }}</form>
           <tr data-item-id="{{ it['id'] }}" {% if it["is_section"] %}style="background:var(--brand-light);"{% endif %}>
               <td>
                 <input type="text" name="sno" value="{{ it['sno'] }}"
@@ -231,6 +236,7 @@
       <div class="actions" style="justify-content:space-between;margin-top:18px;">
         <a href="/templates/{{ selected['id'] }}/download" class="btn-link-primary">Download Excel</a>
         <form action="/templates/{{ selected['id'] }}/save-all" method="post" id="save-all-form">
+      {{ csrf_input(request) }}
           <button type="submit" class="btn-link-primary">Save All</button>
         </form>
       </div>

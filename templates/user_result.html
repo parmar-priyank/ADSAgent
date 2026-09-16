@@ -174,6 +174,7 @@
       {% if can_edit and revisit_version %}
       <form action="{{ '/admin/qc-version/' if is_admin else '/user/qc-version/' }}{{ revisit_version.id }}/delete" method="post"
             onsubmit="return confirm('Delete this {{ 'Post-QC' if tpl.kind == 'post' else 'Pre-QC' }} run (v{{ revisit_version.version }})? It can be recovered from Deleted Records.');">
+      {{ csrf_input(request) }}
         <button type="submit" title="Delete this {{ 'Post-QC' if tpl.kind == 'post' else 'Pre-QC' }} run"
                 style="padding:6px 12px;font-size:12.5px;font-weight:600;color:#dc2626;background:none;border:1.5px solid rgba(220,38,38,.35);border-radius:8px;cursor:pointer;">
           &#128465; Delete
@@ -250,7 +251,7 @@
       <p style="font-size:14px;color:var(--muted);margin:0 0 18px;">
         Re-run the checklist for <strong>{{ tpl['name'] }}</strong> with a different set of documents.
       </p>
-      <form action="/run-checklist" method="post" enctype="multipart/form-data" id="rerun-form">
+      <form action="/run-checklist?csrf={{ csrf_token(request) }}" method="post" enctype="multipart/form-data" id="rerun-form">
         <input type="hidden" name="quote_id"    value="{{ quote_id }}">
         <input type="hidden" name="template_id" value="{{ tpl['id'] }}">
         <input type="hidden" name="kind"        value="{{ tpl.kind or 'pre' }}">
@@ -491,6 +492,7 @@
     <div style="display:flex;align-items:center;gap:10px;">
       <!-- Save Draft -->
       <form method="post" action="/checklist-save-draft" id="save-draft-form">
+      {{ csrf_input(request) }}
         <input type="hidden" name="quote_id"           value="{{ quote_id }}">
         <input type="hidden" name="dl_token"           id="draft-dl-token" value="{{ dl_token }}">
         <input type="hidden" name="zip_filename"       value="{{ zip_filename }}">
@@ -519,6 +521,7 @@
 
       <!-- Confirm & Add to Calendar -->
       <form method="post" action="/checklist-confirm" id="confirm-form">
+      {{ csrf_input(request) }}
         <input type="hidden" name="quote_id"           value="{{ quote_id }}">
         <input type="hidden" name="dl_token"           id="confirm-dl-token" value="{{ dl_token }}">
         <input type="hidden" name="zip_filename"       value="{{ zip_filename }}">
@@ -1161,7 +1164,7 @@
 
     fetch('/admin/records/' + wrap.dataset.recordId + '/reschedule', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}', 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
     })
     .then(function(r) {
@@ -1267,7 +1270,7 @@
     var formData = new FormData();
     formData.append('eml_file', file);
 
-    fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/add-email', { method: 'POST', body: formData })
+    fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/add-email', { method: 'POST', headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}' }, body: formData })
       .then(function(r) {
         if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
         if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Upload failed'); });
@@ -1624,7 +1627,7 @@
     formData.append('prompt', tr.dataset.prompt || '');
     formData.append('quote_id', _quoteId || '');
 
-    fetch('/checklist-analyse-file', { method: 'POST', body: formData })
+    fetch('/checklist-analyse-file', { method: 'POST', headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}' }, body: formData })
       .then(function(r) {
         if (_sessionExpired(r)) throw new Error(SESSION_EXPIRED_MESSAGE);
         return r.json();
@@ -1682,7 +1685,7 @@
       }
       fetch('/user/qc-version/{{ revisit_version.id if revisit_version else "" }}/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}', 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
       .then(function(r) {
@@ -1717,7 +1720,7 @@
 
     fetch('/checklist-save-edits', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}', 'Content-Type': 'application/json' },
       body: JSON.stringify({ rows: rows, tpl: _tplData, dl_token: _currentDlToken, email_results: _emailResults }),
     })
     .then(function(r) {
@@ -1856,7 +1859,7 @@
     if (action) payload.action = action;
     fetch('/user/qc-version/{{ other_version.id if other_version else "" }}/save', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}', 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     .then(function(r) {
@@ -1958,7 +1961,7 @@
         : { rows: _collectRows(), email_results: emailRows };
       fetch(_emlSaveUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}', 'Content-Type': 'application/json' },
         body: JSON.stringify(_emlSaveBody),
       })
       .then(function(r) {
@@ -1992,7 +1995,7 @@
     // carries the edit even without touching the checklist modal.
     fetch('/checklist-save-edits', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}', 'Content-Type': 'application/json' },
       body: JSON.stringify({ rows: _collectRows(), tpl: _tplData, dl_token: _currentDlToken, email_results: emailRows }),
     })
     .then(function(r) {

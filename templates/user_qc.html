@@ -95,7 +95,7 @@
     </div>
     {% endif %}
 
-    <form action="/run-checklist" method="post" enctype="multipart/form-data" id="check-form">
+    <form action="/run-checklist?csrf={{ csrf_token(request) }}" method="post" enctype="multipart/form-data" id="check-form">
       <input type="hidden" name="quote_id" value="{{ quote_id }}">
       <input type="hidden" name="kind" value="{{ kind or 'pre' }}">
       <input type="hidden" name="email_results_json" value="{{ email_results_json | default('') | e }}">

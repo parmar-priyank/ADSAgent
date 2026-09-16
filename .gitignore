@@ -5,6 +5,9 @@
 
 # ---- Database ----
 *.db
+# SQLite WAL sidecar files (WAL mode is enabled in db/connection.py)
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 

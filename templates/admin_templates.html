@@ -24,6 +24,7 @@
        style="font-size:12px;font-weight:600;color:var(--ink2);background:var(--surface3);border:1.5px solid var(--line2);border-radius:8px;padding:4px 12px;text-decoration:none;">Download</a>
     <form action="/templates/{{ t['id'] }}/delete" method="post" style="margin:0;"
           onsubmit="return confirm('Delete this template?');">
+      {{ csrf_input(request) }}
       <button type="submit"
               style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:8px;padding:4px 12px;cursor:pointer;">Delete</button>
     </form>
@@ -46,6 +47,7 @@
 
   <div id="tpl-upload-form-wrap" style="display:none;padding:18px 22px;border-bottom:1px solid var(--line);">
     <form action="/templates/upload" method="post" enctype="multipart/form-data">
+      {{ csrf_input(request) }}
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
         <div class="form-field" style="flex:1;min-width:180px;margin-bottom:0;">
           <label>Template Name</label>
@@ -248,7 +250,11 @@
             }
             if (submitter) submitter.disabled = true;
 
-            fetch(action, { method: method, body: formData })
+            fetch(action, {
+              method: method,
+              headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}' },
+              body: formData
+            })
               .then(function(resp) {
                 if (!resp.ok) {
                   if (submitter) submitter.disabled = false;
@@ -304,7 +310,7 @@
             var newOrder = Array.from(body.querySelectorAll('tr[data-item-id]')).map(function(r) { return r.dataset.itemId; });
             var fd = new FormData();
             newOrder.forEach(function(iid) { fd.append('item_id', iid); });
-            fetch('/templates/' + id + '/reorder', { method: 'POST', body: fd })
+            fetch('/templates/' + id + '/reorder', { method: 'POST', headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}' }, body: fd })
               .then(function() { loadTplEditor(id, document.querySelector('.tpl-row-active')); })
               .catch(function(err) { console.error('Reorder failed', err); });
           });

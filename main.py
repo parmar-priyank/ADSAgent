@@ -10,6 +10,7 @@ from config import (
     SecurityHeadersMiddleware,
     InactivityTimeoutMiddleware,
     UserLoginIPRestrictionMiddleware,
+    CSRFMiddleware,
     _FAVICON,
 )
 from slowapi.errors import RateLimitExceeded
@@ -22,6 +23,10 @@ app.add_exception_handler(Exception, _unhandled_exception_handler)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(InactivityTimeoutMiddleware)
 app.add_middleware(UserLoginIPRestrictionMiddleware)
+# Starlette runs middleware in reverse registration order, so adding CSRF last
+# makes it the OUTERMOST layer: it rejects a forged state-changing request
+# before the inner layers do any session refreshing or route work.
+app.add_middleware(CSRFMiddleware)
 
 app.include_router(auth.router)
 app.include_router(admin.router)

@@ -77,6 +77,7 @@
     <!-- Upload form (hidden once results are shown) -->
     {% if not results %}
     <form action="/email-verify" method="post" enctype="multipart/form-data" id="eml-form">
+      {{ csrf_input(request) }}
       <input type="hidden" name="quote_id" value="{{ quote_id }}">
 
       <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;">
@@ -335,6 +336,7 @@
       </summary>
       <form action="/email-verify" method="post" enctype="multipart/form-data"
             id="eml-form-retry" style="margin-top:14px;">
+      {{ csrf_input(request) }}
         <input type="hidden" name="quote_id" value="{{ quote_id }}">
         <label class="dropzone" id="eml-dropzone-retry" style="min-height:110px;">
           <div class="icon">
@@ -378,6 +380,7 @@
       </button>
       {% endif %}
       <form method="post" action="/qc-check-with-email" id="eml-proceed-form">
+      {{ csrf_input(request) }}
         <input type="hidden" name="quote_id" value="{{ quote_id }}">
         <input type="hidden" name="email_results_json" id="eml-proceed-json"
                value='{{ results | tojson }}'>
@@ -474,7 +477,7 @@ function emlSaveDraft() {
   formData.append('quote_id', {{ (quote_id or '') | tojson }});
   formData.append('email_results_json', JSON.stringify(_emlCollect()));
 
-  fetch('/email-verify/save-draft', { method: 'POST', body: formData })
+  fetch('/email-verify/save-draft', { method: 'POST', headers: { 'X-CSRF-Token': '{{ csrf_token(request) }}' }, body: formData })
     .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
     .then(function() {
       btn.innerHTML = original;

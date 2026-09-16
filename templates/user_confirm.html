@@ -57,6 +57,7 @@
     <div style="display:flex;flex-direction:column;gap:10px;" id="action-area">
 
       <form action="/user_upload/confirm" method="post">
+      {{ csrf_input(request) }}
         <input type="hidden" name="action"        value="keep">
         <input type="hidden" name="pending_token" value="{{ pending_token }}">
         <input type="hidden" name="existing_id"   value="{{ existing.get('id','') }}">
@@ -75,6 +76,7 @@
       </form>
 
       <form action="/user_upload/confirm" method="post" id="reextract-form">
+      {{ csrf_input(request) }}
         <input type="hidden" name="action"        value="reextract">
         <input type="hidden" name="pending_token" value="{{ pending_token }}">
         <input type="hidden" name="existing_id"   value="{{ existing.get('id','') }}">

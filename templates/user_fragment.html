@@ -3,6 +3,7 @@
 
 {# ── Add new item form ────────────────────────────────────────────────────── #}
 <form action="/templates/{{ tpl['id'] }}/items/add" method="post" style="margin-bottom:6px;">
+      {{ csrf_input(request) }}
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
     <select name="is_section" title="Main point = a bold group heading. Sub point = an actual check."
             style="flex:0 0 auto;padding:8px 10px;border:1px solid var(--line2);border-radius:7px;background:var(--surface3);color:var(--ink);font-size:13px;font-weight:600;cursor:pointer;">
@@ -88,7 +89,8 @@
       {% for it in items %}
       <form id="frag-row-form-{{ it['id'] }}"
             action="/templates/{{ tpl['id'] }}/items/{{ it['id'] }}/update"
-            method="post" style="display:none;"></form>
+            method="post" style="display:none;">
+      {{ csrf_input(request) }}</form>
       <tr data-item-id="{{ it['id'] }}" {% if it["is_section"] %}class="is-main"{% endif %}>
           <td style="padding:5px 6px;">
             <input type="text" name="sno" value="{{ it['sno'] }}"
@@ -202,6 +204,7 @@
 <div style="display:flex;justify-content:space-between;margin-top:18px;padding-top:14px;border-top:1px solid var(--line);">
   <a href="/templates/{{ tpl['id'] }}/download" class="link-btn">&#8595; Download Excel</a>
   <form action="/templates/{{ tpl['id'] }}/save-all" method="post" id="tpl-save-all-form">
+      {{ csrf_input(request) }}
     <button type="submit">Save All</button>
   </form>
 </div>

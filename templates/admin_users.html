@@ -84,6 +84,7 @@
     </a>
     {% if not is_admin_row %}
     <form action="/admin/users/{{ u.id }}/toggle-active" method="post" style="margin:0;">
+      {{ csrf_input(request) }}
       {% if u.is_active %}
       <button type="submit"
               style="font-size:12px;font-weight:600;color:#a35a1a;background:#fdf0e4;border:1.5px solid #f0d3ae;border-radius:8px;padding:4px 12px;cursor:pointer;">
@@ -99,6 +100,7 @@
     {% if u.id != current_user.id %}
     <form action="/admin/users/{{ u.id }}/delete" method="post"
           onsubmit="return confirm('Delete {{ u.username }}? This cannot be undone.');" style="margin:0;">
+      {{ csrf_input(request) }}
       <button type="submit"
               style="font-size:12px;font-weight:600;color:#b83232;background:#fdeeed;border:1.5px solid #f5c0bc;border-radius:8px;padding:4px 12px;cursor:pointer;">
         Delete
@@ -164,6 +166,7 @@
 
     <!-- Modal body -->
     <form action="/admin/users/create" method="post" style="padding:24px;" onsubmit="return validateCreateUser(event)">
+      {{ csrf_input(request) }}
       <div style="display:flex;flex-direction:column;gap:16px;">
 
         <div>

@@ -8,6 +8,7 @@ once at process start.
 import logging
 import json
 import os
+import secrets
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -366,6 +367,106 @@ def _set_session(response, user: dict):
     )
 
 
+# ---------------------------------------------------------------------------
+# CSRF protection
+# ---------------------------------------------------------------------------
+# Double-submit cookie pattern: a random token is stored in a NON-HttpOnly
+# cookie (so page JS can read it) and must be echoed back on every
+# state-changing request, either as an X-CSRF-Token header or a csrf_token
+# form field. An attacker on another origin can cause a request to be sent,
+# but cannot read our cookie to learn the token, so the echo fails.
+#
+# Why a header as well as a form field: five of this app's JS POSTs send
+# JSON bodies, where adding a form field would mean changing the payload
+# shape every route already parses. A header covers those without touching
+# any request body.
+#
+# The session cookies already use SameSite=Lax, which blocks cross-site POSTs
+# in modern browsers. This is defence in depth on top of that: SameSite is a
+# browser-enforced policy, whereas this is verified server-side.
+CSRF_COOKIE = "csrf_token"
+CSRF_HEADER = "x-csrf-token"
+CSRF_FORM_FIELD = "csrf_token"
+# Used only by the large-upload forms, which cannot set a header and whose
+# bodies are too big to buffer just to read one field. See _validate().
+CSRF_QUERY_PARAM = "csrf"
+
+# Start in log-only mode: every failure is recorded but nothing is blocked,
+# so a missed form or fetch call shows up in the logs instead of breaking a
+# user's action. Set CSRF_ENFORCE=true in .env once the logs are clean.
+CSRF_ENFORCE = os.environ.get("CSRF_ENFORCE", "false").lower() == "true"
+
+# Methods that can change state. GET/HEAD/OPTIONS are exempt by definition.
+_CSRF_PROTECTED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+# Paths that must stay exempt.
+_CSRF_EXEMPT_PATHS = {
+    # The login POSTs happen before any session or CSRF cookie exists. They
+    # are protected instead by reCAPTCHA, rate limiting, and SameSite=Lax.
+    "/login",
+    "/admin-dashboard",
+}
+
+# Largest request body the CSRF check will buffer in memory to look for a
+# form field. Well above any real form submission (the template editor's
+# Save All is the biggest, at a few hundred KB) and far below
+# MAX_UPLOAD_BYTES, so a 200 MB ZIP upload is never buffered here — those
+# requests carry the token as a header instead.
+_CSRF_MAX_BUFFER_BYTES = 2 * 1024 * 1024  # 2 MB
+
+_csrf_logger = logging.getLogger("adsagent.csrf")
+
+
+def _new_csrf_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _set_csrf_cookie(response, token: str):
+    """Issue the CSRF cookie.
+
+    Deliberately NOT HttpOnly — page JavaScript has to read it to set the
+    X-CSRF-Token header. That is safe in this pattern: the token's value is
+    not a credential on its own, and an attacker on another origin still
+    cannot read it (same-origin policy) even though our own JS can.
+    """
+    response.set_cookie(
+        CSRF_COOKIE, token,
+        httponly=False,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+        max_age=SESSION_MAX_AGE,
+    )
+
+
+def _csrf_input(request: Request) -> str:
+    """A ready-made hidden input for a form: {{ csrf_input(request) }}."""
+    from markupsafe import Markup
+    return Markup(
+        f'<input type="hidden" name="{CSRF_FORM_FIELD}" value="{csrf_token_for(request)}">'
+    )
+
+
+def csrf_token_for(request: Request) -> str:
+    """The token to render into a page: the current one, or a fresh one.
+
+    Stored on request.state so that a single response issues one consistent
+    token even when several templates ask for it.
+    """
+    existing = getattr(request.state, "csrf_token", None)
+    if existing:
+        return existing
+    token = request.cookies.get(CSRF_COOKIE) or _new_csrf_token()
+    request.state.csrf_token = token
+    return token
+
+
+# Exposed to every template as globals, so a form needs only
+# {{ csrf_input(request) }} and JS can read {{ csrf_token(request) }} —
+# no per-route context changes across 18 templates.
+templates.env.globals["csrf_token"] = csrf_token_for
+templates.env.globals["csrf_input"] = _csrf_input
+
+
 def _get_session(request: Request):
     """Read the user cookie (non-admin)."""
     token = request.cookies.get(COOKIE)
@@ -376,6 +477,130 @@ def _get_admin_session(request: Request):
     """Read the admin cookie."""
     token = request.cookies.get(COOKIE_ADMIN)
     return _decode_token(token) if token else None
+
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """Validates the double-submit CSRF token on state-changing requests, and
+    makes sure every response carries a CSRF cookie to use next time.
+
+    In log-only mode (CSRF_ENFORCE=false, the default) a failure is logged
+    with enough detail to find the offending form or fetch call, and the
+    request proceeds. Flip CSRF_ENFORCE=true once the logs are quiet.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        cookie_token = request.cookies.get(CSRF_COOKIE)
+
+        if request.method in _CSRF_PROTECTED_METHODS and not self._is_exempt(request):
+            ok, reason, replay_body = await self._validate(request, cookie_token)
+            if replay_body is not None:
+                # _validate() read the body to find a form field. Starlette
+                # does not re-serve a consumed body, so without this the route
+                # handler would receive an EMPTY form and fail with a 422
+                # "Field required" — verified, this silently breaks every form
+                # POST in the app. Re-injecting the cached bytes restores it.
+                async def _receive():
+                    return {"type": "http.request", "body": replay_body,
+                            "more_body": False}
+                request._receive = _receive
+            if not ok:
+                if CSRF_ENFORCE:
+                    _csrf_logger.warning(
+                        "CSRF blocked: %s %s (%s)", request.method, request.url.path, reason
+                    )
+                    return PlainTextResponse(
+                        "Your session could not be verified. Please reload the page and try again.",
+                        status_code=403,
+                    )
+                _csrf_logger.warning(
+                    "CSRF would block (log-only): %s %s (%s) referer=%r",
+                    request.method, request.url.path, reason,
+                    request.headers.get("referer", ""),
+                )
+
+        response = await call_next(request)
+
+        # Issue/refresh the cookie. A token minted during this request (by
+        # csrf_token_for) wins, so the value rendered into the page matches
+        # the cookie the browser ends up holding.
+        token = getattr(request.state, "csrf_token", None) or cookie_token
+        if not token:
+            token = _new_csrf_token()
+        if token != cookie_token or not cookie_token:
+            # Only set the header when something actually changed, to avoid
+            # adding a Set-Cookie to every single response.
+            _set_csrf_cookie(response, token)
+        return response
+
+    @staticmethod
+    def _is_exempt(request: Request) -> bool:
+        return request.url.path in _CSRF_EXEMPT_PATHS
+
+    @staticmethod
+    async def _validate(request: Request, cookie_token: str | None):
+        """Returns (ok, reason, replay_body).
+
+        replay_body is the raw request body when this method consumed it to
+        look for a form field, and None otherwise — the caller must re-inject
+        it so the route handler can still read the form. Tokens are compared
+        with compare_digest to avoid leaking them through timing differences.
+        """
+        if not cookie_token:
+            return False, "no csrf cookie on the request", None
+
+        # Header first: it needs no body access at all, so it covers the JSON
+        # POSTs and avoids buffering anything.
+        header_token = request.headers.get(CSRF_HEADER)
+        if header_token:
+            if secrets.compare_digest(header_token, cookie_token):
+                return True, "", None
+            return False, "header token did not match cookie", None
+
+        # Query string next — also no body access. This is how the large
+        # upload forms (/run-checklist with a ZIP, /db/restore) carry the
+        # token: they are plain HTML forms, so they cannot set a header, and
+        # their body can be up to MAX_UPLOAD_BYTES (200 MB), which must never
+        # be buffered here just to read one field. Safe because the token is a
+        # double-submit value rather than a secret credential, and the URL
+        # never leaves this origin.
+        query_token = request.query_params.get(CSRF_QUERY_PARAM)
+        if query_token:
+            if secrets.compare_digest(query_token, cookie_token):
+                return True, "", None
+            return False, "query token did not match cookie", None
+
+        content_type = (request.headers.get("content-type") or "").lower()
+        is_form = content_type.startswith(("application/x-www-form-urlencoded",
+                                           "multipart/form-data"))
+        if not is_form:
+            return False, f"no {CSRF_HEADER} header (content-type {content_type!r})", None
+
+        # Reading the body means buffering it in memory. This app accepts
+        # uploads up to MAX_UPLOAD_BYTES (200 MB), so refuse to buffer a large
+        # request: those routes send the token as a header instead. Content-
+        # Length is advisory, but an attacker gains nothing by understating it
+        # — they still cannot produce a matching token.
+        try:
+            declared = int(request.headers.get("content-length") or 0)
+        except ValueError:
+            declared = 0
+        if declared > _CSRF_MAX_BUFFER_BYTES:
+            return (False,
+                    f"body too large to inspect ({declared} bytes); "
+                    f"send the {CSRF_HEADER} header instead", None)
+
+        try:
+            body = await request.body()
+            form = await request.form()
+        except Exception:
+            return False, "could not parse form body", None
+
+        form_token = form.get(CSRF_FORM_FIELD)
+        if not form_token:
+            return False, f"no {CSRF_FORM_FIELD} field in form", body
+        if secrets.compare_digest(str(form_token), cookie_token):
+            return True, "", body
+        return False, "form token did not match cookie", body
 
 
 class InactivityTimeoutMiddleware(BaseHTTPMiddleware):

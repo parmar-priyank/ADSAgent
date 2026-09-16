@@ -50,6 +50,7 @@
       </div>
     </div>
     <form action="/admin/settings/login-ip-restriction" method="post" style="flex-shrink:0;margin:0;">
+      {{ csrf_input(request) }}
       <input type="hidden" name="enabled" value="{{ '0' if login_ip_restricted else '1' }}">
       <button type="submit"
               style="padding:9px 20px;font-size:13px;font-weight:700;white-space:nowrap;border-radius:9px;cursor:pointer;
