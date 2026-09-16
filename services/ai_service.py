@@ -3,10 +3,55 @@ services/ai_service.py — PDF text extraction and Claude-based data extraction.
 """
 import io
 import json
+import logging
 
 import pdfplumber
 
 from config import CLAUDE_MODEL, _get_claude
+
+logger = logging.getLogger(__name__)
+
+
+def _response_text(resp) -> str:
+    """The text of a Claude response, or "" if it carried no text block.
+
+    resp.content is a list and can legitimately come back empty, so indexing
+    [0] directly raises IndexError — a Python error that escapes the
+    anthropic.APIError handlers in routers/uploads.py and surfaces as a blank
+    500 page. routers/qc_checks.py already guards every call site this way.
+    """
+    if not getattr(resp, "content", None):
+        return ""
+    first = resp.content[0]
+    return (getattr(first, "text", "") or "").strip()
+
+
+def _parse_extraction_json(raw: str) -> dict | None:
+    """Parse an extraction reply into a dict, or None if it isn't usable.
+
+    Strips a ```json fence if present, then requires the result to be a JSON
+    object: the callers immediately do data.get(...), so a bare list or string
+    would raise AttributeError even though the JSON itself parsed fine.
+    """
+    if not raw:
+        return None
+    text = raw.strip()
+    if text.startswith("```"):
+        parts = text.split("```")
+        # "```json\n{...}\n```" splits to ['', 'json\n{...}\n', ''] — the body
+        # is the middle piece. Guard the index: a reply that opens a fence and
+        # never closes it would otherwise IndexError here.
+        if len(parts) < 2:
+            return None
+        text = parts[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    try:
+        parsed = json.loads(text)
+    except (ValueError, TypeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 EXTRACTION_SCHEMA = {
     "quote_number": "string",
@@ -124,17 +169,51 @@ def extract_with_claude(text: str) -> dict:
         f'Agreement text:\n"""\n{text}\n"""'
     )
 
+    messages = [{"role": "user", "content": user_prompt}]
     resp = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=4096,
         system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
+        messages=messages,
     )
 
-    raw = resp.content[0].text.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```", 2)[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.rsplit("```", 1)[0].strip()
-    return json.loads(raw)
+    raw = _response_text(resp)
+    data = _parse_extraction_json(raw)
+
+    if data is None:
+        # The model answered with prose instead of JSON — most often when a
+        # PDF's extracted text is jumbled or a scan came through badly. One
+        # corrective retry recovers nearly all of these, mirroring the
+        # retry-once pattern _claude_check() in routers/qc_checks.py already
+        # uses for checklist items.
+        logger.warning(
+            "Extraction reply was not usable JSON; retrying once. First reply: %r",
+            raw[:500],
+        )
+        messages.append({"role": "assistant", "content": raw})
+        messages.append({"role": "user", "content":
+            "That was not valid JSON. Reply with ONLY the JSON object matching "
+            "the schema — no markdown, no code fences, no commentary."})
+        resp2 = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=messages,
+        )
+        raw2 = _response_text(resp2)
+        data = _parse_extraction_json(raw2)
+
+        if data is None:
+            # Give up, but as an empty result rather than an exception. The
+            # callers in routers/uploads.py already treat a result with no key
+            # fields as "couldn't read this PDF" and show the user a proper
+            # message; raising here would instead escape their
+            # anthropic.APIError handlers (IndexError/JSONDecodeError are
+            # Python errors, not Anthropic ones) and surface a blank 500 page.
+            logger.error(
+                "Extraction reply was not usable JSON twice; giving up. "
+                "Replies: %r / %r", raw[:500], raw2[:500],
+            )
+            return {}
+
+    return data
