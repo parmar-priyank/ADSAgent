@@ -23,12 +23,22 @@ def strict_client(app_module, monkeypatch):
 
 
 @pytest.fixture
-def logged_in_admin(strict_client, make_user):
-    user = make_user(role="admin", password="AdminPass123!x")
-    strict_client.get("/login")
-    strict_client.post("/login",
-                       data={"username": user["username"], "password": "AdminPass123!x"},
-                       follow_redirects=False)
+def logged_in_admin(strict_client, make_user, session_cookie):
+    """An admin session, established WITHOUT going through POST /login.
+
+    POST /login only authenticates when _verify_recaptcha() passes, and that
+    auto-passes ONLY when RECAPTCHA_SECRET_KEY is unset. The production server
+    has a real key, so a test login posts an empty CAPTCHA token, Google
+    answers success=false, and no session is created — tests that relied on
+    logging in failed there while passing locally.
+
+    Setting the signed cookie directly is equivalent for these tests: they are
+    about CSRF, not authentication, and the login flow itself is covered
+    separately in test_routes.py.
+    """
+    user = make_user(role="admin")
+    strict_client.cookies.update(session_cookie(user))
+    strict_client.get("/admin")   # pick up a CSRF cookie
     return strict_client, user
 
 
@@ -66,16 +76,59 @@ def test_the_cookie_is_readable_by_javascript(strict_client):
     assert "httponly" not in csrf_bit[0].lower()
 
 
-def test_the_session_cookie_is_still_httponly(strict_client, make_user):
+def test_the_session_cookie_is_still_httponly(app_module, make_user):
     """The CSRF cookie being readable must not have loosened the session
-    cookie, which must stay HttpOnly."""
-    user = make_user(role="user", password="UserPass123!x")
-    r = strict_client.post("/login",
-                           data={"username": user["username"], "password": "UserPass123!x"},
-                           follow_redirects=False)
-    session_bits = [h for h in r.headers.get_list("set-cookie") if "session_user" in h]
-    assert session_bits
-    assert "httponly" in session_bits[0].lower()
+    cookie, which must stay HttpOnly.
+
+    Calls _set_session() directly rather than going through POST /login.
+    POST /login only authenticates if _verify_recaptcha() passes, and that
+    returns True automatically ONLY when RECAPTCHA_SECRET_KEY is unset. The
+    production server has a real key configured, so a test login posts an
+    empty CAPTCHA token, Google answers success=false, the route re-renders
+    the login form, and no session cookie is ever set — this test failed on
+    the server while passing locally purely because of that .env difference.
+
+    Asserting on _set_session() tests the actual cookie attributes, which is
+    what this test is about, with no dependency on the login flow or on
+    environment config. The login flow itself is covered in test_routes.py.
+    """
+    import config
+    from fastapi.responses import RedirectResponse
+
+    user = make_user(role="user")
+    response = RedirectResponse(url="/user_home", status_code=303)
+    config._set_session(response, user)
+
+    headers = [v.decode() for k, v in response.raw_headers
+               if k.lower() == b"set-cookie"]
+    session_bits = [h for h in headers if h.startswith(f"{config.COOKIE}=")]
+    assert session_bits, f"no {config.COOKIE} cookie was set"
+
+    cookie = session_bits[0].lower()
+    assert "httponly" in cookie, "the session cookie must stay HttpOnly"
+    assert "samesite" in cookie, "the session cookie must keep SameSite"
+    assert "max-age" in cookie, "the session cookie must keep its lifetime"
+
+
+def test_the_csrf_and_session_cookies_have_opposite_httponly(app_module, make_user):
+    """The two cookies must differ on exactly this point: the CSRF cookie is
+    readable so page JS can echo it in a header, while the session cookie
+    must never be readable by script."""
+    import config
+    from fastapi.responses import RedirectResponse
+
+    user = make_user(role="user")
+    response = RedirectResponse(url="/", status_code=303)
+    config._set_session(response, user)
+    config._set_csrf_cookie(response, "some-token-value")
+
+    headers = [v.decode() for k, v in response.raw_headers
+               if k.lower() == b"set-cookie"]
+    session = next(h for h in headers if h.startswith(f"{config.COOKIE}="))
+    csrf = next(h for h in headers if h.startswith(f"{config.CSRF_COOKIE}="))
+
+    assert "httponly" in session.lower()
+    assert "httponly" not in csrf.lower()
 
 
 # --------------------------------------------------------------------------
@@ -112,18 +165,22 @@ def test_post_with_a_wrong_query_token_is_blocked(logged_in_admin):
     assert r.status_code == 403
 
 
-def test_a_token_from_another_visitor_is_rejected(app_module, monkeypatch, make_user):
+def test_a_token_from_another_visitor_is_rejected(app_module, monkeypatch, make_user,
+                                                  session_cookie):
     """The heart of the double-submit defence: a valid-looking token that does
-    not match THIS request's cookie must fail."""
+    not match THIS request's cookie must fail.
+
+    Session set directly rather than via POST /login — see the note on the
+    logged_in_admin fixture about reCAPTCHA blocking test logins on the server.
+    """
     import config
     from fastapi.testclient import TestClient
     monkeypatch.setattr(config, "CSRF_ENFORCE", True)
 
-    victim = make_user(role="admin", password="AdminPass123!x")
+    victim = make_user(role="admin")
     a = TestClient(app_module.app, raise_server_exceptions=False)
-    a.get("/login")
-    a.post("/login", data={"username": victim["username"], "password": "AdminPass123!x"},
-           follow_redirects=False)
+    a.cookies.update(session_cookie(victim))
+    a.get("/admin")
 
     attacker = TestClient(app_module.app, raise_server_exceptions=False)
     attacker.get("/login")
@@ -309,17 +366,20 @@ def test_no_unresolved_template_tags_leak_into_pages(logged_in_admin):
         assert "csrf_token(request)" not in body, f"unrendered csrf call in {path}"
 
 
-def test_log_only_mode_does_not_block(app_module, monkeypatch, make_user):
-    """The deploy-safe default: a missing token is logged, not rejected."""
+def test_log_only_mode_does_not_block(app_module, monkeypatch, make_user, session_cookie):
+    """The deploy-safe default: a missing token is logged, not rejected.
+
+    Session set directly rather than via POST /login — see the note on the
+    logged_in_admin fixture about reCAPTCHA blocking test logins on the server.
+    """
     import config
     from fastapi.testclient import TestClient
     monkeypatch.setattr(config, "CSRF_ENFORCE", False)
 
-    user = make_user(role="admin", password="AdminPass123!x")
+    user = make_user(role="admin")
     c = TestClient(app_module.app, raise_server_exceptions=False)
-    c.get("/login")
-    c.post("/login", data={"username": user["username"], "password": "AdminPass123!x"},
-           follow_redirects=False)
+    c.cookies.update(session_cookie(user))
+    c.get("/admin")
 
     r = c.post("/admin/settings/theme", data={"theme": "dark"}, follow_redirects=False)
     assert r.status_code != 403, "log-only mode must not block"

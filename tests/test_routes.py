@@ -121,6 +121,32 @@ def test_login_rejects_an_unknown_username(client):
     assert r.status_code < 500
 
 
+def test_login_succeeds_with_correct_credentials(client, make_user, monkeypatch):
+    """The positive case: a correct password issues a session cookie.
+
+    reCAPTCHA is stubbed to pass, because _verify_recaptcha() only auto-passes
+    when RECAPTCHA_SECRET_KEY is unset. On a machine with a real key
+    configured (as production has), an un-stubbed test login posts an empty
+    CAPTCHA token, Google answers success=false, and the route re-renders the
+    form with no session — so without this stub the test would assert the
+    wrong thing depending on which .env it ran against.
+    """
+    import config
+    monkeypatch.setattr(config, "_verify_recaptcha", lambda token: True)
+    import routers.auth as auth_mod
+    monkeypatch.setattr(auth_mod, "_verify_recaptcha", lambda token: True)
+
+    user = make_user(role="user", password="CorrectHorse1!x")
+    r = client.post("/login",
+                    data={"username": user["username"], "password": "CorrectHorse1!x"},
+                    follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    session_cookies = [h for h in r.headers.get_list("set-cookie")
+                       if h.startswith(f"{config.COOKIE}=")]
+    assert session_cookies, "a correct login issued no session cookie"
+    assert "httponly" in session_cookies[0].lower()
+
+
 def test_verify_user_rejects_a_deactivated_account(app_module, make_user):
     """Checked at the repo level: a deactivated account must not authenticate
     even with the correct password."""
