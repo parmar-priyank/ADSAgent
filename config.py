@@ -227,7 +227,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 # User-side login IP allowlist — runtime on/off toggle (admin-controlled)
 # ---------------------------------------------------------------------------
 LOGIN_IP_ALLOWLIST_SETTING = "user_login_ip_restricted"
-LOGIN_ALLOWED_IPS = {"103.233.116.210", "139.5.251.232"}
+
+# Comma-separated in the environment (LOGIN_ALLOWED_IPS in .env) so the office
+# IPs can be changed by editing .env + restarting, instead of editing this file
+# and redeploying. The default keeps the two IPs this was previously hardcoded
+# to, so an unset .env behaves exactly as before. The trailing `or {...}` is
+# deliberate: a blank or comma-only value would otherwise produce an empty set
+# and lock every user out of /login whenever the admin toggle is on.
+_DEFAULT_LOGIN_ALLOWED_IPS = "103.233.116.210,139.5.251.232"
+LOGIN_ALLOWED_IPS = {
+    ip.strip()
+    for ip in os.environ.get("LOGIN_ALLOWED_IPS", _DEFAULT_LOGIN_ALLOWED_IPS).split(",")
+    if ip.strip()
+} or {ip.strip() for ip in _DEFAULT_LOGIN_ALLOWED_IPS.split(",")}
 
 
 def is_login_ip_restricted() -> bool:
