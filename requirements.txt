@@ -30,3 +30,8 @@ python-dotenv==1.2.2
 
 # Production server
 gunicorn==23.0.0
+
+# Testing (dev only — not needed to run the app in production, but harmless
+# to install. Run the suite with:  python -m pytest
+# Tests use a throwaway database via DB_PATH and never touch extractions.db.)
+pytest==9.1.1

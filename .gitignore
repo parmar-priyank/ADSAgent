@@ -48,3 +48,6 @@ Thumbs.db
 
 # ---- Media / large files ----
 static/bg.mp4.mp4
+# pytest
+.pytest_cache/
+tests/__pycache__/
