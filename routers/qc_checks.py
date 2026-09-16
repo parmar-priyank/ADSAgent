@@ -438,9 +438,15 @@ def _claude_safe_image(fdata: bytes, mime: str) -> tuple[bytes, str] | None:
 
 
 def _parse_claude_json(raw: str) -> dict | None:
-    raw = raw.strip()
+    raw = (raw or "").strip()
     if raw.startswith("```"):
-        raw = raw.split("```", 2)[1]
+        parts = raw.split("```", 2)
+        # A reply that opens a fence but never closes it yields fewer than 2
+        # pieces, so indexing [1] would raise IndexError on the one input this
+        # function exists to tolerate.
+        if len(parts) < 2:
+            return None
+        raw = parts[1]
         if raw.startswith("json"):
             raw = raw[4:]
         raw = raw.rsplit("```", 1)[0].strip()
@@ -448,6 +454,54 @@ def _parse_claude_json(raw: str) -> dict | None:
         return json.loads(raw)
     except Exception:
         return None
+
+
+# The only verdicts a checklist row may hold. Anything else the model returns
+# is not a verdict we can store: it flows into rows_json, the result page, the
+# Yes/No/N-A counts, and the Excel export, where a stray "Maybe"/"PASS" would
+# silently corrupt the totals.
+_VALID_STATUSES = ("Yes", "No", "N/A")
+
+
+def _clean_status(value) -> str:
+    """Coerce a model-supplied status to exactly one of _VALID_STATUSES.
+
+    Takes correct casing as-is and repairs near-misses ("yes", "YES", " No ",
+    "n/a", "na"). Anything genuinely unrecognised becomes "N/A" — the same
+    conservative verdict this code already used for an unparseable reply, so a
+    nonsense status can never be mistaken for a pass.
+
+    _salvage_partial() already rejected invalid statuses outright; this brings
+    the strict batch path and the single-item path in line with it.
+    """
+    if not isinstance(value, str):
+        return "N/A"
+    v = value.strip()
+    for valid in _VALID_STATUSES:
+        if v.lower() == valid.lower():
+            return valid
+    if v.lower() in ("na", "n.a.", "n / a"):
+        return "N/A"
+    return "N/A"
+
+
+def _clean_remark(value, limit: int = 2000) -> str:
+    """Coerce a model-supplied remark to a plain, length-capped string.
+
+    A non-string remark (the model occasionally returns a list of sentences)
+    would otherwise be stored as-is and later rendered and exported as a raw
+    Python repr. The cap sits far above any real remark and only guards against
+    a pathological reply bloating a row.
+    """
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        try:
+            value = (" ".join(str(v) for v in value)
+                     if isinstance(value, (list, tuple)) else str(value))
+        except Exception:
+            return ""
+    return value.strip()[:limit]
 
 
 _QC_BATCH_SYSTEM = (
@@ -517,7 +571,8 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> tuple[
                 idx = int(entry["item_index"])
             except (TypeError, ValueError):
                 return None
-            by_idx[idx] = {"status": entry.get("status", "N/A"), "remark": entry.get("remark", "")}
+            by_idx[idx] = {"status": _clean_status(entry.get("status")),
+                           "remark": _clean_remark(entry.get("remark"))}
         if set(by_idx.keys()) != wanted:
             # Claude dropped, duplicated, or invented an item_index — the
             # response can't be trusted to map back onto the right rows.
@@ -546,9 +601,13 @@ def _claude_check_batch(client, user_content, item_indices: list[int]) -> tuple[
             if idx not in wanted or idx in found:
                 continue
             status = entry.get("status")
-            if status not in ("Yes", "No", "N/A"):
+            # Deliberately stricter than _clean_status here: this is the
+            # salvage path for a malformed reply, so an entry with an
+            # unrecognised status is skipped entirely and the item falls
+            # through to the N/A fallback, rather than being coerced.
+            if status not in _VALID_STATUSES:
                 continue
-            found[idx] = {"status": status, "remark": entry.get("remark", "")}
+            found[idx] = {"status": status, "remark": _clean_remark(entry.get("remark"))}
         return found
 
     usage_in = usage_out = 0
@@ -658,7 +717,15 @@ def _claude_check(client, user_content) -> dict:
             logger.warning("Claude returned unparseable JSON twice; raw replies: %r / %r", raw, raw2)
             return {"status": "N/A", "remark": "AI returned an unreadable response.",
                     "_input_tokens": usage_in, "_output_tokens": usage_out}
-    return {"status": r.get("status", "N/A"), "remark": r.get("remark", ""),
+    if not isinstance(r, dict):
+        # Valid JSON but not the object shape requested (a bare list or
+        # string). r.get() would raise AttributeError, which no caller
+        # catches, so treat it as an unreadable reply instead.
+        logger.warning("Claude returned valid JSON of the wrong shape (%s); raw: %r",
+                       type(r).__name__, raw)
+        return {"status": "N/A", "remark": "AI returned an unreadable response.",
+                "_input_tokens": usage_in, "_output_tokens": usage_out}
+    return {"status": _clean_status(r.get("status")), "remark": _clean_remark(r.get("remark")),
             "_input_tokens": usage_in, "_output_tokens": usage_out}
 
 
