@@ -7,7 +7,18 @@ import logging
 
 import pdfplumber
 
-from config import CLAUDE_MODEL, _get_claude
+from config import (
+    CLAUDE_MODEL,
+    RETAILER_CONTACT_PERSON,
+    RETAILER_EMAIL,
+    RETAILER_NAME,
+    RETAILER_PHONE_HINT,
+    RETAILER_POSTAL_ADDRESS,
+    RETAILER_POSTAL_ADDRESS_FULL,
+    RETAILER_STREET_ADDRESS,
+    RETAILER_STREET_ADDRESS_FULL,
+    _get_claude,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +68,17 @@ EXTRACTION_SCHEMA = {
     "quote_number": "string",
     "quote_valid_until": "string (date the quote is valid until)",
     "customer_name": "string (the CUSTOMER, not the retailer)",
-    "contact_person": "string (the customer's contact person only, never 'Nik' or the retailer's)",
+    "contact_person": f"string (the customer's contact person only, never '{RETAILER_CONTACT_PERSON}' or the retailer's)",
     "billing_address": "string (single line, comma separated; the customer's billing address only)",
     "delivery_address": "string (single line, comma separated; the customer's delivery address only)",
-    "email": "string (the customer's email, e.g. a personal address -- never sales@adssolar.com.au)",
+    "email": f"string (the customer's email, e.g. a personal address -- never {RETAILER_EMAIL})",
     "phone": "string (the customer's phone/mobile -- never the retailer's 1300 number)",
-    "retailer_name": "string (the retailer, e.g. 'ADS Pty Ltd t/as ADS Solar')",
-    "retailer_contact_person": "string (the retailer's contact person, e.g. 'Nik')",
-    "retailer_postal_address": "string (single line; the retailer's postal address, e.g. 'PO Box 6208, Norwest NSW 2153')",
-    "retailer_street_address": "string (single line; the retailer's street address, e.g. '104, 29-31 Solent Circuit, Baulkham Hills NSW 2153')",
+    "retailer_name": f"string (the retailer, e.g. '{RETAILER_NAME}')",
+    "retailer_contact_person": f"string (the retailer's contact person, e.g. '{RETAILER_CONTACT_PERSON}')",
+    "retailer_postal_address": f"string (single line; the retailer's postal address, e.g. '{RETAILER_POSTAL_ADDRESS_FULL}')",
+    "retailer_street_address": f"string (single line; the retailer's street address, e.g. '{RETAILER_STREET_ADDRESS_FULL}')",
     "retailer_phone": "string (the retailer's phone, e.g. the 1300 number)",
-    "retailer_email": "string (the retailer's email, e.g. 'sales@adssolar.com.au')",
+    "retailer_email": f"string (the retailer's email, e.g. '{RETAILER_EMAIL}')",
     "roof_type": "string (the roof type, e.g. 'Tiled Roof', 'Colorbond', 'Metal' — look for the 'Roof Type' row in the system/pricing table and read its specification text)",
     "line_items": (
         "array of objects covering EVERY row of the System/pricing table in order, "
@@ -144,16 +155,16 @@ def extract_with_claude(text: str) -> dict:
         "You are a precise data extraction engine for solar agreements. "
         "The document has a CUSTOMER side and a RETAILER side. "
         "Extract ONLY the CUSTOMER's details for the customer fields. "
-        "NEVER mix in retailer details: the retailer is 'ADS Pty Ltd t/as ADS Solar', "
-        "its contact person is 'Nik', its postal address contains 'PO Box 6208 / Norwest', "
-        "its street address is 'Solent Circuit, Baulkham Hills', its email is "
-        "'sales@adssolar.com.au', and its phone is a 1300 number -- none of these belong "
+        f"NEVER mix in retailer details: the retailer is '{RETAILER_NAME}', "
+        f"its contact person is '{RETAILER_CONTACT_PERSON}', its postal address contains '{RETAILER_POSTAL_ADDRESS}', "
+        f"its street address is '{RETAILER_STREET_ADDRESS}', its email is "
+        f"'{RETAILER_EMAIL}', and its phone is {RETAILER_PHONE_HINT} -- none of these belong "
         "in customer fields. The CUSTOMER section is under the 'LEFT COLUMN' heading "
         "and is the source for the customer_* fields. The RETAILER section is under the "
         "'RIGHT COLUMN' heading and IS the source for the retailer_* fields: fill "
         "retailer_name, retailer_contact_person, retailer_postal_address, "
         "retailer_street_address, retailer_phone, and retailer_email from that RIGHT "
-        "section (e.g. retailer_contact_person='Nik', retailer_email='sales@adssolar.com.au'). "
+        f"section (e.g. retailer_contact_person='{RETAILER_CONTACT_PERSON}', retailer_email='{RETAILER_EMAIL}'). "
         "Do NOT use the RIGHT section for any customer field, and do NOT use the LEFT "
         "section for any retailer field. For the line_items pricing table, take the PRICE for "
         "each row from the 'FULL TEXT' section (the column-split text clips the price "

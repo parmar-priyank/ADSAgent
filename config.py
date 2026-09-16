@@ -97,6 +97,31 @@ def claude_cost_usd(input_tokens: int, output_tokens: int) -> float:
     )
 
 
+# ---------------------------------------------------------------------------
+# Retailer (ADS Solar) identity — used by the extraction prompt
+# ---------------------------------------------------------------------------
+# These values tell Claude which details belong to the RETAILER so it never
+# files them under the customer's fields. They live here rather than inline in
+# services/ai_service.py so a staff change (contact person), an office move,
+# or a new sales email is a .env edit + restart instead of a code change and
+# redeploy. Defaults are the values that were previously hardcoded, so an
+# unset .env behaves exactly as before.
+RETAILER_NAME           = os.environ.get("RETAILER_NAME", "ADS Pty Ltd t/as ADS Solar")
+RETAILER_CONTACT_PERSON = os.environ.get("RETAILER_CONTACT_PERSON", "Nik")
+RETAILER_POSTAL_ADDRESS = os.environ.get("RETAILER_POSTAL_ADDRESS", "PO Box 6208 / Norwest")
+RETAILER_STREET_ADDRESS = os.environ.get("RETAILER_STREET_ADDRESS", "Solent Circuit, Baulkham Hills")
+RETAILER_EMAIL          = os.environ.get("RETAILER_EMAIL", "sales@adssolar.com.au")
+# Described to the model as a pattern ("a 1300 number") rather than an exact
+# number, which is how the prompt has always phrased it.
+RETAILER_PHONE_HINT     = os.environ.get("RETAILER_PHONE_HINT", "a 1300 number")
+# The schema's field hints quote fuller, with-postcode versions of the two
+# addresses than the system prompt does. Kept as their own values so each
+# reads naturally in its own place rather than forcing one string into both.
+RETAILER_POSTAL_ADDRESS_FULL = os.environ.get(
+    "RETAILER_POSTAL_ADDRESS_FULL", "PO Box 6208, Norwest NSW 2153")
+RETAILER_STREET_ADDRESS_FULL = os.environ.get(
+    "RETAILER_STREET_ADDRESS_FULL", "104, 29-31 Solent Circuit, Baulkham Hills NSW 2153")
+
 SECRET_KEY           = os.environ.get("SECRET_KEY")
 RECAPTCHA_SITE_KEY   = os.environ.get("RECAPTCHA_SITE_KEY", "")
 RECAPTCHA_SECRET_KEY = os.environ.get("RECAPTCHA_SECRET_KEY", "")
