@@ -383,3 +383,97 @@ def test_log_only_mode_does_not_block(app_module, monkeypatch, make_user, sessio
 
     r = c.post("/admin/settings/theme", data={"theme": "dark"}, follow_redirects=False)
     assert r.status_code != 403, "log-only mode must not block"
+
+
+# --------------------------------------------------------------------------
+# Diagnostic logging
+# --------------------------------------------------------------------------
+
+def _capture_csrf_logs():
+    """Attach a capturing handler to the csrf logger; returns (buffer, detach)."""
+    import io
+    import logging
+    buf = io.StringIO()
+    handler = logging.StreamHandler(buf)
+    handler.setLevel(logging.WARNING)
+    logger = logging.getLogger("adsagent.csrf")
+    logger.addHandler(handler)
+    previous = logger.level
+    logger.setLevel(logging.WARNING)
+
+    def detach():
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
+
+    return buf, detach
+
+
+def test_a_stale_page_is_distinguishable_in_the_logs(app_module, monkeypatch,
+                                                     make_user, session_cookie):
+    """A page left open across the deploy posts without a token field, but its
+    browser DOES still send the CSRF cookie. The log must record had_cookie
+    so this harmless case can be told apart from a genuine failure without
+    re-investigating every time — which is exactly what happened with the
+    first /admin/settings/theme entries in production.
+    """
+    import config
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(config, "CSRF_ENFORCE", False)
+
+    user = make_user(role="admin")
+    client = TestClient(app_module.app, raise_server_exceptions=False)
+    client.cookies.update(session_cookie(user))
+    client.get("/admin")            # browser now holds a CSRF cookie
+
+    buf, detach = _capture_csrf_logs()
+    try:
+        client.post("/admin/settings/theme", data={"theme": "dark"},
+                    headers={"referer": "https://example.test/admin/users"},
+                    follow_redirects=False)
+        out = buf.getvalue()
+    finally:
+        detach()
+
+    assert "had_cookie=True" in out, out
+    assert "no csrf_token field in form" in out, out
+    assert "/admin/users" in out, "the referer must name the offending page"
+    assert user["username"] in out, "the log must name the user"
+
+
+def test_a_request_with_no_csrf_cookie_is_logged_differently(app_module, monkeypatch,
+                                                             make_user, session_cookie):
+    """The case that DOES warrant investigation: no CSRF cookie at all."""
+    import config
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(config, "CSRF_ENFORCE", False)
+
+    user = make_user(role="admin")
+    client = TestClient(app_module.app, raise_server_exceptions=False)
+    client.cookies.update(session_cookie(user))   # session, but no CSRF cookie
+
+    buf, detach = _capture_csrf_logs()
+    try:
+        client.post("/admin/settings/theme", data={"theme": "dark"},
+                    follow_redirects=False)
+        out = buf.getvalue()
+    finally:
+        detach()
+
+    assert "had_cookie=False" in out, out
+
+
+def test_the_who_helper_never_raises_on_a_bad_session(app_module):
+    """Logging must never break the request it is describing."""
+    import config
+
+    class Req:
+        cookies = {config.COOKIE: "not-a-valid-token"}
+
+    assert config.CSRFMiddleware._who(Req()) == ""
+
+    class Broken:
+        @property
+        def cookies(self):
+            raise RuntimeError("boom")
+
+    assert config.CSRFMiddleware._who(Broken()) == ""

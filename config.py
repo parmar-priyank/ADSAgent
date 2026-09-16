@@ -504,19 +504,32 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                             "more_body": False}
                 request._receive = _receive
             if not ok:
+                # Log enough to tell a stale browser tab from a real bug
+                # WITHOUT another round of investigation:
+                #   had_cookie=True + "no csrf_token field in form"
+                #     -> the browser has a current cookie but posted HTML
+                #        rendered before the token existed, i.e. a page left
+                #        open across the deploy. Harmless; a reload fixes it.
+                #   had_cookie=False
+                #     -> the request carried no CSRF cookie at all (a
+                #        cross-site POST, a stripped cookie, or a genuine
+                #        bug). Worth investigating.
+                # referer names the page at fault; user names who hit it.
+                detail = (
+                    "%s %s (%s) had_cookie=%s referer=%r ua=%r user=%r"
+                    % (request.method, request.url.path, reason,
+                       bool(cookie_token),
+                       request.headers.get("referer", ""),
+                       (request.headers.get("user-agent", "") or "")[:80],
+                       self._who(request))
+                )
                 if CSRF_ENFORCE:
-                    _csrf_logger.warning(
-                        "CSRF blocked: %s %s (%s)", request.method, request.url.path, reason
-                    )
+                    _csrf_logger.warning("CSRF blocked: %s", detail)
                     return PlainTextResponse(
                         "Your session could not be verified. Please reload the page and try again.",
                         status_code=403,
                     )
-                _csrf_logger.warning(
-                    "CSRF would block (log-only): %s %s (%s) referer=%r",
-                    request.method, request.url.path, reason,
-                    request.headers.get("referer", ""),
-                )
+                _csrf_logger.warning("CSRF would block (log-only): %s", detail)
 
         response = await call_next(request)
 
@@ -535,6 +548,23 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     @staticmethod
     def _is_exempt(request: Request) -> bool:
         return request.url.path in _CSRF_EXEMPT_PATHS
+
+    @staticmethod
+    def _who(request: Request) -> str:
+        """Best-effort username for the log line, so a failure can be traced
+        to a person and their browser tab. Never raises and never blocks the
+        request — an unreadable session just logs as empty."""
+        try:
+            for cookie_name in (COOKIE_ADMIN, COOKIE):
+                token = request.cookies.get(cookie_name)
+                if not token:
+                    continue
+                payload = _decode_token(token)
+                if payload:
+                    return payload.get("username", "") or ""
+        except Exception:
+            pass
+        return ""
 
     @staticmethod
     async def _validate(request: Request, cookie_token: str | None):
