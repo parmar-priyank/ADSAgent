@@ -16,6 +16,7 @@ Routes:
   GET  /templates/{template_id}/download
 """
 import io
+import zipfile
 
 import db.checklist_repo as tdb
 from reports.xlsx_builder import build_template_xlsx, parse_xlsx
@@ -83,7 +84,12 @@ async def templates_upload(
     if kind not in ("pre", "post"):
         kind = "pre"
     blob = await file.read()
-    items, headers, note, title, has_header_row = parse_xlsx(blob)
+    try:
+        items, headers, note, title, has_header_row = parse_xlsx(blob)
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(
+            400, "The uploaded file is not a valid .xlsx workbook."
+        ) from exc
     tdb.create_template(name, blob, items, note, headers, kind=kind,
                         title=title, has_header_row=has_header_row)
     return RedirectResponse(url="/admin/templates", status_code=303)

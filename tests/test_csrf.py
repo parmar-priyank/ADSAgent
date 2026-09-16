@@ -251,10 +251,12 @@ def test_a_multipart_upload_still_reaches_the_handler(logged_in_admin):
                     files={"file": ("t.xlsx", io.BytesIO(b"not-a-real-xlsx"),
                                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
                     follow_redirects=False)
-    # Whatever the app decides about the bogus xlsx, it must have PARSED the
-    # request rather than failing validation for a missing field.
+    # The request must reach the route. Invalid workbook bytes should produce
+    # a client error, not an uncaught zipfile.BadZipFile/500.
     assert r.status_code != 403, "CSRF rejected a correctly-tokened upload"
     assert r.status_code != 422, "the handler did not receive the multipart body"
+    assert r.status_code == 400
+    assert "valid .xlsx workbook" in r.json()["detail"]
 
 
 def test_login_stays_exempt(strict_client, make_user):
